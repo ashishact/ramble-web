@@ -174,53 +174,57 @@ export const VoiceActivityMonitor: React.FC<VoiceActivityMonitorProps> = ({
   }, []);
 
   return (
-    <div className="fixed bottom-4 right-4 bg-black/50 backdrop-blur-sm rounded-lg p-4 text-white text-sm">
-      <div className="space-y-2">
+    <div className="card fixed bottom-4 right-4 bg-base-300/80 backdrop-blur-sm shadow-xl">
+      <div className="card-body p-4 text-sm">
         <div className="flex items-center gap-2">
-          <div
-            className={`w-2 h-2 rounded-full ${
+          <span
+            className={`badge ${
               vadLoading
-                ? "bg-yellow-500"
+                ? "badge-warning"
                 : vadError
-                  ? "bg-red-500"
+                  ? "badge-error"
                   : vadListening
-                    ? "bg-green-500"
-                    : "bg-gray-500"
+                    ? "badge-success"
+                    : "badge-ghost"
             }`}
-          />
-          <span className="font-semibold">VAD Status</span>
+          >
+            {vadLoading ? "Loading" : vadError ? "Error" : vadListening ? "Active" : "Inactive"}
+          </span>
+          <span className="font-semibold text-base-content">VAD Status</span>
         </div>
 
         {vadLoading && (
-          <div className="text-xs text-yellow-400">Loading model...</div>
+          <div className="text-xs text-warning">Loading model...</div>
         )}
         {vadError && (
-          <div className="text-xs text-red-400">Error loading VAD</div>
+          <div className="text-xs text-error">Error loading VAD</div>
         )}
 
         {vadListening && (
-          <>
-            <div className="text-xs">
-              <span className="text-gray-400">Speaking:</span>{" "}
-              <span
-                className={userSpeaking ? "text-green-400" : "text-gray-500"}
-              >
-                {userSpeaking ? "Yes" : "No"}
-              </span>
+          <div className="stats stats-vertical shadow bg-base-200">
+            <div className="stat py-2 px-3">
+              <div className="stat-title text-xs">Speaking</div>
+              <div className="stat-value text-sm">
+                <span
+                  className={`badge ${userSpeaking ? "badge-success" : "badge-ghost"}`}
+                >
+                  {userSpeaking ? "Yes" : "No"}
+                </span>
+              </div>
             </div>
-            <div className="text-xs">
-              <span className="text-gray-400">Last Speech:</span>{" "}
-              <span className="text-white">
+            <div className="stat py-2 px-3">
+              <div className="stat-title text-xs">Last Speech</div>
+              <div className="stat-value text-sm text-base-content">
                 {Math.floor((Date.now() - lastSpeechTime) / 1000)}s ago
-              </span>
+              </div>
             </div>
-            <div className="text-xs">
-              <span className="text-gray-400">Last Gemini:</span>{" "}
-              <span className="text-white">
+            <div className="stat py-2 px-3">
+              <div className="stat-title text-xs">Last Gemini</div>
+              <div className="stat-value text-sm text-base-content">
                 {Math.floor((Date.now() - lastGeminiResponseTime) / 1000)}s ago
-              </span>
+              </div>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

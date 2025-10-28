@@ -36,11 +36,11 @@ export function AmigozView({ isConnected, customEvents }: AmigozViewProps) {
   }, []);
 
   return (
-    <div className="flex-1 p-8 overflow-auto">
+    <div className="flex-1 p-8 overflow-auto bg-base-100">
       <div className="max-w-3xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-white mb-2">Knowledge Graph</h1>
-          <p className="text-gray-400 text-sm">
+          <h1 className="text-3xl font-bold text-base-content mb-2">Knowledge Graph</h1>
+          <p className="text-base-content/60 text-sm">
             {isConnected ? 'Connected - Speak your thoughts' : 'Connecting...'}
           </p>
         </div>
@@ -52,14 +52,14 @@ export function AmigozView({ isConnected, customEvents }: AmigozViewProps) {
 
         {/* Current Node */}
         <div className="mb-6">
-          <h2 className="text-lg font-semibold text-gray-300 mb-3">Current Node</h2>
+          <h2 className="text-lg font-semibold text-base-content/80 mb-3">Current Node</h2>
           <NodeCard node={currentNode} onNodeClick={loadNodeById} />
         </div>
 
         {/* Related Nodes */}
         {currentNode && (
           <div className="mb-6">
-            <h2 className="text-lg font-semibold text-gray-300 mb-3">Related Nodes</h2>
+            <h2 className="text-lg font-semibold text-base-content/80 mb-3">Related Nodes</h2>
             <RelatedNodesList nodeId={currentNode.id} onNodeClick={loadNodeById} />
           </div>
         )}
