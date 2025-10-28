@@ -5,6 +5,7 @@ import { useGeminiSocket } from "./hooks/useGeminiSocket";
 import { VoiceActivityMonitor, notifyGeminiResponse } from "./components/VoiceActivityMonitor";
 import { AgentView } from "./components/AgentView";
 import { RightSidebar } from "./components/RightSidebar";
+import { ThemeSelector } from "./components/ThemeSelector";
 
 interface TranscriptMessage {
   role: 'user' | 'model';
@@ -196,22 +197,35 @@ function App() {
   };
 
   return (
-    <div className="h-screen bg-base-300 flex overflow-hidden">
-      {/* Left Main Section - Agent Content (4/5) */}
-      <div className="flex-1 w-4/5 overflow-auto bg-base-100">
-        <AgentView agent={agent} isConnected={isConnected} customEvents={customEvents} />
+    <div className="h-screen bg-base-300 flex flex-col overflow-hidden">
+      {/* Top Bar with Theme Selector */}
+      <div className="navbar bg-base-200 border-b border-base-300 px-4 min-h-[3rem] h-12">
+        <div className="flex-1">
+          <span className="text-lg font-bold text-base-content">Habit AI</span>
+        </div>
+        <div className="flex-none">
+          <ThemeSelector />
+        </div>
       </div>
 
+      {/* Main Content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Main Section - Agent Content (4/5) */}
+        <div className="flex-1 w-4/5 overflow-auto bg-base-100">
+          <AgentView agent={agent} isConnected={isConnected} customEvents={customEvents} />
+        </div>
 
-      {/* Right Sidebar - Chat & Transcription (1/5) */}
-      <RightSidebar
-        transcripts={transcripts}
-        isConnected={isConnected}
-        isRecording={isRecording}
-        onSendText={handleSendText}
-        onToggleRecording={handleToggleRecording}
-        vadStatus={vadStatus}
-      />
+
+        {/* Right Sidebar - Chat & Transcription (1/5) */}
+        <RightSidebar
+          transcripts={transcripts}
+          isConnected={isConnected}
+          isRecording={isRecording}
+          onSendText={handleSendText}
+          onToggleRecording={handleToggleRecording}
+          vadStatus={vadStatus}
+        />
+      </div>
 
       {/* Hidden VAD Monitor - still needed for detection */}
       <div className="hidden">
