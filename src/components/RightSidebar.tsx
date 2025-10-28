@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from "react";
+import { Icon } from "@iconify/react";
 import { ThemeSelector } from "./ThemeSelector";
 
 interface TranscriptMessage {
@@ -52,26 +53,19 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
   return (
     <div className="w-1/5 min-w-[300px] bg-base-200/80 backdrop-blur-md border-l border-base-300 flex flex-col h-screen">
-      {/* Connection Status & Theme Selector */}
-      <div className="card bg-base-100/50 rounded-none border-b border-base-300">
-        <div className="card-body p-4">
-          <div className="flex items-center justify-between">
-            <div className="indicator">
-              <span className={`indicator-item badge ${isConnected ? "badge-success" : "badge-error"} badge-xs`}></span>
-              <span className="text-base-content text-sm font-semibold ml-4">
-                {isConnected ? "Connected" : "Disconnected"}
-              </span>
-            </div>
-            <ThemeSelector />
+      {/* Header */}
+      <div className="bg-base-100/50 border-b border-base-300 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <span className={`badge ${isConnected ? "badge-success" : "badge-error"} badge-sm`}></span>
+            <h1 className="text-lg font-bold text-base-content truncate">Knowledge Graph</h1>
           </div>
+          <ThemeSelector />
         </div>
       </div>
 
       {/* Transcription Panel */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        <h2 className="text-xl font-bold text-base-content mb-3 sticky top-0 bg-base-200/80 backdrop-blur-sm py-2">
-          Conversation
-        </h2>
         {transcripts.length === 0 ? (
           <p className="text-base-content/60 text-center text-sm mt-8">
             Start talking to see transcriptions...
@@ -153,23 +147,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           <button
             onClick={onToggleRecording}
             disabled={!isConnected}
-            className={`btn btn-sm w-full ${
+            className={`btn btn-sm w-full gap-2 ${
               isRecording ? "btn-error" : "btn-neutral"
             }`}
           >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-              />
-            </svg>
+            <Icon icon={isRecording ? "mdi:microphone-off" : "mdi:microphone"} className="w-4 h-4" />
             {isRecording ? "Stop Recording" : "Start Recording"}
           </button>
         </div>

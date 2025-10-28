@@ -11,6 +11,7 @@ interface AmigozViewProps {
 
 export function AmigozView({ isConnected, customEvents }: AmigozViewProps) {
   const [currentNode, setCurrentNode] = useState<KnowledgeNode | null>(null);
+  const [activeTab, setActiveTab] = useState<'nodes' | 'graph'>('nodes');
 
   // Listen for node updates from backend
   useEffect(() => {
@@ -37,30 +38,57 @@ export function AmigozView({ isConnected, customEvents }: AmigozViewProps) {
 
   return (
     <div className="flex-1 p-8 overflow-auto bg-base-100">
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-base-content mb-2">Knowledge Graph</h1>
-          <p className="text-base-content/60 text-sm">
-            {isConnected ? 'Connected - Speak your thoughts' : 'Connecting...'}
-          </p>
+      <div className="max-w-6xl mx-auto">
+        {/* Tabs */}
+        <div role="tablist" className="tabs tabs-boxed mb-6">
+          <button
+            role="tab"
+            className={`tab ${activeTab === 'nodes' ? 'tab-active' : ''}`}
+            onClick={() => setActiveTab('nodes')}
+          >
+            Nodes View
+          </button>
+          <button
+            role="tab"
+            className={`tab ${activeTab === 'graph' ? 'tab-active' : ''}`}
+            onClick={() => setActiveTab('graph')}
+          >
+            Graph View
+          </button>
         </div>
 
-        {/* Search Bar */}
-        <div className="mb-6">
-          <SearchBar onNodeSelect={loadNodeById} />
-        </div>
+        {/* Nodes View Tab */}
+        {activeTab === 'nodes' && (
+          <div className="max-w-3xl mx-auto">
+            {/* Search Bar */}
+            <div className="mb-6">
+              <SearchBar onNodeSelect={loadNodeById} />
+            </div>
 
-        {/* Current Node */}
-        <div className="mb-6">
-          <h2 className="text-lg font-semibold text-base-content/80 mb-3">Current Node</h2>
-          <NodeCard node={currentNode} onNodeClick={loadNodeById} />
-        </div>
+            {/* Current Node */}
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold text-base-content/80 mb-3">Current Node</h2>
+              <NodeCard node={currentNode} onNodeClick={loadNodeById} />
+            </div>
 
-        {/* Related Nodes */}
-        {currentNode && (
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold text-base-content/80 mb-3">Related Nodes</h2>
-            <RelatedNodesList nodeId={currentNode.id} onNodeClick={loadNodeById} />
+            {/* Related Nodes */}
+            {currentNode && (
+              <div className="mb-6">
+                <h2 className="text-lg font-semibold text-base-content/80 mb-3">Related Nodes</h2>
+                <RelatedNodesList nodeId={currentNode.id} onNodeClick={loadNodeById} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Graph View Tab */}
+        {activeTab === 'graph' && (
+          <div className="w-full h-[calc(100vh-16rem)]">
+            <div className="card bg-base-200 w-full h-full">
+              <div className="card-body items-center justify-center">
+                <p className="text-base-content/60">Vis.js Graph will be implemented here</p>
+              </div>
+            </div>
           </div>
         )}
       </div>
