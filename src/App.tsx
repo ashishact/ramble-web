@@ -196,9 +196,9 @@ function App() {
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-black flex overflow-hidden">
+    <div className="h-screen bg-base-300 flex overflow-hidden">
       {/* Left Main Section - Agent Content (4/5) */}
-      <div className="flex-1 w-4/5 overflow-auto">
+      <div className="flex-1 w-4/5 overflow-auto bg-base-100">
         <AgentView agent={agent} isConnected={isConnected} customEvents={customEvents} />
       </div>
 
