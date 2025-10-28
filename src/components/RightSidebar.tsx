@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from "react";
+import { ThemeSelector } from "./ThemeSelector";
 
 interface TranscriptMessage {
   role: 'user' | 'model';
@@ -51,14 +52,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
   return (
     <div className="w-1/5 min-w-[300px] bg-base-200/80 backdrop-blur-md border-l border-base-300 flex flex-col h-screen">
-      {/* Connection Status */}
+      {/* Connection Status & Theme Selector */}
       <div className="card bg-base-100/50 rounded-none border-b border-base-300">
         <div className="card-body p-4">
-          <div className="indicator">
-            <span className={`indicator-item badge ${isConnected ? "badge-success" : "badge-error"} badge-xs`}></span>
-            <span className="text-base-content text-sm font-semibold ml-4">
-              {isConnected ? "Connected" : "Disconnected"}
-            </span>
+          <div className="flex items-center justify-between">
+            <div className="indicator">
+              <span className={`indicator-item badge ${isConnected ? "badge-success" : "badge-error"} badge-xs`}></span>
+              <span className="text-base-content text-sm font-semibold ml-4">
+                {isConnected ? "Connected" : "Disconnected"}
+              </span>
+            </div>
+            <ThemeSelector />
           </div>
         </div>
       </div>
