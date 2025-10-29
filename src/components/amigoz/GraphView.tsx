@@ -23,6 +23,7 @@ import type { KnowledgeNode } from './types';
 interface GraphViewProps {
   currentNode: KnowledgeNode | null;
   onNodeClick: (nodeId: number) => void;
+  relationshipChangeKey?: number;
 }
 
 interface GraphNode extends d3.SimulationNodeDatum {
@@ -182,7 +183,7 @@ const getNodeColors = (node: GraphNode, themeColors: ReturnType<typeof getThemeC
   return colorPalette[colorIndex];
 };
 
-export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
+export function GraphView({ currentNode, onNodeClick, relationshipChangeKey }: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null);
 
@@ -257,13 +258,25 @@ export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
   }, []);
 
   /**
+   * Trigger initialization when currentNode first becomes available
+   * This useEffect watches for when currentNode is loaded for the first time
+   */
+  const [shouldInitialize, setShouldInitialize] = useState(false);
+
+  useEffect(() => {
+    if (currentNode && !isInitializedRef.current) {
+      setShouldInitialize(true);
+    }
+  }, [currentNode]);
+
+  /**
    * Initialize D3 graph once on mount or theme change
-   * CRITICAL: Only depends on themeVersion, NOT currentNode
+   * CRITICAL: Only depends on themeVersion and shouldInitialize, NOT currentNode directly
    * - If currentNode was in dependencies, it would re-initialize on every selection
    * - This would clear the virtual view and lose accumulated nodes
    */
   useEffect(() => {
-    if (!currentNode || !svgRef.current) return;
+    if (!currentNode || !svgRef.current || !shouldInitialize) return;
 
     // Skip if already initialized (unless theme changed)
     if (isInitializedRef.current && simulationRef.current) {
@@ -321,8 +334,6 @@ export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
     currentSelectedNodeRef.current = currentNode.id;
     isInitializedRef.current = true;
     initialNodeIdRef.current = currentNode.id;
-
-    console.log('[GraphView] Initialized with node:', currentNode.id, currentNode.title);
 
     // Create force simulation with distance-based forces
     const simulation = d3.forceSimulation<GraphNode>()
@@ -932,7 +943,7 @@ export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
       }
       isInitializedRef.current = false;
     };
-  }, [themeVersion]); // Only re-initialize on theme change, NOT on currentNode change
+  }, [themeVersion, shouldInitialize]); // Re-initialize on theme change or when initialization is triggered
 
   /**
    * Handle external currentNode changes (e.g., from backend AI creating new nodes)
@@ -947,14 +958,10 @@ export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
     // Check if this node already has the correct selection state
     if (currentSelectedNodeRef.current === currentNode.id) return;
 
-    console.log('[GraphView] External currentNode change detected:', currentNode.id);
-
     // Check if this is a brand new node that doesn't exist in the graph yet
     const nodeExists = allNodesMapRef.current.has(currentNode.id);
 
     if (!nodeExists) {
-      console.log('[GraphView] New node from backend, adding to center:', currentNode.id);
-
       // Add the new node to the center of the graph
       const width = svgRef.current?.clientWidth || 800;
       const height = svgRef.current?.clientHeight || 600;
@@ -974,6 +981,17 @@ export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
     // Now use handleNodeClick to fetch relationships and update the graph
     handleNodeClickRef.current(currentNode.id);
   }, [currentNode?.id]); // Only depend on the ID changing
+
+  /**
+   * Handle relationship changes from backend
+   * Refetch relationships for the current node when they change
+   */
+  useEffect(() => {
+    if (!relationshipChangeKey || !currentSelectedNodeRef.current || !handleNodeClickRef.current) return;
+
+    // Refetch relationships for the currently selected node
+    handleNodeClickRef.current(currentSelectedNodeRef.current);
+  }, [relationshipChangeKey]);
 
   /**
    * Handle canvas resize (when panels are resized)

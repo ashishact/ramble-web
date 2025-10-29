@@ -65,11 +65,20 @@ export function AmigozView({
     fetchCurrentNode();
   }, []);
 
-  // Listen for node updates from backend
+  // Track when relationships change to trigger refetch
+  const [relationshipVersion, setRelationshipVersion] = useState(0);
+
+  // Listen for node and relationship updates from backend
   useEffect(() => {
-    if (customEvents && customEvents.event === 'current-node-update') {
+    if (!customEvents) return;
+
+    if (customEvents.event === 'current-node-update') {
       console.log('Received current-node-update:', customEvents.data);
       setCurrentNode(customEvents.data);
+    } else if (customEvents.event === 'relationship-created' || customEvents.event === 'relationship-deleted') {
+      console.log('Received relationship change:', customEvents.event);
+      // Trigger a refresh by incrementing version
+      setRelationshipVersion(v => v + 1);
     }
   }, [customEvents]);
 
@@ -93,7 +102,11 @@ export function AmigozView({
       {/* D3 Graph Canvas - 60% (3/5) */}
       <Panel defaultSize={60} minSize={30}>
         <div className="h-full w-full">
-          <GraphView currentNode={currentNode} onNodeClick={loadNodeById} />
+          <GraphView
+            currentNode={currentNode}
+            onNodeClick={loadNodeById}
+            relationshipChangeKey={relationshipVersion}
+          />
         </div>
       </Panel>
 
@@ -119,7 +132,11 @@ export function AmigozView({
             {currentNode && (
               <div>
                 <h2 className="text-sm font-semibold text-base-content/80 mb-2">Related Nodes</h2>
-                <RelatedNodesList nodeId={currentNode.id} onNodeClick={loadNodeById} />
+                <RelatedNodesList
+                  key={`${currentNode.id}-${relationshipVersion}`}
+                  nodeId={currentNode.id}
+                  onNodeClick={loadNodeById}
+                />
               </div>
             )}
           </div>
