@@ -1,0 +1,951 @@
+/**
+ * GraphView Component - Interactive knowledge graph visualization with D3.js
+ *
+ * VIRTUAL VIEW PATTERN:
+ * This component maintains a "virtual view" of all accumulated nodes/edges using Maps:
+ * - allNodesMapRef: Complete map of all nodes encountered during navigation
+ * - allEdgesMapRef: Complete map of all edges between nodes
+ *
+ * The graph uses D3 force simulation with smooth transitions:
+ * 1. Initial render: Shows currentNode only
+ * 2. Click node: Fetches relationships, adds with grow animation
+ * 3. Auto-prunes: Removes nodes >2 hops away when total count >= 16 with shrink animation
+ *
+ * D3.js provides:
+ * - Force-directed layout with automatic positioning
+ * - Smooth transitions for all state changes
+ * - Natural clustering and separation
+ */
+import { useEffect, useRef, useState } from 'react';
+import * as d3 from 'd3';
+import type { KnowledgeNode } from './types';
+
+interface GraphViewProps {
+  currentNode: KnowledgeNode | null;
+  onNodeClick: (nodeId: number) => void;
+}
+
+interface GraphNode extends d3.SimulationNodeDatum {
+  id: number;
+  label: string;
+  distance?: number;
+  childCount?: number;  // Number of relationships this node has
+}
+
+interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
+  id: string;
+  source: number | GraphNode;
+  target: number | GraphNode;
+}
+
+// Utility function to get computed color from a temporary element with DaisyUI class
+const getThemeColor = (className: string): string => {
+  const tempEl = document.createElement('div');
+  tempEl.className = className;
+  tempEl.style.display = 'none';
+  document.body.appendChild(tempEl);
+
+  const computed = getComputedStyle(tempEl);
+  // For text classes (text-*), read color, for background classes (bg-*), read backgroundColor
+  const color = className.startsWith('text-') ? computed.color : computed.backgroundColor;
+
+  document.body.removeChild(tempEl);
+  return color || '#666666';
+};
+
+// Get theme colors for graph by reading from DaisyUI utility classes
+const getThemeColors = () => ({
+  primary: getThemeColor('bg-primary'),
+  secondary: getThemeColor('bg-secondary'),
+  baseContent: getThemeColor('text-base-content'),
+  accent: getThemeColor('bg-accent'),
+});
+
+// Scaling constants for visual hierarchy based on distance
+// Each array index represents: [distance-0, distance-1, distance-2, distance-3+]
+const SCALE_RADIUS = [30, 18, 13, 10];        // Node radius
+const SCALE_STROKE_OUTER = [2, 1.5, 1, 0.8];  // Outer ring stroke width (thinner than inner)
+const SCALE_STROKE_INNER = [2.5, 1.8, 1.3, 1]; // Inner ring stroke width
+const SCALE_EDGE_LENGTH = [120, 70, 45, 30];  // Edge/link distance (more compact)
+const SCALE_OPACITY = [1, 0.75, 0.6, 0.6];    // Node opacity (capped at 0.6)
+const OUTER_RING_GAP = 8;                     // Gap between inner and outer ring
+const LABEL_GAP = 5;                          // Gap between outer ring and label text
+
+// Get node radius based on distance from selected node
+const getNodeRadius = (distance: number): number => {
+  const index = Math.min(distance, SCALE_RADIUS.length - 1);
+  return SCALE_RADIUS[index];
+};
+
+// Get stroke widths based on distance
+const getStrokeWidths = (distance: number) => {
+  const index = Math.min(distance, SCALE_STROKE_OUTER.length - 1);
+  return {
+    outerRing: SCALE_STROKE_OUTER[index],
+    innerRing: SCALE_STROKE_INNER[index],
+  };
+};
+
+// Get edge length based on distance
+const getEdgeLength = (distance: number): number => {
+  const index = Math.min(distance, SCALE_EDGE_LENGTH.length - 1);
+  return SCALE_EDGE_LENGTH[index];
+};
+
+// Get node opacity based on distance
+const getNodeOpacity = (distance: number): number => {
+  const index = Math.min(distance, SCALE_OPACITY.length - 1);
+  return SCALE_OPACITY[index];
+};
+
+// Calculate smart initial position for new nodes around parent
+const calculateInitialPosition = (
+  parentNode: GraphNode | undefined,
+  existingNodes: GraphNode[],
+  newNodeIndex: number,
+  totalNewNodes: number
+): { x: number, y: number } => {
+  if (!parentNode || parentNode.x === undefined || parentNode.y === undefined) {
+    return { x: 0, y: 0 };
+  }
+
+  // Calculate angles of existing connected nodes
+  const existingAngles: number[] = [];
+  existingNodes.forEach(node => {
+    if (node.x !== undefined && node.y !== undefined) {
+      const dx = node.x - parentNode.x!;
+      const dy = node.y - parentNode.y!;
+      const angle = Math.atan2(dy, dx);
+      existingAngles.push(angle);
+    }
+  });
+
+  // Distribute new nodes evenly around a circle
+  const baseAngle = (2 * Math.PI) / totalNewNodes;
+  let angle = baseAngle * newNodeIndex;
+
+  // Try to avoid existing node angles if possible
+  if (existingAngles.length > 0) {
+    // Find the largest gap in existing angles and start from there
+    existingAngles.sort((a, b) => a - b);
+    let maxGap = 0;
+    let maxGapStart = 0;
+
+    for (let i = 0; i < existingAngles.length; i++) {
+      const nextI = (i + 1) % existingAngles.length;
+      const gap = nextI === 0
+        ? (2 * Math.PI - existingAngles[i] + existingAngles[0])
+        : (existingAngles[nextI] - existingAngles[i]);
+
+      if (gap > maxGap) {
+        maxGap = gap;
+        maxGapStart = existingAngles[i];
+      }
+    }
+
+    // Start distributing from the middle of the largest gap
+    angle = maxGapStart + maxGap / 2 + baseAngle * newNodeIndex;
+  }
+
+  // Position at parent's outer circumference
+  const startRadius = getNodeRadius(parentNode.distance || 0) + OUTER_RING_GAP + 10;
+  const x = parentNode.x + Math.cos(angle) * startRadius;
+  const y = parentNode.y + Math.sin(angle) * startRadius;
+
+  return { x, y };
+};
+
+// Get node colors based on properties (simulated for now with random selection)
+const getNodeColors = (node: GraphNode, themeColors: ReturnType<typeof getThemeColors>) => {
+  // For selected node (distance 0), use accent color for both rings
+  if (node.distance === 0) {
+    return {
+      outerRing: themeColors.accent,
+      innerRing: themeColors.accent,
+    };
+  }
+
+  // Simulate random color selection based on node ID
+  // In the future, this will be based on node properties
+  // Outer ring uses lighter/pastel version, inner ring uses bolder color
+  const colorPalette = [
+    { outerRing: '#ffd700', innerRing: '#d4af37' },  // Light Gold -> Gold
+    { outerRing: '#cd853f', innerRing: '#8b4513' },  // Peru -> Saddle Brown
+    { outerRing: '#87ceeb', innerRing: '#4169e1' },  // Sky Blue -> Royal Blue
+    { outerRing: '#90ee90', innerRing: '#32cd32' },  // Light Green -> Lime Green
+    { outerRing: '#ffa07a', innerRing: '#ff6347' },  // Light Salmon -> Tomato
+    { outerRing: '#dda0dd', innerRing: '#9370db' },  // Plum -> Medium Purple
+    { outerRing: '#7fffd4', innerRing: '#20b2aa' },  // Aquamarine -> Light Sea Green
+  ];
+
+  const colorIndex = node.id % colorPalette.length;
+  return colorPalette[colorIndex];
+};
+
+export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null);
+
+  // Virtual view: Complete map of all nodes/edges accumulated during navigation
+  const allNodesMapRef = useRef<Map<number, GraphNode>>(new Map());
+  const allEdgesMapRef = useRef<Map<string, GraphLink>>(new Map());
+
+  // D3 selections
+  const gRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null);
+  const linkRef = useRef<d3.Selection<SVGLineElement, GraphLink, SVGGElement, unknown> | null>(null);
+  const nodeRef = useRef<d3.Selection<SVGGElement, GraphNode, SVGGElement, unknown> | null>(null);
+
+  const [themeVersion, setThemeVersion] = useState(0);
+
+  // Track current selected node for centering
+  const currentSelectedNodeRef = useRef<number | null>(null);
+
+  // Track if initialized to prevent re-initialization
+  const isInitializedRef = useRef(false);
+  const initialNodeIdRef = useRef<number | null>(null);
+
+  // Calculate distance from a node using BFS
+  const calculateDistances = (fromNodeId: number): Map<number, number> => {
+    const distances = new Map<number, number>();
+    const queue: number[] = [fromNodeId];
+    distances.set(fromNodeId, 0);
+
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
+      const currentDistance = distances.get(nodeId)!;
+
+      allEdgesMapRef.current.forEach((edge) => {
+        const sourceId = typeof edge.source === 'number' ? edge.source : edge.source.id;
+        const targetId = typeof edge.target === 'number' ? edge.target : edge.target.id;
+
+        let neighborId: number | null = null;
+        if (sourceId === nodeId) {
+          neighborId = targetId;
+        } else if (targetId === nodeId) {
+          neighborId = sourceId;
+        }
+
+        if (neighborId !== null && !distances.has(neighborId)) {
+          distances.set(neighborId, currentDistance + 1);
+          queue.push(neighborId);
+        }
+      });
+    }
+
+    return distances;
+  };
+
+  // Listen for theme changes
+  useEffect(() => {
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
+          setThemeVersion(v => v + 1);
+        }
+      });
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  /**
+   * Initialize D3 graph once on mount or theme change
+   * CRITICAL: Only depends on themeVersion, NOT currentNode
+   * - If currentNode was in dependencies, it would re-initialize on every selection
+   * - This would clear the virtual view and lose accumulated nodes
+   */
+  useEffect(() => {
+    if (!currentNode || !svgRef.current) return;
+
+    // Skip if already initialized (unless theme changed)
+    if (isInitializedRef.current && simulationRef.current) {
+      return;
+    }
+
+    const svg = d3.select(svgRef.current);
+    const width = svgRef.current.clientWidth;
+    const height = svgRef.current.clientHeight;
+
+    const themeColors = getThemeColors();
+
+    // Clear previous content
+    svg.selectAll('*').remove();
+    allNodesMapRef.current.clear();
+    allEdgesMapRef.current.clear();
+
+    // Create zoom behavior
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.1, 4])
+      .on('zoom', (event) => {
+        g.attr('transform', event.transform);
+      });
+
+    svg.call(zoom);
+
+    // Main group for zoom/pan
+    const g = svg.append('g');
+    gRef.current = g;
+
+    // Create arrow marker for directed edges
+    svg.append('defs').append('marker')
+      .attr('id', 'arrowhead')
+      .attr('viewBox', '-0 -3 6 6')
+      .attr('refX', 12)
+      .attr('refY', 0)
+      .attr('orient', 'auto')
+      .attr('markerWidth', 4)
+      .attr('markerHeight', 4)
+      .append('svg:path')
+      .attr('d', 'M 0,-3 L 6,0 L 0,3')
+      .attr('fill', themeColors.baseContent)
+      .style('opacity', 0.4);
+
+    // Initialize with current node
+    const initialNode: GraphNode = {
+      id: currentNode.id,
+      label: currentNode.title,
+      x: width / 2,
+      y: height / 2,
+      distance: 0,
+    };
+    allNodesMapRef.current.set(currentNode.id, initialNode);
+    currentSelectedNodeRef.current = currentNode.id;
+    isInitializedRef.current = true;
+    initialNodeIdRef.current = currentNode.id;
+
+    // Create force simulation with distance-based forces
+    const simulation = d3.forceSimulation<GraphNode>()
+      .force('link', d3.forceLink<GraphNode, GraphLink>()
+        .id(d => d.id)
+        .distance(d => {
+          const source = d.source as GraphNode;
+          const target = d.target as GraphNode;
+          const maxDist = Math.max(source.distance || 0, target.distance || 0);
+          return getEdgeLength(maxDist);
+        })
+        .strength(0.7))  // Stronger link force for stable layout
+      .force('charge', d3.forceManyBody().strength(-500))
+      .force('radial', d3.forceRadial<GraphNode>(
+        (d) => {
+          // Push nodes outward from center based on distance
+          const dist = d.distance || 0;
+          return dist * getEdgeLength(0); // Each hop uses base edge length
+        },
+        width / 2,
+        height / 2
+      ).strength(0.3))
+      .force('collision', d3.forceCollide<GraphNode>().radius(d => {
+        const dist = d.distance || 0;
+        return getNodeRadius(dist) + OUTER_RING_GAP + 5; // Add padding
+      }))
+      .alphaDecay(0.02)  // Moderate decay
+      .velocityDecay(0.4);  // Moderate friction
+
+    simulationRef.current = simulation;
+
+    // Create link and node groups
+    const linkGroup = g.append('g').attr('class', 'links');
+    const nodeGroup = g.append('g').attr('class', 'nodes');
+
+    linkRef.current = linkGroup.selectAll<SVGLineElement, GraphLink>('line');
+    nodeRef.current = nodeGroup.selectAll<SVGGElement, GraphNode>('g');
+
+    // Drag behavior - define before updateGraph
+    function dragstarted(event: any, d: GraphNode) {
+      if (!event.active) simulation.alphaTarget(0.3).restart();
+      d.fx = d.x;
+      d.fy = d.y;
+    }
+
+    function dragged(event: any, d: GraphNode) {
+      d.fx = event.x;
+      d.fy = event.y;
+    }
+
+    function dragended(event: any, d: GraphNode) {
+      if (!event.active) simulation.alphaTarget(0);
+      d.fx = null;
+      d.fy = null;
+    }
+
+    // Set the position attributes of links and nodes each time the simulation ticks
+    simulation.on('tick', () => {
+      linkRef.current
+        ?.attr('x1', d => {
+          const source = d.source as GraphNode;
+          const target = d.target as GraphNode;
+          const dx = target.x! - source.x!;
+          const dy = target.y! - source.y!;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance < 1) return source.x!;
+          const sourceRadius = getNodeRadius(source.distance || 0) + OUTER_RING_GAP;
+          return source.x! + (dx / distance) * sourceRadius;
+        })
+        .attr('y1', d => {
+          const source = d.source as GraphNode;
+          const target = d.target as GraphNode;
+          const dx = target.x! - source.x!;
+          const dy = target.y! - source.y!;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance < 1) return source.y!;
+          const sourceRadius = getNodeRadius(source.distance || 0) + OUTER_RING_GAP;
+          return source.y! + (dy / distance) * sourceRadius;
+        })
+        .attr('x2', d => {
+          const source = d.source as GraphNode;
+          const target = d.target as GraphNode;
+          const dx = target.x! - source.x!;
+          const dy = target.y! - source.y!;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance < 1) return target.x!;
+          const targetRadius = getNodeRadius(target.distance || 0) + OUTER_RING_GAP;
+          return target.x! - (dx / distance) * targetRadius;
+        })
+        .attr('y2', d => {
+          const source = d.source as GraphNode;
+          const target = d.target as GraphNode;
+          const dx = target.x! - source.x!;
+          const dy = target.y! - source.y!;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance < 1) return target.y!;
+          const targetRadius = getNodeRadius(target.distance || 0) + OUTER_RING_GAP;
+          return target.y! - (dy / distance) * targetRadius;
+        });
+
+      nodeRef.current?.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+
+    function updateGraph() {
+      if (!linkRef.current || !nodeRef.current || !simulationRef.current) return;
+
+      console.log('[D3 updateGraph] CALLED - Current alpha:', simulationRef.current.alpha());
+
+      const themeColors = getThemeColors();
+      const nodes = Array.from(allNodesMapRef.current.values());
+      const links = Array.from(allEdgesMapRef.current.values());
+
+      console.log('[D3 updateGraph] Nodes:', nodes.length, 'Links:', links.length);
+      if (links.length > 0) {
+        console.log('[D3 updateGraph] Sample link:', links[0]);
+      }
+
+      // Update distances and set initial positions for new nodes
+      if (currentSelectedNodeRef.current !== null) {
+        const distances = calculateDistances(currentSelectedNodeRef.current);
+        nodes.forEach(node => {
+          node.distance = distances.get(node.id) ?? 999;
+
+          // For new nodes without position, start at a connected node's position
+          if (node.x === undefined || node.y === undefined) {
+            // Find a connected node to start from
+            const connectedLink = links.find(l => {
+              const sourceId = typeof l.source === 'number' ? l.source : l.source.id;
+              const targetId = typeof l.target === 'number' ? l.target : l.target.id;
+              return sourceId === node.id || targetId === node.id;
+            });
+
+            if (connectedLink) {
+              const connectedNodeId = typeof connectedLink.source === 'number' ? connectedLink.source : connectedLink.source.id;
+              const otherId = connectedNodeId === node.id ?
+                (typeof connectedLink.target === 'number' ? connectedLink.target : connectedLink.target.id) :
+                connectedNodeId;
+              const connectedNode = nodes.find(n => n.id === otherId);
+
+              if (connectedNode && connectedNode.x !== undefined && connectedNode.y !== undefined) {
+                node.x = connectedNode.x;
+                node.y = connectedNode.y;
+              }
+            }
+
+            // Fallback to center if no connected node found
+            if (node.x === undefined || node.y === undefined) {
+              node.x = width / 2;
+              node.y = height / 2;
+            }
+          }
+        });
+      }
+
+      // Update links
+      const link = linkRef.current.data(links, d => d.id);
+
+      console.log('[D3] Link selection:', link.size(), 'Exit:', link.exit().size(), 'Enter:', link.enter().size());
+
+      link.exit()
+        .transition()
+        .duration(400)
+        .attr('stroke-opacity', 0)
+        .remove();
+
+      const linkEnter = link.enter()
+        .append('line')
+        .attr('stroke', themeColors.baseContent)
+        .attr('stroke-opacity', 0)
+        .attr('stroke-width', 1)
+        .attr('marker-end', 'url(#arrowhead)');
+
+      linkEnter.transition()
+        .duration(600)
+        .attr('stroke-opacity', 0.4);
+
+      linkRef.current = linkEnter.merge(link);
+
+      console.log('[D3] After merge, total lines in DOM:', linkRef.current.size());
+
+      // Debug: Check if lines are actually in the DOM
+      const allLines = d3.select(svgRef.current).selectAll('line');
+      console.log('[D3] All lines in entire SVG:', allLines.size());
+      allLines.each(function(_d, i) {
+        const line = d3.select(this);
+        console.log(`[D3] Line ${i}:`, {
+          x1: line.attr('x1'),
+          y1: line.attr('y1'),
+          x2: line.attr('x2'),
+          y2: line.attr('y2'),
+          stroke: line.attr('stroke'),
+          opacity: line.attr('stroke-opacity'),
+        });
+      });
+
+      // Update nodes
+      const node = nodeRef.current.data(nodes, d => d.id);
+
+      node.exit()
+        .each(function() {
+          const nodeSelection = d3.select<SVGGElement, GraphNode>(this);
+          nodeSelection.select('circle')
+            .transition()
+            .duration(400)
+            .attr('r', 0)
+            .attr('fill-opacity', 0);
+          nodeSelection.select('text')
+            .transition()
+            .duration(400)
+            .attr('opacity', 0);
+        })
+        .transition()
+        .delay(400)
+        .remove();
+
+      const nodeEnter = node.enter()
+        .append('g')
+        .style('cursor', 'grab')
+        .attr('opacity', d => getNodeOpacity(d.distance || 0));
+
+      // Add outer ring (larger, colored)
+      nodeEnter.append('circle')
+        .attr('class', 'outer-ring')
+        .attr('r', 0)
+        .attr('fill', 'none')
+        .attr('stroke', d => getNodeColors(d, themeColors).outerRing)
+        .attr('stroke-width', d => getStrokeWidths(d.distance || 0).outerRing)
+        .attr('stroke-dasharray', d => d.distance === 0 ? 'none' : '4,3') // Dashed for non-selected
+        .transition()
+        .duration(600)
+        .attr('r', d => getNodeRadius(d.distance || 0) + OUTER_RING_GAP);
+
+      // Add inner ring (filled white with colored stroke)
+      nodeEnter.append('circle')
+        .attr('class', 'inner-ring')
+        .attr('r', 0)
+        .attr('fill', '#ffffff')
+        .attr('stroke', d => getNodeColors(d, themeColors).innerRing)
+        .attr('stroke-width', d => getStrokeWidths(d.distance || 0).innerRing)
+        .transition()
+        .duration(600)
+        .attr('r', d => getNodeRadius(d.distance || 0));
+
+      // Add child count text (centered in node) - shows only hidden children
+      nodeEnter.append('text')
+        .attr('class', 'child-count-number')
+        .attr('text-anchor', 'middle')
+        .attr('dy', 4)
+        .attr('fill', themeColors.baseContent)
+        .attr('font-size', d => d.distance === 0 ? '14px' : '11px')
+        .attr('font-weight', 'bold')
+        .text(d => {
+          if (!d.childCount || d.childCount === 0) return '';
+
+          // Count how many of this node's children are already visible
+          const visibleChildren = Array.from(allEdgesMapRef.current.values()).filter(edge => {
+            const sourceId = typeof edge.source === 'number' ? edge.source : edge.source.id;
+            const targetId = typeof edge.target === 'number' ? edge.target : edge.target.id;
+            return sourceId === d.id || targetId === d.id;
+          }).length;
+
+          // Show only hidden children count
+          const hiddenCount = d.childCount - visibleChildren;
+          return hiddenCount > 0 ? hiddenCount : '';
+        });
+
+      // Add labels below node (calculated from outer ring edge + small gap)
+      nodeEnter.append('text')
+        .attr('class', 'node-label')
+        .attr('text-anchor', 'middle')
+        .attr('dy', d => {
+          const dist = d.distance || 0;
+          const outerRingRadius = getNodeRadius(dist) + OUTER_RING_GAP;
+          const strokeWidth = getStrokeWidths(dist).outerRing;
+          const fontSize = dist === 0 ? 14 : 11;
+          // Position = outer ring radius + half stroke + gap + half font size
+          // (dy positions the baseline, text extends ~50% above baseline)
+          return outerRingRadius + strokeWidth / 2 + LABEL_GAP + fontSize * 0.5;
+        })
+        .attr('fill', themeColors.baseContent)
+        .attr('font-size', d => d.distance === 0 ? '14px' : '11px')
+        .attr('font-weight', '500')
+        .text(d => d.label.length > 15 ? d.label.substring(0, 15) + '...' : d.label);
+
+      nodeRef.current = nodeEnter.merge(node);
+
+      // Apply drag and click to all nodes (new and existing)
+      nodeRef.current
+        .call(d3.drag<SVGGElement, GraphNode>()
+          .on('start', dragstarted)
+          .on('drag', dragged)
+          .on('end', dragended)
+        )
+        .on('click', async (event, d) => {
+          // D3 drag sets defaultPrevented if it was a drag, not a click
+          if (event.defaultPrevented) return;
+          event.stopPropagation();
+          await handleNodeClick(d.id);
+        });
+
+      // Update node group opacity for existing nodes
+      nodeRef.current
+        .transition()
+        .duration(600)
+        .attr('opacity', d => getNodeOpacity(d.distance || 0));
+
+      // Update outer ring for existing nodes
+      nodeRef.current.select<SVGCircleElement>('.outer-ring')
+        .transition()
+        .duration(600)
+        .attr('stroke', d => getNodeColors(d, themeColors).outerRing)
+        .attr('stroke-width', d => getStrokeWidths(d.distance || 0).outerRing)
+        .attr('stroke-dasharray', d => d.distance === 0 ? 'none' : '4,3') // Dashed for non-selected
+        .attr('r', d => getNodeRadius(d.distance || 0) + OUTER_RING_GAP);
+
+      // Update inner ring for existing nodes
+      nodeRef.current.select<SVGCircleElement>('.inner-ring')
+        .transition()
+        .duration(600)
+        .attr('stroke', d => getNodeColors(d, themeColors).innerRing)
+        .attr('stroke-width', d => getStrokeWidths(d.distance || 0).innerRing)
+        .attr('r', d => getNodeRadius(d.distance || 0));
+
+      // Update child count number for existing nodes - shows only hidden children
+      nodeRef.current.select<SVGTextElement>('.child-count-number')
+        .text(d => {
+          if (!d.childCount || d.childCount === 0) return '';
+
+          // Count how many of this node's children are already visible
+          const visibleChildren = Array.from(allEdgesMapRef.current.values()).filter(edge => {
+            const sourceId = typeof edge.source === 'number' ? edge.source : edge.source.id;
+            const targetId = typeof edge.target === 'number' ? edge.target : edge.target.id;
+            return sourceId === d.id || targetId === d.id;
+          }).length;
+
+          // Show only hidden children count
+          const hiddenCount = d.childCount - visibleChildren;
+          return hiddenCount > 0 ? hiddenCount : '';
+        })
+        .attr('font-size', d => d.distance === 0 ? '14px' : '11px');
+
+      // Update label position and font size for existing nodes when distance changes
+      nodeRef.current.select<SVGTextElement>('.node-label')
+        .transition()
+        .duration(600)
+        .attr('dy', d => {
+          const dist = d.distance || 0;
+          const outerRingRadius = getNodeRadius(dist) + OUTER_RING_GAP;
+          const strokeWidth = getStrokeWidths(dist).outerRing;
+          const fontSize = dist === 0 ? 14 : 11;
+          // Position = outer ring radius + half stroke + gap + half font size
+          // (dy positions the baseline, text extends ~50% above baseline)
+          return outerRingRadius + strokeWidth / 2 + LABEL_GAP + fontSize * 0.5;
+        })
+        .attr('font-size', d => d.distance === 0 ? '14px' : '11px');
+
+      // Update simulation
+      simulationRef.current
+        .nodes(nodes)
+        .force<d3.ForceLink<GraphNode, GraphLink>>('link')
+        ?.links(links);
+
+      // Gently reheat if needed, but don't force restart
+      const currentAlpha = simulationRef.current.alpha();
+      if (currentAlpha < 0.1) {
+        simulationRef.current.alpha(Math.max(0.3, currentAlpha)).restart();
+      }
+    }
+
+    async function handleNodeClick(nodeId: number) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+      // Update backend's current node
+      try {
+        await fetch(`${apiUrl}/knowledge/current-node`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ nodeId }),
+        });
+      } catch (err) {
+        console.error('Error updating current node:', err);
+      }
+
+      // Fetch and add relationships
+      try {
+        const response = await fetch(`${apiUrl}/knowledge/nodes/${nodeId}/relationships`);
+        if (response.ok) {
+          const relationships = await response.json();
+
+          if (relationships.length > 0) {
+            const clickedNode = allNodesMapRef.current.get(nodeId);
+            const existingConnectedNodes = Array.from(allNodesMapRef.current.values())
+              .filter(n => n.x !== undefined && n.y !== undefined);
+
+            // Collect new nodes to add
+            const newNodes: Array<{ id: number; title: string; childCount: number }> = [];
+
+            relationships.forEach((rel: any) => {
+              if (!allNodesMapRef.current.has(rel.sourceNodeId)) {
+                newNodes.push({
+                  id: rel.sourceNodeId,
+                  title: rel.source_title || `Node ${rel.sourceNodeId}`,
+                  childCount: rel.source_child_count || 0,
+                });
+              } else {
+                const existingNode = allNodesMapRef.current.get(rel.sourceNodeId);
+                if (existingNode) {
+                  existingNode.childCount = rel.source_child_count || 0;
+                }
+              }
+
+              if (!allNodesMapRef.current.has(rel.targetNodeId)) {
+                newNodes.push({
+                  id: rel.targetNodeId,
+                  title: rel.target_title || `Node ${rel.targetNodeId}`,
+                  childCount: rel.target_child_count || 0,
+                });
+              } else {
+                const existingNode = allNodesMapRef.current.get(rel.targetNodeId);
+                if (existingNode) {
+                  existingNode.childCount = rel.target_child_count || 0;
+                }
+              }
+            });
+
+            // Add new nodes with smart angular distribution
+            newNodes.forEach((newNode, index) => {
+              const position = calculateInitialPosition(
+                clickedNode,
+                existingConnectedNodes,
+                index,
+                newNodes.length
+              );
+
+              allNodesMapRef.current.set(newNode.id, {
+                id: newNode.id,
+                label: newNode.title,
+                childCount: newNode.childCount,
+                x: position.x,
+                y: position.y,
+              });
+            });
+
+            // Add edges
+            relationships.forEach((rel: any) => {
+              const edgeId = `${rel.sourceNodeId}-${rel.targetNodeId}`;
+              if (!allEdgesMapRef.current.has(edgeId)) {
+                allEdgesMapRef.current.set(edgeId, {
+                  id: edgeId,
+                  source: rel.sourceNodeId,
+                  target: rel.targetNodeId,
+                });
+              }
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching relationships:', err);
+      }
+
+      // Update current selected node
+      currentSelectedNodeRef.current = nodeId;
+
+      // Prune nodes if needed
+      const totalNodes = allNodesMapRef.current.size;
+      if (totalNodes >= 16) {
+        const distances = calculateDistances(nodeId);
+        const nodesToRemove: number[] = [];
+
+        allNodesMapRef.current.forEach((_node, nId) => {
+          const distance = distances.get(nId);
+          if (distance === undefined || distance > 2) {
+            nodesToRemove.push(nId);
+          }
+        });
+
+        // Remove nodes and their edges
+        nodesToRemove.forEach(nId => {
+          allNodesMapRef.current.delete(nId);
+        });
+
+        const edgesToRemove: string[] = [];
+        allEdgesMapRef.current.forEach((edge, edgeId) => {
+          const sourceId = typeof edge.source === 'number' ? edge.source : edge.source.id;
+          const targetId = typeof edge.target === 'number' ? edge.target : edge.target.id;
+          if (nodesToRemove.includes(sourceId) || nodesToRemove.includes(targetId)) {
+            edgesToRemove.push(edgeId);
+          }
+        });
+
+        edgesToRemove.forEach(edgeId => {
+          allEdgesMapRef.current.delete(edgeId);
+        });
+      }
+
+      // Update graph
+      updateGraph();
+
+      // Update parent if different node
+      if (currentNode && nodeId !== currentNode.id) {
+        onNodeClick(nodeId);
+      }
+    }
+
+    // Fetch initial relationships
+    const fetchInitialRelationships = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        const response = await fetch(`${apiUrl}/knowledge/nodes/${currentNode.id}/relationships`);
+
+        if (!response.ok) {
+          console.log('[GraphView] Failed to fetch relationships:', response.status);
+          return;
+        }
+
+        const relationships = await response.json();
+        console.log('[GraphView] Initial relationships fetched:', relationships.length);
+
+        if (relationships.length === 0) {
+          return;
+        }
+
+        const currentNodeData = allNodesMapRef.current.get(currentNode.id);
+        const existingConnectedNodes = Array.from(allNodesMapRef.current.values())
+          .filter(n => n.x !== undefined && n.y !== undefined);
+
+        // Collect new nodes to add
+        const newNodes: Array<{ id: number; title: string; childCount: number }> = [];
+
+        relationships.forEach((rel: any) => {
+          if (!allNodesMapRef.current.has(rel.sourceNodeId)) {
+            newNodes.push({
+              id: rel.sourceNodeId,
+              title: rel.source_title || `Node ${rel.sourceNodeId}`,
+              childCount: rel.source_child_count || 0,
+            });
+          } else {
+            const existingNode = allNodesMapRef.current.get(rel.sourceNodeId);
+            if (existingNode) {
+              existingNode.childCount = rel.source_child_count || 0;
+            }
+          }
+
+          if (!allNodesMapRef.current.has(rel.targetNodeId)) {
+            newNodes.push({
+              id: rel.targetNodeId,
+              title: rel.target_title || `Node ${rel.targetNodeId}`,
+              childCount: rel.target_child_count || 0,
+            });
+          } else {
+            const existingNode = allNodesMapRef.current.get(rel.targetNodeId);
+            if (existingNode) {
+              existingNode.childCount = rel.target_child_count || 0;
+            }
+          }
+        });
+
+        // Add new nodes with smart angular distribution
+        newNodes.forEach((newNode, index) => {
+          const position = calculateInitialPosition(
+            currentNodeData,
+            existingConnectedNodes,
+            index,
+            newNodes.length
+          );
+
+          allNodesMapRef.current.set(newNode.id, {
+            id: newNode.id,
+            label: newNode.title,
+            childCount: newNode.childCount,
+            x: position.x,
+            y: position.y,
+          });
+        });
+
+        // Add edges
+        relationships.forEach((rel: any) => {
+          const edgeId = `${rel.sourceNodeId}-${rel.targetNodeId}`;
+          if (!allEdgesMapRef.current.has(edgeId)) {
+            allEdgesMapRef.current.set(edgeId, {
+              id: edgeId,
+              source: rel.sourceNodeId,
+              target: rel.targetNodeId,
+            });
+          }
+        });
+
+        updateGraph();
+      } catch (err) {
+        console.error('Error loading relationships:', err);
+      }
+    };
+
+    // Update graph with initial node
+    updateGraph();
+
+    fetchInitialRelationships();
+
+    return () => {
+      if (simulationRef.current) {
+        simulationRef.current.stop();
+      }
+      isInitializedRef.current = false;
+    };
+  }, [themeVersion]); // Only re-initialize on theme change, NOT on currentNode change
+
+  if (!currentNode) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-base-content/60 text-lg mb-2">No node selected</p>
+          <p className="text-base-content/40 text-sm">
+            Select a node to view its relationship graph
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <svg
+      ref={svgRef}
+      className="w-full h-full bg-base-100"
+      style={{
+        width: '100%',
+        height: '100%',
+      }}
+    />
+  );
+}
