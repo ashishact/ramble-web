@@ -315,11 +315,14 @@ export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
       x: width / 2,
       y: height / 2,
       distance: 0,
+      childCount: 0, // Will be updated when relationships are fetched
     };
     allNodesMapRef.current.set(currentNode.id, initialNode);
     currentSelectedNodeRef.current = currentNode.id;
     isInitializedRef.current = true;
     initialNodeIdRef.current = currentNode.id;
+
+    console.log('[GraphView] Initialized with node:', currentNode.id, currentNode.title);
 
     // Create force simulation with distance-based forces
     const simulation = d3.forceSimulation<GraphNode>()
