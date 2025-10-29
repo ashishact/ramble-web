@@ -955,7 +955,7 @@ export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
    * Updates the SVG viewBox and re-centers the simulation
    */
   useEffect(() => {
-    if (!svgRef.current || !simulationRef.current) return;
+    if (!svgRef.current) return;
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -965,10 +965,12 @@ export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
           console.log('[GraphView] Canvas resized:', width, 'x', height);
 
           // Update SVG dimensions
-          const svg = d3.select(svgRef.current);
-          svg.attr('width', width).attr('height', height);
+          if (svgRef.current) {
+            const svg = d3.select(svgRef.current);
+            svg.attr('width', width).attr('height', height);
+          }
 
-          // Update radial force center
+          // Update radial force center only if simulation is initialized
           const simulation = simulationRef.current;
           if (simulation) {
             const radialForce = simulation.force<d3.ForceRadial<GraphNode>>('radial');
