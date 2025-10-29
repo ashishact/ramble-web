@@ -37,15 +37,16 @@ export function RelatedNodesList({ nodeId, onNodeClick }: RelatedNodesListProps)
 
   if (loading) {
     return (
-      <div className="text-gray-400 text-sm text-center py-4">
-        Loading related nodes...
+      <div className="text-base-content/60 text-xs text-center py-3">
+        <span className="loading loading-spinner loading-sm"></span>
+        <p className="mt-1">Loading...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="text-red-400 text-sm text-center py-4">
+      <div className="alert alert-error py-2 text-xs">
         {error}
       </div>
     );
@@ -53,46 +54,53 @@ export function RelatedNodesList({ nodeId, onNodeClick }: RelatedNodesListProps)
 
   if (relatedNodes.length === 0) {
     return (
-      <div className="text-gray-500 text-sm text-center py-4">
+      <div className="text-base-content/50 text-xs text-center py-3">
         No related nodes found
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {relatedNodes.map((node) => (
         <div
           key={node.id}
           onClick={() => onNodeClick(node.id)}
-          className="bg-gray-800 rounded-lg p-4 border border-gray-700 cursor-pointer hover:border-blue-500 hover:bg-gray-750 transition-colors"
+          className="card card-compact bg-base-100 border border-base-300 cursor-pointer hover:border-primary hover:shadow-sm transition-all"
         >
-          <div className="flex items-start gap-2 mb-2">
-            {node.icon && (
-              <div className="text-xl">{node.icon}</div>
-            )}
-            <div className="flex-1">
-              <h3 className="text-white font-medium text-sm">{node.title}</h3>
-              <div className="text-xs text-gray-500 mt-1">
-                {node.relationshipType === 'outgoing' ? '→' : '←'} {node.relationshipDescription}
+          <div className="card-body p-3">
+            <div className="flex items-start gap-2 mb-1">
+              {node.icon && (
+                <div className="text-lg">{node.icon}</div>
+              )}
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base-content font-medium text-sm break-words">{node.title}</h3>
+                <div className="text-xs text-base-content/50 mt-0.5">
+                  {node.relationshipType === 'outgoing' ? '→' : '←'} {node.relationshipDescription}
+                </div>
               </div>
             </div>
+            <p className="text-base-content/70 text-xs line-clamp-2 break-words">
+              {node.content}
+            </p>
+            {node.tags && node.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {node.tags.slice(0, 3).map((tag, index) => (
+                  <span
+                    key={index}
+                    className="badge badge-xs badge-outline badge-secondary"
+                  >
+                    {tag}
+                  </span>
+                ))}
+                {node.tags.length > 3 && (
+                  <span className="badge badge-xs badge-ghost">
+                    +{node.tags.length - 3}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
-          <p className="text-gray-400 text-xs line-clamp-2">
-            {node.content}
-          </p>
-          {node.tags && node.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {node.tags.map((tag, index) => (
-                <span
-                  key={index}
-                  className="px-1.5 py-0.5 bg-blue-900/20 text-blue-400 text-xs rounded border border-blue-800"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
         </div>
       ))}
     </div>

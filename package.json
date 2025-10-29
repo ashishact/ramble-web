@@ -18,10 +18,17 @@
   "dependencies": {
     "@iconify/react": "^6.0.2",
     "@tailwindcss/vite": "^4.1.14",
+    "@types/cytoscape": "^3.31.0",
+    "@types/d3": "^7.4.3",
+    "cytoscape": "^3.33.1",
+    "d3": "^7.9.0",
     "daisyui": "^5.3.10",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-resizable-panels": "^3.0.6",
     "socket.io-client": "^4.8.1",
-    "tailwindcss": "^4.1.14"
+    "tailwindcss": "^4.1.14",
+    "vis-data": "^8.0.3",
+    "vis-network": "^10.0.2"
   }
 }

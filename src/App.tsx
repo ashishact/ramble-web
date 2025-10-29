@@ -197,20 +197,45 @@ function App() {
 
   return (
     <div className="h-screen bg-base-300 flex overflow-hidden">
-      {/* Left Main Section - Agent Content (4/5) */}
-      <div className="flex-1 w-4/5 overflow-auto bg-base-100">
-        <AgentView agent={agent} isConnected={isConnected} customEvents={customEvents} />
-      </div>
+      {/* For amigoz agent: full-width 3-panel layout (D3, Nodes, Chat) */}
+      {agent === 'amigoz' ? (
+        <AgentView
+          agent={agent}
+          isConnected={isConnected}
+          customEvents={customEvents}
+          transcripts={transcripts}
+          isRecording={isRecording}
+          onSendText={handleSendText}
+          onToggleRecording={handleToggleRecording}
+          vadStatus={vadStatus}
+        />
+      ) : (
+        <>
+          {/* For other agents: traditional layout with sidebar */}
+          <div className="flex-1 w-4/5 overflow-auto bg-base-100">
+            <AgentView
+              agent={agent}
+              isConnected={isConnected}
+              customEvents={customEvents}
+              transcripts={transcripts}
+              isRecording={isRecording}
+              onSendText={handleSendText}
+              onToggleRecording={handleToggleRecording}
+              vadStatus={vadStatus}
+            />
+          </div>
 
-      {/* Right Sidebar - Chat & Transcription (1/5) */}
-      <RightSidebar
-        transcripts={transcripts}
-        isConnected={isConnected}
-        isRecording={isRecording}
-        onSendText={handleSendText}
-        onToggleRecording={handleToggleRecording}
-        vadStatus={vadStatus}
-      />
+          {/* Right Sidebar - Chat & Transcription (1/5) */}
+          <RightSidebar
+            transcripts={transcripts}
+            isConnected={isConnected}
+            isRecording={isRecording}
+            onSendText={handleSendText}
+            onToggleRecording={handleToggleRecording}
+            vadStatus={vadStatus}
+          />
+        </>
+      )}
 
       {/* Hidden VAD Monitor - still needed for detection */}
       <div className="hidden">

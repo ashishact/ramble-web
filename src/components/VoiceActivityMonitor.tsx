@@ -107,7 +107,12 @@ export const VoiceActivityMonitor: React.FC<VoiceActivityMonitorProps> = ({
 
     return () => {
       if (vadInstanceRef.current) {
-        vadInstanceRef.current.destroy();
+        try {
+          // VAD library uses pause() instead of destroy()
+          vadInstanceRef.current.pause();
+        } catch (error) {
+          console.error('[VAD] Error cleaning up:', error);
+        }
       }
     };
   }, []);

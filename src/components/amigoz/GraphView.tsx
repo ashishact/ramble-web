@@ -950,6 +950,46 @@ export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
     handleNodeClickRef.current(currentNode.id);
   }, [currentNode?.id]); // Only depend on the ID changing
 
+  /**
+   * Handle canvas resize (when panels are resized)
+   * Updates the SVG viewBox and re-centers the simulation
+   */
+  useEffect(() => {
+    if (!svgRef.current || !simulationRef.current) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+
+        if (width > 0 && height > 0) {
+          console.log('[GraphView] Canvas resized:', width, 'x', height);
+
+          // Update SVG dimensions
+          const svg = d3.select(svgRef.current);
+          svg.attr('width', width).attr('height', height);
+
+          // Update radial force center
+          const simulation = simulationRef.current;
+          if (simulation) {
+            const radialForce = simulation.force<d3.ForceRadial<GraphNode>>('radial');
+            if (radialForce) {
+              radialForce.x(width / 2).y(height / 2);
+            }
+
+            // Gently reheat simulation to adjust to new dimensions
+            simulation.alpha(0.3).restart();
+          }
+        }
+      }
+    });
+
+    resizeObserver.observe(svgRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   if (!currentNode) {
     return (
       <div className="w-full h-full flex items-center justify-center">

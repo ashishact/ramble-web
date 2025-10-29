@@ -57,7 +57,7 @@ export function ThemeSelector() {
   return (
     <details className="dropdown dropdown-end">
       <summary className="btn btn-sm btn-ghost gap-2">
-        <Icon icon="mdi:theme-light-dark" className="w-4 h-4" />
+        <Icon icon="streamline-ultimate-color:color-palette" className="w-4 h-4" />
         <span className="hidden sm:inline">{currentTheme}</span>
       </summary>
       <ul className="dropdown-content menu z-50 p-2 shadow-xl bg-base-300 rounded-box w-52 max-h-96 overflow-y-auto mt-2">

@@ -63,45 +63,50 @@ export function SearchBar({ onNodeSelect }: SearchBarProps) {
           onChange={handleInputChange}
           onFocus={() => query && setShowResults(true)}
           onBlur={() => setTimeout(() => setShowResults(false), 200)}
-          placeholder="Search knowledge nodes..."
-          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+          placeholder="Search nodes..."
+          className="input input-sm input-bordered w-full focus:input-primary"
         />
         {isSearching && (
-          <div className="absolute right-3 top-2.5">
-            <div className="w-5 h-5 border-2 border-gray-600 border-t-blue-500 rounded-full animate-spin"></div>
+          <div className="absolute right-3 top-1.5">
+            <span className="loading loading-spinner loading-xs"></span>
           </div>
         )}
       </div>
 
       {showResults && results.length > 0 && (
-        <div className="absolute z-10 w-full mt-2 bg-gray-800 border border-gray-700 rounded-lg shadow-lg max-h-96 overflow-y-auto">
+        <div className="absolute z-10 w-full mt-1 bg-base-100 border border-base-300 rounded-lg shadow-lg max-h-80 overflow-y-auto">
           {results.map((node) => (
             <div
               key={node.id}
               onClick={() => handleSelectNode(node.id)}
-              className="p-3 cursor-pointer hover:bg-gray-700 border-b border-gray-700 last:border-b-0 transition-colors"
+              className="p-2 cursor-pointer hover:bg-base-200 border-b border-base-300 last:border-b-0 transition-colors"
             >
               <div className="flex items-start gap-2">
                 {node.icon && (
-                  <div className="text-lg">{node.icon}</div>
+                  <div className="text-base">{node.icon}</div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-white font-medium text-sm truncate">
+                  <h4 className="text-base-content font-medium text-xs truncate">
                     {node.title}
                   </h4>
-                  <p className="text-gray-400 text-xs mt-1 line-clamp-2">
+                  <p className="text-base-content/60 text-xs mt-0.5 line-clamp-2">
                     {node.content}
                   </p>
                   {node.tags && node.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {node.tags.map((tag, index) => (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {node.tags.slice(0, 2).map((tag, index) => (
                         <span
                           key={index}
-                          className="px-1.5 py-0.5 bg-blue-900/20 text-blue-400 text-xs rounded"
+                          className="badge badge-xs badge-outline badge-accent"
                         >
                           {tag}
                         </span>
                       ))}
+                      {node.tags.length > 2 && (
+                        <span className="badge badge-xs badge-ghost">
+                          +{node.tags.length - 2}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -112,7 +117,7 @@ export function SearchBar({ onNodeSelect }: SearchBarProps) {
       )}
 
       {showResults && query && !isSearching && results.length === 0 && (
-        <div className="absolute z-10 w-full mt-2 bg-gray-800 border border-gray-700 rounded-lg shadow-lg p-4 text-center text-gray-500 text-sm">
+        <div className="absolute z-10 w-full mt-1 bg-base-100 border border-base-300 rounded-lg shadow-lg p-3 text-center text-base-content/60 text-xs">
           No nodes found matching "{query}"
         </div>
       )}

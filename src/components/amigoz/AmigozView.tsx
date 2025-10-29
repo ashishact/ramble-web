@@ -1,17 +1,69 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { NodeCard } from './NodeCard';
 import { SearchBar } from './SearchBar';
 import { RelatedNodesList } from './RelatedNodesList';
+import { GraphView } from './GraphView';
+import { RightSidebar } from '../RightSidebar';
 import type { KnowledgeNode } from './types';
+
+interface TranscriptMessage {
+  role: 'user' | 'model';
+  text: string;
+  timestamp: number;
+  isComplete?: boolean;
+}
 
 interface AmigozViewProps {
   isConnected: boolean;
   customEvents: { event: string; data: any } | null;
+  transcripts: TranscriptMessage[];
+  isRecording: boolean;
+  onSendText: (text: string) => void;
+  onToggleRecording: () => void;
+  vadStatus?: {
+    userSpeaking: boolean;
+    lastSpeechTime: number;
+    lastGeminiTime: number;
+  };
 }
 
-export function AmigozView({ isConnected, customEvents }: AmigozViewProps) {
+export function AmigozView({
+  customEvents,
+  transcripts,
+  isConnected,
+  isRecording,
+  onSendText,
+  onToggleRecording,
+  vadStatus
+}: AmigozViewProps) {
   const [currentNode, setCurrentNode] = useState<KnowledgeNode | null>(null);
-  const [activeTab, setActiveTab] = useState<'nodes' | 'graph'>('nodes');
+
+  // Fetch current node on mount
+  useEffect(() => {
+    const fetchCurrentNode = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        const response = await fetch(`${apiUrl}/knowledge/current-node`);
+        if (response.ok) {
+          const text = await response.text();
+          if (text) {
+            const node = JSON.parse(text);
+            if (node) {
+              console.log('Loaded current node:', node);
+              setCurrentNode(node);
+            }
+          } else {
+            console.log('No current node set yet');
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching current node:', err);
+      }
+    };
+
+    fetchCurrentNode();
+  }, []);
 
   // Listen for node updates from backend
   useEffect(() => {
@@ -37,61 +89,57 @@ export function AmigozView({ isConnected, customEvents }: AmigozViewProps) {
   }, []);
 
   return (
-    <div className="flex-1 p-8 overflow-auto bg-base-100">
-      <div className="max-w-6xl mx-auto">
-        {/* Tabs */}
-        <div role="tablist" className="tabs tabs-boxed mb-6">
-          <button
-            role="tab"
-            className={`tab ${activeTab === 'nodes' ? 'tab-active' : ''}`}
-            onClick={() => setActiveTab('nodes')}
-          >
-            Nodes View
-          </button>
-          <button
-            role="tab"
-            className={`tab ${activeTab === 'graph' ? 'tab-active' : ''}`}
-            onClick={() => setActiveTab('graph')}
-          >
-            Graph View
-          </button>
+    <PanelGroup direction="horizontal">
+      {/* D3 Graph Canvas - 60% (3/5) */}
+      <Panel defaultSize={60} minSize={30}>
+        <div className="h-full w-full">
+          <GraphView currentNode={currentNode} onNodeClick={loadNodeById} />
         </div>
+      </Panel>
 
-        {/* Nodes View Tab */}
-        {activeTab === 'nodes' && (
-          <div className="max-w-3xl mx-auto">
+      {/* Resize handle */}
+      <PanelResizeHandle className="w-1 bg-base-300 hover:bg-primary transition-colors cursor-col-resize" />
+
+      {/* Nodes View - 20% (1/5) */}
+      <Panel defaultSize={20} minSize={15}>
+        <div className="h-full overflow-auto bg-base-200 border-l border-base-300">
+          <div className="p-4">
             {/* Search Bar */}
-            <div className="mb-6">
+            <div className="mb-4">
               <SearchBar onNodeSelect={loadNodeById} />
             </div>
 
             {/* Current Node */}
-            <div className="mb-6">
-              <h2 className="text-lg font-semibold text-base-content/80 mb-3">Current Node</h2>
+            <div className="mb-4">
+              <h2 className="text-sm font-semibold text-base-content/80 mb-2">Current Node</h2>
               <NodeCard node={currentNode} onNodeClick={loadNodeById} />
             </div>
 
             {/* Related Nodes */}
             {currentNode && (
-              <div className="mb-6">
-                <h2 className="text-lg font-semibold text-base-content/80 mb-3">Related Nodes</h2>
+              <div>
+                <h2 className="text-sm font-semibold text-base-content/80 mb-2">Related Nodes</h2>
                 <RelatedNodesList nodeId={currentNode.id} onNodeClick={loadNodeById} />
               </div>
             )}
           </div>
-        )}
+        </div>
+      </Panel>
 
-        {/* Graph View Tab */}
-        {activeTab === 'graph' && (
-          <div className="w-full h-[calc(100vh-16rem)]">
-            <div className="card bg-base-200 w-full h-full">
-              <div className="card-body items-center justify-center">
-                <p className="text-base-content/60">Vis.js Graph will be implemented here</p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      {/* Resize handle */}
+      <PanelResizeHandle className="w-1 bg-base-300 hover:bg-primary transition-colors cursor-col-resize" />
+
+      {/* Chat UI - 20% (1/5) */}
+      <Panel defaultSize={20} minSize={15}>
+        <RightSidebar
+          transcripts={transcripts}
+          isConnected={isConnected}
+          isRecording={isRecording}
+          onSendText={onSendText}
+          onToggleRecording={onToggleRecording}
+          vadStatus={vadStatus}
+        />
+      </Panel>
+    </PanelGroup>
   );
 }
