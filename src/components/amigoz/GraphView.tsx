@@ -946,7 +946,29 @@ export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
 
     console.log('[GraphView] External currentNode change detected:', currentNode.id);
 
-    // Use handleNodeClick to handle everything (adding node, fetching relationships, updating selection)
+    // Check if this is a brand new node that doesn't exist in the graph yet
+    const nodeExists = allNodesMapRef.current.has(currentNode.id);
+
+    if (!nodeExists) {
+      console.log('[GraphView] New node from backend, adding to center:', currentNode.id);
+
+      // Add the new node to the center of the graph
+      const width = svgRef.current?.clientWidth || 800;
+      const height = svgRef.current?.clientHeight || 600;
+
+      allNodesMapRef.current.set(currentNode.id, {
+        id: currentNode.id,
+        label: currentNode.title,
+        x: width / 2,
+        y: height / 2,
+        distance: 0,
+      });
+
+      // Update current selected node BEFORE calling handleNodeClick to prevent loop
+      currentSelectedNodeRef.current = currentNode.id;
+    }
+
+    // Now use handleNodeClick to fetch relationships and update the graph
     handleNodeClickRef.current(currentNode.id);
   }, [currentNode?.id]); // Only depend on the ID changing
 
