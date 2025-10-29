@@ -204,6 +204,9 @@ export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
   const isInitializedRef = useRef(false);
   const initialNodeIdRef = useRef<number | null>(null);
 
+  // Refs to functions defined in initialization useEffect
+  const handleNodeClickRef = useRef<((nodeId: number) => Promise<void>) | null>(null);
+
   // Calculate distance from a node using BFS
   const calculateDistances = (fromNodeId: number): Map<number, number> => {
     const distances = new Map<number, number>();
@@ -823,6 +826,9 @@ export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
       }
     }
 
+    // Store handleNodeClick in ref so it can be called from other useEffects
+    handleNodeClickRef.current = handleNodeClick;
+
     // Fetch initial relationships
     const fetchInitialRelationships = async () => {
       try {
@@ -924,6 +930,25 @@ export function GraphView({ currentNode, onNodeClick }: GraphViewProps) {
       isInitializedRef.current = false;
     };
   }, [themeVersion]); // Only re-initialize on theme change, NOT on currentNode change
+
+  /**
+   * Handle external currentNode changes (e.g., from backend AI creating new nodes)
+   * This ensures the graph updates when nodes are created/changed outside of user clicks
+   */
+  useEffect(() => {
+    if (!currentNode || !isInitializedRef.current || !handleNodeClickRef.current) return;
+
+    // Skip if this is the initial node we just loaded
+    if (currentNode.id === initialNodeIdRef.current) return;
+
+    // Check if this node already has the correct selection state
+    if (currentSelectedNodeRef.current === currentNode.id) return;
+
+    console.log('[GraphView] External currentNode change detected:', currentNode.id);
+
+    // Use handleNodeClick to handle everything (adding node, fetching relationships, updating selection)
+    handleNodeClickRef.current(currentNode.id);
+  }, [currentNode?.id]); // Only depend on the ID changing
 
   if (!currentNode) {
     return (
