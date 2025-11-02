@@ -4,8 +4,13 @@ import { NodeCard } from './NodeCard';
 import { SearchBar } from './SearchBar';
 import { RelatedNodesList } from './RelatedNodesList';
 import { GraphView } from './GraphView';
+import { SemanticView } from './SemanticView';
+import { ViewToggle } from './ViewToggle';
 import { RightSidebar } from '../RightSidebar';
 import type { KnowledgeNode } from './types';
+import { selectNode, fetchCurrentNode } from '../../utils/knowledgeApi';
+
+type ViewMode = 'graph' | 'semantic';
 
 interface TranscriptMessage {
   role: 'user' | 'model';
@@ -38,31 +43,35 @@ export function AmigozView({
   vadStatus
 }: AmigozViewProps) {
   const [currentNode, setCurrentNode] = useState<KnowledgeNode | null>(null);
+  const [activeView, setActiveView] = useState<ViewMode>(() => {
+    // Load saved preference from localStorage
+    const saved = localStorage.getItem('amigoz-view-mode');
+    return (saved as ViewMode) || 'graph';
+  });
+
+  // Save view mode preference
+  const handleViewChange = useCallback((view: ViewMode) => {
+    setActiveView(view);
+    localStorage.setItem('amigoz-view-mode', view);
+  }, []);
 
   // Fetch current node on mount
   useEffect(() => {
-    const fetchCurrentNode = async () => {
+    const loadCurrentNode = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-        const response = await fetch(`${apiUrl}/knowledge/current-node`);
-        if (response.ok) {
-          const text = await response.text();
-          if (text) {
-            const node = JSON.parse(text);
-            if (node) {
-              console.log('Loaded current node:', node);
-              setCurrentNode(node);
-            }
-          } else {
-            console.log('No current node set yet');
-          }
+        const node = await fetchCurrentNode();
+        if (node) {
+          console.log('Loaded current node:', node);
+          setCurrentNode(node);
+        } else {
+          console.log('No current node set yet');
         }
       } catch (err) {
         console.error('Error fetching current node:', err);
       }
     };
 
-    fetchCurrentNode();
+    loadCurrentNode();
   }, []);
 
   // Track when relationships change to trigger refetch
@@ -71,6 +80,8 @@ export function AmigozView({
   // Listen for node and relationship updates from backend
   useEffect(() => {
     if (!customEvents) return;
+
+    console.log('AmigozView received customEvent:', customEvents.event, customEvents.data);
 
     if (customEvents.event === 'current-node-update') {
       console.log('Received current-node-update:', customEvents.data);
@@ -85,13 +96,12 @@ export function AmigozView({
   // Load a node by ID when selected from search or related nodes
   const loadNodeById = useCallback(async (nodeId: number) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/knowledge/nodes/${nodeId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch node');
+      // This sets the current node in the backend and returns the node data
+      const node = await selectNode(nodeId);
+      // Immediately update the state (don't wait for WebSocket event)
+      if (node) {
+        setCurrentNode(node);
       }
-      const node = await response.json();
-      setCurrentNode(node);
     } catch (err) {
       console.error('Error loading node:', err);
     }
@@ -99,14 +109,22 @@ export function AmigozView({
 
   return (
     <PanelGroup direction="horizontal">
-      {/* D3 Graph Canvas - 60% (3/5) */}
+      {/* D3 Graph Canvas or Semantic Search - 60% (3/5) */}
       <Panel defaultSize={60} minSize={30}>
-        <div className="h-full w-full">
-          <GraphView
-            currentNode={currentNode}
-            onNodeClick={loadNodeById}
-            relationshipChangeKey={relationshipVersion}
-          />
+        <div className="h-full w-full relative">
+          {/* View Toggle */}
+          <ViewToggle activeView={activeView} onViewChange={handleViewChange} />
+
+          {/* Conditional View Rendering */}
+          {activeView === 'graph' ? (
+            <GraphView
+              currentNode={currentNode}
+              onNodeClick={loadNodeById}
+              relationshipChangeKey={relationshipVersion}
+            />
+          ) : (
+            <SemanticView onNodeSelect={loadNodeById} />
+          )}
         </div>
       </Panel>
 
