@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { semanticSearch } from '../../utils/knowledgeApi';
+import { SemanticGraphView } from './semantic/SemanticGraphView';
+import { semanticSearchState } from './semantic/semanticSearchState';
 
 interface KnowledgeNode {
   id: number;
@@ -16,10 +18,22 @@ interface SemanticViewProps {
 }
 
 export function SemanticView({ onNodeSelect }: SemanticViewProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [results, setResults] = useState<KnowledgeNode[]>([]);
+  // Load saved state on mount
+  const savedState = semanticSearchState.get();
+
+  const [searchQuery, setSearchQuery] = useState(savedState.searchQuery);
+  const [results, setResults] = useState<KnowledgeNode[]>(savedState.results);
   const [isLoading, setIsLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
+  const [hasSearched, setHasSearched] = useState(savedState.hasSearched);
+
+  // Persist state changes
+  useEffect(() => {
+    semanticSearchState.setQuery(searchQuery);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    semanticSearchState.setResults(results, hasSearched);
+  }, [results, hasSearched]);
 
   // Debounced search effect
   useEffect(() => {
@@ -95,56 +109,11 @@ export function SemanticView({ onNodeSelect }: SemanticViewProps) {
         )}
 
         {hasSearched && !isLoading && results.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {results.map((node) => (
-              <div
-                key={node.id}
-                className="cursor-pointer hover:scale-105 transition-transform"
-                onClick={() => onNodeSelect(node.id)}
-              >
-                <div className="card bg-base-100 shadow-xl h-full">
-                  <div className="card-body p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {node.icon && (
-                          <span className="text-2xl flex-shrink-0">{node.icon}</span>
-                        )}
-                        <h3 className="card-title text-base truncate">{node.title}</h3>
-                      </div>
-                      {node.similarity !== undefined && (
-                        <div
-                          className="badge badge-primary badge-sm flex-shrink-0 ml-2"
-                          title={`Similarity: ${(node.similarity * 100).toFixed(1)}%`}
-                        >
-                          {(node.similarity * 100).toFixed(0)}%
-                        </div>
-                      )}
-                    </div>
-                    <p className="text-sm text-base-content/70 line-clamp-3">
-                      {node.content}
-                    </p>
-                    {node.tags && node.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {node.tags.slice(0, 3).map((tag, idx) => (
-                          <span
-                            key={idx}
-                            className="badge badge-outline badge-xs"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                        {node.tags.length > 3 && (
-                          <span className="badge badge-outline badge-xs">
-                            +{node.tags.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <SemanticGraphView
+            queryText={searchQuery}
+            results={results}
+            onNodeSelect={onNodeSelect}
+          />
         )}
       </div>
 
