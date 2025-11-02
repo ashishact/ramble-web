@@ -19,169 +19,25 @@
 import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import type { KnowledgeNode } from './types';
+import type { GraphNode, GraphLink } from './graph/types';
+import {
+  OUTER_RING_GAP,
+  LABEL_GAP,
+  getThemeColors,
+  getNodeRadius,
+  getStrokeWidths,
+  getEdgeLength,
+  getNodeOpacity,
+  calculateInitialPosition,
+  getNodeColors,
+  calculateDistances,
+} from './graph';
 
 interface GraphViewProps {
   currentNode: KnowledgeNode | null;
   onNodeClick: (nodeId: number) => void;
   relationshipChangeKey?: number;
 }
-
-interface GraphNode extends d3.SimulationNodeDatum {
-  id: number;
-  label: string;
-  distance?: number;
-  childCount?: number;  // Number of relationships this node has
-}
-
-interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
-  id: string;
-  source: number | GraphNode;
-  target: number | GraphNode;
-}
-
-// Utility function to get computed color from a temporary element with DaisyUI class
-const getThemeColor = (className: string): string => {
-  const tempEl = document.createElement('div');
-  tempEl.className = className;
-  tempEl.style.display = 'none';
-  document.body.appendChild(tempEl);
-
-  const computed = getComputedStyle(tempEl);
-  // For text classes (text-*), read color, for background classes (bg-*), read backgroundColor
-  const color = className.startsWith('text-') ? computed.color : computed.backgroundColor;
-
-  document.body.removeChild(tempEl);
-  return color || '#666666';
-};
-
-// Get theme colors for graph by reading from DaisyUI utility classes
-const getThemeColors = () => ({
-  primary: getThemeColor('bg-primary'),
-  secondary: getThemeColor('bg-secondary'),
-  baseContent: getThemeColor('text-base-content'),
-  accent: getThemeColor('bg-accent'),
-});
-
-// Scaling constants for visual hierarchy based on distance
-// Each array index represents: [distance-0, distance-1, distance-2, distance-3+]
-const SCALE_RADIUS = [30, 18, 13, 10];        // Node radius
-const SCALE_STROKE_OUTER = [2, 1.5, 1, 0.8];  // Outer ring stroke width (thinner than inner)
-const SCALE_STROKE_INNER = [2.5, 1.8, 1.3, 1]; // Inner ring stroke width
-const SCALE_EDGE_LENGTH = [120, 70, 45, 30];  // Edge/link distance (more compact)
-const SCALE_OPACITY = [1, 0.75, 0.6, 0.6];    // Node opacity (capped at 0.6)
-const OUTER_RING_GAP = 8;                     // Gap between inner and outer ring
-const LABEL_GAP = 5;                          // Gap between outer ring and label text
-
-// Get node radius based on distance from selected node
-const getNodeRadius = (distance: number): number => {
-  const index = Math.min(distance, SCALE_RADIUS.length - 1);
-  return SCALE_RADIUS[index];
-};
-
-// Get stroke widths based on distance
-const getStrokeWidths = (distance: number) => {
-  const index = Math.min(distance, SCALE_STROKE_OUTER.length - 1);
-  return {
-    outerRing: SCALE_STROKE_OUTER[index],
-    innerRing: SCALE_STROKE_INNER[index],
-  };
-};
-
-// Get edge length based on distance
-const getEdgeLength = (distance: number): number => {
-  const index = Math.min(distance, SCALE_EDGE_LENGTH.length - 1);
-  return SCALE_EDGE_LENGTH[index];
-};
-
-// Get node opacity based on distance
-const getNodeOpacity = (distance: number): number => {
-  const index = Math.min(distance, SCALE_OPACITY.length - 1);
-  return SCALE_OPACITY[index];
-};
-
-// Calculate smart initial position for new nodes around parent
-const calculateInitialPosition = (
-  parentNode: GraphNode | undefined,
-  existingNodes: GraphNode[],
-  newNodeIndex: number,
-  totalNewNodes: number
-): { x: number, y: number } => {
-  if (!parentNode || parentNode.x === undefined || parentNode.y === undefined) {
-    return { x: 0, y: 0 };
-  }
-
-  // Calculate angles of existing connected nodes
-  const existingAngles: number[] = [];
-  existingNodes.forEach(node => {
-    if (node.x !== undefined && node.y !== undefined) {
-      const dx = node.x - parentNode.x!;
-      const dy = node.y - parentNode.y!;
-      const angle = Math.atan2(dy, dx);
-      existingAngles.push(angle);
-    }
-  });
-
-  // Distribute new nodes evenly around a circle
-  const baseAngle = (2 * Math.PI) / totalNewNodes;
-  let angle = baseAngle * newNodeIndex;
-
-  // Try to avoid existing node angles if possible
-  if (existingAngles.length > 0) {
-    // Find the largest gap in existing angles and start from there
-    existingAngles.sort((a, b) => a - b);
-    let maxGap = 0;
-    let maxGapStart = 0;
-
-    for (let i = 0; i < existingAngles.length; i++) {
-      const nextI = (i + 1) % existingAngles.length;
-      const gap = nextI === 0
-        ? (2 * Math.PI - existingAngles[i] + existingAngles[0])
-        : (existingAngles[nextI] - existingAngles[i]);
-
-      if (gap > maxGap) {
-        maxGap = gap;
-        maxGapStart = existingAngles[i];
-      }
-    }
-
-    // Start distributing from the middle of the largest gap
-    angle = maxGapStart + maxGap / 2 + baseAngle * newNodeIndex;
-  }
-
-  // Position at parent's outer circumference
-  const startRadius = getNodeRadius(parentNode.distance || 0) + OUTER_RING_GAP + 10;
-  const x = parentNode.x + Math.cos(angle) * startRadius;
-  const y = parentNode.y + Math.sin(angle) * startRadius;
-
-  return { x, y };
-};
-
-// Get node colors based on properties (simulated for now with random selection)
-const getNodeColors = (node: GraphNode, themeColors: ReturnType<typeof getThemeColors>) => {
-  // For selected node (distance 0), use accent color for both rings
-  if (node.distance === 0) {
-    return {
-      outerRing: themeColors.accent,
-      innerRing: themeColors.accent,
-    };
-  }
-
-  // Simulate random color selection based on node ID
-  // In the future, this will be based on node properties
-  // Outer ring uses lighter/pastel version, inner ring uses bolder color
-  const colorPalette = [
-    { outerRing: '#ffd700', innerRing: '#d4af37' },  // Light Gold -> Gold
-    { outerRing: '#cd853f', innerRing: '#8b4513' },  // Peru -> Saddle Brown
-    { outerRing: '#87ceeb', innerRing: '#4169e1' },  // Sky Blue -> Royal Blue
-    { outerRing: '#90ee90', innerRing: '#32cd32' },  // Light Green -> Lime Green
-    { outerRing: '#ffa07a', innerRing: '#ff6347' },  // Light Salmon -> Tomato
-    { outerRing: '#dda0dd', innerRing: '#9370db' },  // Plum -> Medium Purple
-    { outerRing: '#7fffd4', innerRing: '#20b2aa' },  // Aquamarine -> Light Sea Green
-  ];
-
-  const colorIndex = node.id % colorPalette.length;
-  return colorPalette[colorIndex];
-};
 
 export function GraphView({ currentNode, onNodeClick, relationshipChangeKey }: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -207,37 +63,6 @@ export function GraphView({ currentNode, onNodeClick, relationshipChangeKey }: G
 
   // Refs to functions defined in initialization useEffect
   const handleNodeClickRef = useRef<((nodeId: number) => Promise<void>) | null>(null);
-
-  // Calculate distance from a node using BFS
-  const calculateDistances = (fromNodeId: number): Map<number, number> => {
-    const distances = new Map<number, number>();
-    const queue: number[] = [fromNodeId];
-    distances.set(fromNodeId, 0);
-
-    while (queue.length > 0) {
-      const nodeId = queue.shift()!;
-      const currentDistance = distances.get(nodeId)!;
-
-      allEdgesMapRef.current.forEach((edge) => {
-        const sourceId = typeof edge.source === 'number' ? edge.source : edge.source.id;
-        const targetId = typeof edge.target === 'number' ? edge.target : edge.target.id;
-
-        let neighborId: number | null = null;
-        if (sourceId === nodeId) {
-          neighborId = targetId;
-        } else if (targetId === nodeId) {
-          neighborId = sourceId;
-        }
-
-        if (neighborId !== null && !distances.has(neighborId)) {
-          distances.set(neighborId, currentDistance + 1);
-          queue.push(neighborId);
-        }
-      });
-    }
-
-    return distances;
-  };
 
   // Listen for theme changes
   useEffect(() => {
@@ -453,7 +278,7 @@ export function GraphView({ currentNode, onNodeClick, relationshipChangeKey }: G
 
       // Update distances and set initial positions for new nodes
       if (currentSelectedNodeRef.current !== null) {
-        const distances = calculateDistances(currentSelectedNodeRef.current);
+        const distances = calculateDistances(currentSelectedNodeRef.current, allEdgesMapRef.current);
         nodes.forEach(node => {
           node.distance = distances.get(node.id) ?? 999;
 
@@ -802,7 +627,7 @@ export function GraphView({ currentNode, onNodeClick, relationshipChangeKey }: G
       // Prune nodes if needed
       const totalNodes = allNodesMapRef.current.size;
       if (totalNodes >= 16) {
-        const distances = calculateDistances(nodeId);
+        const distances = calculateDistances(nodeId, allEdgesMapRef.current);
         const nodesToRemove: number[] = [];
 
         allNodesMapRef.current.forEach((_node, nId) => {
