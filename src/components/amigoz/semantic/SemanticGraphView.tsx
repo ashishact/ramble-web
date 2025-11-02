@@ -1,6 +1,6 @@
 /**
- * Semantic Graph View - D3 radial visualization for semantic search results
- * Query node at center, results arranged radially based on similarity
+ * Semantic Graph View - D3 clustered visualization for semantic search results
+ * Results clustered by tags/similarity with no edges, colored by tag
  */
 import { useEffect, useRef } from 'react';
 import * as d3 from 'd3';
@@ -28,18 +28,14 @@ interface GraphNode extends d3.SimulationNodeDatum {
   label: string;
   icon?: string;
   similarity: number;
-  isQuery: boolean;
-}
-
-interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
-  source: number | GraphNode;
-  target: number | GraphNode;
-  similarity: number;
+  tags: string[];
+  cluster?: number;
+  primaryTag?: string;
 }
 
 export function SemanticGraphView({ queryText, results, onNodeSelect }: SemanticGraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null);
+  const simulationRef = useRef<d3.Simulation<GraphNode, undefined> | null>(null);
 
   useEffect(() => {
     if (!svgRef.current || results.length === 0) return;
@@ -71,93 +67,118 @@ export function SemanticGraphView({ queryText, results, onNodeSelect }: Semantic
 
     const themeColors = getThemeColors();
 
-    // Create nodes: query node + result nodes
-    const queryNode: GraphNode = {
-      id: -1,
-      label: queryText.length > 30 ? queryText.substring(0, 30) + '...' : queryText,
-      similarity: 1,
-      isQuery: true,
-      x: 0,
-      y: 0,
-      fx: 0, // Fixed at center
-      fy: 0,
-    };
-
-    const resultNodes: GraphNode[] = results.map((node) => ({
-      id: node.id,
-      label: node.title.length > 30 ? node.title.substring(0, 30) + '...' : node.title,
-      icon: node.icon,
-      similarity: node.similarity ?? 0.5,
-      isQuery: false,
-    }));
-
-    const nodes: GraphNode[] = [queryNode, ...resultNodes];
-
-    // Create links from query to all results
-    const links: GraphLink[] = resultNodes.map((node) => ({
-      source: -1,
-      target: node.id,
-      similarity: node.similarity,
-    }));
-
-    // Apply exponential scaling to stretch similarity differences
-    // This makes small differences (e.g., 0.0234 vs 0.0244) more visible
+    // Apply aggressive scaling to create dramatic size differences
+    // Nodes above 0.5 similarity get exponentially larger
+    // Nodes below 0.5 similarity get exponentially smaller
     const scaleSimilarity = (similarity: number) => {
-      // Use power function to stretch the range
-      // Higher exponent = more dramatic differences
-      const exponent = 3;
-      return Math.pow(similarity, exponent);
+      if (similarity > 0.5) {
+        // Above 0.5: exponential growth (exponent 4)
+        const normalized = (similarity - 0.5) * 2; // 0.5->1.0 becomes 0->1
+        return 0.5 + Math.pow(normalized, 4) * 0.5; // Maps to 0.5->1.0 range
+      } else {
+        // Below 0.5: exponential decay (exponent 4)
+        const normalized = similarity * 2; // 0->0.5 becomes 0->1
+        return Math.pow(normalized, 4) * 0.5; // Maps to 0->0.5 range
+      }
     };
 
-    // Calculate node radius based on similarity (higher similarity = larger node)
-    const getNodeRadius = (node: GraphNode) => {
-      if (node.isQuery) return 40; // Query node is largest
-      const scaled = scaleSimilarity(node.similarity);
-      // Result nodes: 18-40px based on scaled similarity (exponentially scaled)
-      return 18 + scaled * 22;
-    };
-
-    // Calculate edge length based on similarity (higher similarity = closer)
-    const getEdgeLength = (similarity: number) => {
+    // Calculate node radius based on similarity (aggressively scaled)
+    const getNodeRadius = (similarity: number) => {
       const scaled = scaleSimilarity(similarity);
-      // Closer for high similarity (80-280px range, 30% reduction)
-      return 280 - scaled * 200;
+      // Dramatic range: 10-50px
+      return 10 + scaled * 40;
     };
 
-    // Calculate opacity based on similarity
-    const getOpacity = (similarity: number) => {
+    // Calculate font size based on similarity (scaled proportionally)
+    const getFontSize = (similarity: number) => {
       const scaled = scaleSimilarity(similarity);
-      return 0.3 + scaled * 0.7; // 0.3 to 1.0
+      // Font size: 8-13px
+      return 8 + scaled * 5;
     };
 
-    // Create force simulation
+    // Get all unique tags from results
+    const allTags = new Set<string>();
+    results.forEach((node) => node.tags.forEach((tag) => allTags.add(tag)));
+    const uniqueTags = Array.from(allTags);
+
+    // Create tag-to-color mapping (using graph component's color palette)
+    const colorPalette = [
+      { outerRing: '#ffd700', innerRing: '#d4af37' }, // Light Gold -> Gold
+      { outerRing: '#cd853f', innerRing: '#8b4513' }, // Peru -> Saddle Brown
+      { outerRing: '#87ceeb', innerRing: '#4169e1' }, // Sky Blue -> Royal Blue
+      { outerRing: '#90ee90', innerRing: '#32cd32' }, // Light Green -> Lime Green
+      { outerRing: '#ffa07a', innerRing: '#ff6347' }, // Light Salmon -> Tomato
+      { outerRing: '#dda0dd', innerRing: '#9370db' }, // Plum -> Medium Purple
+      { outerRing: '#7fffd4', innerRing: '#20b2aa' }, // Aquamarine -> Light Sea Green
+    ];
+
+    const tagColorMap = new Map<string, typeof colorPalette[0]>();
+    uniqueTags.forEach((tag, index) => {
+      tagColorMap.set(tag, colorPalette[index % colorPalette.length]);
+    });
+
+    // Determine optimal number of clusters using square root heuristic
+    const numClusters = Math.max(2, Math.min(5, Math.ceil(Math.sqrt(results.length))));
+
+    // Create nodes with cluster assignment based on primary tag
+    const nodes: GraphNode[] = results.map((node) => {
+      const primaryTag = node.tags[0] || 'untagged';
+      const clusterIndex = uniqueTags.indexOf(primaryTag);
+
+      return {
+        id: node.id,
+        label: node.title.length > 30 ? node.title.substring(0, 30) + '...' : node.title,
+        icon: node.icon,
+        similarity: node.similarity ?? 0.5,
+        tags: node.tags,
+        primaryTag,
+        cluster: clusterIndex >= 0 ? clusterIndex % numClusters : 0,
+      };
+    });
+
+    // Calculate cluster centers (distribute in a grid or circle)
+    const clusterCenters: { x: number; y: number }[] = [];
+    const angleStep = (2 * Math.PI) / numClusters;
+    const clusterRadius = Math.min(width, height) * 0.3;
+
+    for (let i = 0; i < numClusters; i++) {
+      const angle = i * angleStep;
+      clusterCenters.push({
+        x: Math.cos(angle) * clusterRadius,
+        y: Math.sin(angle) * clusterRadius,
+      });
+    }
+
+    // Create force simulation without links
     const simulation = d3
       .forceSimulation(nodes)
+      .force('charge', d3.forceManyBody().strength(-200)) // Moderate repulsion
       .force(
-        'link',
-        d3
-          .forceLink<GraphNode, GraphLink>(links)
-          .id((d) => d.id)
-          .distance((d) => getEdgeLength(d.similarity))
-          .strength(0.5) // Reduce link strength to allow more spreading
+        'collision',
+        d3.forceCollide().radius((d) => getNodeRadius((d as GraphNode).similarity) + 10)
       )
-      .force('charge', d3.forceManyBody().strength(-500)) // Increase repulsion
-      .force('collision', d3.forceCollide().radius((d) => getNodeRadius(d as GraphNode) + 15))
-      .alpha(0.5) // Higher initial energy
-      .alphaDecay(0.01); // Slower decay for more settling time
+      .force(
+        'cluster',
+        // Custom force to pull nodes toward their cluster center
+        (alpha) => {
+          nodes.forEach((node) => {
+            const center = clusterCenters[node.cluster ?? 0];
+            const k = alpha * 0.1;
+            node.vx = (node.vx ?? 0) + (center.x - (node.x ?? 0)) * k;
+            node.vy = (node.vy ?? 0) + (center.y - (node.y ?? 0)) * k;
+          });
+        }
+      )
+      .alpha(0.8) // Higher initial energy
+      .alphaDecay(0.015); // Slower decay
 
     simulationRef.current = simulation;
 
-    // Create links
-    const link = g
-      .append('g')
-      .selectAll('line')
-      .data(links)
-      .join('line')
-      .attr('stroke', themeColors.secondary)
-      .attr('stroke-width', (d) => 1 + d.similarity * 2) // 1-3px based on similarity
-      .attr('stroke-opacity', (d) => getOpacity(d.similarity))
-      .attr('stroke-dasharray', '4,3');
+    // Get node colors based on primary tag
+    const getNodeColors = (node: GraphNode) => {
+      const color = tagColorMap.get(node.primaryTag ?? 'untagged') ?? colorPalette[0];
+      return color;
+    };
 
     // Create node groups
     const node = g
@@ -165,56 +186,51 @@ export function SemanticGraphView({ queryText, results, onNodeSelect }: Semantic
       .selectAll<SVGGElement, GraphNode>('g')
       .data(nodes)
       .join('g')
-      .attr('cursor', (d) => (d.isQuery ? 'default' : 'pointer'))
+      .attr('cursor', 'pointer')
       .call(
         d3
           .drag<SVGGElement, GraphNode>()
           .on('start', (event, d) => {
-            if (d.isQuery) return; // Don't drag query node
             if (!event.active) simulation.alphaTarget(0.3).restart();
             d.fx = d.x;
             d.fy = d.y;
           })
           .on('drag', (event, d) => {
-            if (d.isQuery) return;
             d.fx = event.x;
             d.fy = event.y;
           })
           .on('end', (event, d) => {
-            if (d.isQuery) return;
             if (!event.active) simulation.alphaTarget(0);
             d.fx = null;
             d.fy = null;
           })
       )
       .on('click', (_event, d) => {
-        if (!d.isQuery) {
-          onNodeSelect(d.id);
-        }
+        onNodeSelect(d.id);
       });
 
     // Add outer ring
     node
       .append('circle')
       .attr('class', 'outer-ring')
-      .attr('r', (d) => getNodeRadius(d) + OUTER_RING_GAP)
+      .attr('r', (d) => getNodeRadius(d.similarity) + OUTER_RING_GAP)
       .attr('fill', 'none')
-      .attr('stroke', (d) => (d.isQuery ? themeColors.accent : themeColors.secondary))
-      .attr('stroke-width', (d) => (d.isQuery ? 3 : 2))
-      .attr('stroke-dasharray', (d) => (d.isQuery ? 'none' : '4,3'))
-      .attr('opacity', (d) => (d.isQuery ? 1 : getOpacity(d.similarity)));
+      .attr('stroke', (d) => getNodeColors(d).outerRing)
+      .attr('stroke-width', 2)
+      .attr('stroke-dasharray', '4,3')
+      .attr('opacity', 0.9);
 
     // Add inner ring
     node
       .append('circle')
       .attr('class', 'inner-ring')
-      .attr('r', (d) => getNodeRadius(d))
+      .attr('r', (d) => getNodeRadius(d.similarity))
       .attr('fill', '#ffffff')
-      .attr('stroke', (d) => (d.isQuery ? themeColors.accent : themeColors.secondary))
-      .attr('stroke-width', (d) => (d.isQuery ? 3 : 2))
-      .attr('opacity', (d) => (d.isQuery ? 1 : getOpacity(d.similarity)));
+      .attr('stroke', (d) => getNodeColors(d).innerRing)
+      .attr('stroke-width', 2.5)
+      .attr('opacity', 1);
 
-    // Add icon or text at center
+    // Add icon at center
     node.each(function (d: GraphNode) {
       const nodeGroup = d3.select(this);
 
@@ -225,18 +241,9 @@ export function SemanticGraphView({ queryText, results, onNodeSelect }: Semantic
           .attr('class', 'node-icon')
           .attr('text-anchor', 'middle')
           .attr('dy', '0.35em')
-          .attr('font-size', getNodeRadius(d) * 1.2)
-          .attr('opacity', d.isQuery ? 1 : getOpacity(d.similarity))
+          .attr('font-size', getNodeRadius(d.similarity) * 1.2)
+          .attr('opacity', 1)
           .text(d.icon);
-      } else if (d.isQuery) {
-        // Query node without icon - show search icon
-        nodeGroup
-          .append('text')
-          .attr('class', 'node-icon')
-          .attr('text-anchor', 'middle')
-          .attr('dy', '0.35em')
-          .attr('font-size', getNodeRadius(d) * 1.2)
-          .text('🔍');
       }
     });
 
@@ -245,33 +252,15 @@ export function SemanticGraphView({ queryText, results, onNodeSelect }: Semantic
       .append('text')
       .attr('class', 'node-label')
       .attr('text-anchor', 'middle')
-      .attr('dy', (d) => getNodeRadius(d) + OUTER_RING_GAP + 16)
-      .attr('font-size', (d) => (d.isQuery ? 14 : 12))
-      .attr('font-weight', (d) => (d.isQuery ? 'bold' : 'normal'))
+      .attr('dy', (d) => getNodeRadius(d.similarity) + OUTER_RING_GAP + 16)
+      .attr('font-size', (d) => getFontSize(d.similarity))
+      .attr('font-weight', 'normal')
       .attr('fill', themeColors.baseContent)
-      .attr('opacity', (d) => (d.isQuery ? 1 : getOpacity(d.similarity)))
+      .attr('opacity', 0.8)
       .text((d) => d.label);
 
     // Update positions on tick
     simulation.on('tick', () => {
-      link
-        .attr('x1', (d) => {
-          const source = typeof d.source === 'number' ? nodes.find((n) => n.id === d.source) : d.source;
-          return source?.x ?? 0;
-        })
-        .attr('y1', (d) => {
-          const source = typeof d.source === 'number' ? nodes.find((n) => n.id === d.source) : d.source;
-          return source?.y ?? 0;
-        })
-        .attr('x2', (d) => {
-          const target = typeof d.target === 'number' ? nodes.find((n) => n.id === d.target) : d.target;
-          return target?.x ?? 0;
-        })
-        .attr('y2', (d) => {
-          const target = typeof d.target === 'number' ? nodes.find((n) => n.id === d.target) : d.target;
-          return target?.y ?? 0;
-        });
-
       node.attr('transform', (d) => `translate(${d.x},${d.y})`);
     });
 
