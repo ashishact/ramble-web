@@ -25,7 +25,6 @@ export const useGeminiSocket = (agent?: string) => {
     });
 
     socket.on('gemini-message', (message) => {
-      console.log('Received from Gemini:', message);
       if (onMessageCallbackRef.current) {
         onMessageCallbackRef.current(message);
       }

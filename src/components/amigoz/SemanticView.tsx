@@ -15,9 +15,10 @@ interface KnowledgeNode {
 
 interface SemanticViewProps {
   onNodeSelect: (nodeId: number) => void;
+  customEvents: { event: string; data: any } | null;
 }
 
-export function SemanticView({ onNodeSelect }: SemanticViewProps) {
+export function SemanticView({ onNodeSelect, customEvents }: SemanticViewProps) {
   // Load saved state on mount
   const savedState = semanticSearchState.get();
 
@@ -35,11 +36,36 @@ export function SemanticView({ onNodeSelect }: SemanticViewProps) {
     semanticSearchState.setResults(results, hasSearched);
   }, [results, hasSearched]);
 
+  // Listen for node updates and refresh the affected node in results
+  useEffect(() => {
+    if (!customEvents) return;
+
+    if (customEvents.event === 'node-updated') {
+      const updatedNode = customEvents.data;
+
+      // Update the node in results if it exists
+      setResults((prevResults) => {
+        const nodeIndex = prevResults.findIndex((n) => n.id === updatedNode.id);
+        if (nodeIndex === -1) return prevResults;
+
+        const newResults = [...prevResults];
+        newResults[nodeIndex] = {
+          ...newResults[nodeIndex],
+          title: updatedNode.title,
+          content: updatedNode.content,
+          tags: updatedNode.tags,
+          icon: updatedNode.icon,
+        };
+        return newResults;
+      });
+    }
+  }, [customEvents]);
+
   // Debounced search effect
   useEffect(() => {
     if (!searchQuery.trim()) {
-      setResults([]);
-      setHasSearched(false);
+      // Don't clear results when query is empty, just don't search
+      // Keep the last search results visible
       return;
     }
 
@@ -52,7 +78,7 @@ export function SemanticView({ onNodeSelect }: SemanticViewProps) {
         setResults(data);
       } catch (error) {
         console.error('Semantic search failed:', error);
-        setResults([]);
+        // Don't clear results on error, keep showing last successful results
       } finally {
         setIsLoading(false);
       }
@@ -102,13 +128,7 @@ export function SemanticView({ onNodeSelect }: SemanticViewProps) {
           </div>
         )}
 
-        {isLoading && (
-          <div className="flex items-center justify-center h-full">
-            <span className="loading loading-spinner loading-lg"></span>
-          </div>
-        )}
-
-        {hasSearched && !isLoading && results.length > 0 && (
+        {hasSearched && results.length > 0 && (
           <SemanticGraphView
             queryText={searchQuery}
             results={results}
@@ -119,19 +139,17 @@ export function SemanticView({ onNodeSelect }: SemanticViewProps) {
 
       {/* Search Bar */}
       <div className="p-4 bg-base-100 border-t border-base-300">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              placeholder="Search with natural language..."
-              className="input input-bordered w-full"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {isLoading && (
-              <span className="loading loading-spinner loading-sm absolute right-3 top-1/2 -translate-y-1/2"></span>
-            )}
-          </div>
+        <div className="flex gap-2 items-center">
+          <input
+            type="text"
+            placeholder="Search with natural language..."
+            className="input input-bordered flex-1"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {isLoading && (
+            <span className="loading loading-spinner loading-sm"></span>
+          )}
         </div>
         {hasSearched && results.length > 0 && (
           <p className="text-xs text-base-content/50 mt-2">

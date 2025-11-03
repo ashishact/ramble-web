@@ -147,15 +147,6 @@ export const VoiceActivityMonitor: React.FC<VoiceActivityMonitorProps> = ({
 
       const shouldSend = !isInactive;
 
-      console.log("[VAD] Activity check:", {
-        shouldSend,
-        timeSinceLastSpeech: Math.floor(timeSinceLastSpeech / 1000) + "s",
-        timeSinceLastGemini: Math.floor(timeSinceLastGemini / 1000) + "s",
-        userSpeaking,
-        isInactive,
-        timeout: INACTIVITY_TIMEOUT / 1000 + "s",
-      });
-
       onShouldSendChange(shouldSend);
     };
 

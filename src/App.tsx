@@ -31,6 +31,7 @@ function App() {
   const [transcripts, setTranscripts] = useState<TranscriptMessage[]>([]);
   const [customEvents, setCustomEvents] = useState<{ event: string; data: any } | null>(null);
   const transcriptionBuffer = useRef({ userText: '', modelText: '' });
+  const lastSentMessageRef = useRef<string>('');
   const [vadStatus, setVadStatus] = useState({
     userSpeaking: false,
     lastSpeechTime: Date.now(),
@@ -44,6 +45,11 @@ function App() {
   useEffect(() => {
     onMessage((message) => {
       notifyGeminiResponse();
+
+      // Handle interruption from Gemini (user started speaking)
+      if (message.serverContent?.interrupted) {
+        stopAudio();
+      }
 
       // Handle custom events from agents
       if (message.customEvent) {
@@ -148,17 +154,28 @@ function App() {
   }, [shouldSendAudio]);
 
   const handleSendText = (text: string) => {
-    if (isConnected && text.trim()) {
-      sendTextMessage(text);
+    const trimmedText = text.trim();
 
-      // Add user message to transcripts immediately
-      setTranscripts(prev => [...prev, {
-        role: 'user',
-        text: text,
-        timestamp: Date.now(),
-        isComplete: true,
-      }]);
+    // Don't send if empty or same as last message
+    if (!trimmedText || !isConnected) {
+      return;
     }
+
+    if (trimmedText === lastSentMessageRef.current) {
+      console.log('Skipping duplicate message:', trimmedText);
+      return;
+    }
+
+    sendTextMessage(trimmedText);
+    lastSentMessageRef.current = trimmedText;
+
+    // Add user message to transcripts immediately
+    setTranscripts(prev => [...prev, {
+      role: 'user',
+      text: trimmedText,
+      timestamp: Date.now(),
+      isComplete: true,
+    }]);
   };
 
   const handleToggleRecording = async () => {

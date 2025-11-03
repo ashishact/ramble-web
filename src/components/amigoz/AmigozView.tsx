@@ -69,7 +69,7 @@ export function AmigozView({
               relationshipChangeKey={relationshipVersion}
             />
           ) : (
-            <SemanticView onNodeSelect={loadNodeById} />
+            <SemanticView onNodeSelect={loadNodeById} customEvents={customEvents} />
           )}
         </div>
       </Panel>

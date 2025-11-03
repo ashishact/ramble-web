@@ -36,63 +36,75 @@ interface GraphNode extends d3.SimulationNodeDatum {
 export function SemanticGraphView({ queryText, results, onNodeSelect }: SemanticGraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const simulationRef = useRef<d3.Simulation<GraphNode, undefined> | null>(null);
+  const gRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null);
+  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
 
+  // Initialize SVG and zoom only once
   useEffect(() => {
-    if (!svgRef.current || results.length === 0) return;
+    if (!svgRef.current) return;
 
     const svg = d3.select(svgRef.current);
     const width = svgRef.current.clientWidth;
     const height = svgRef.current.clientHeight;
 
-    // Clear previous content
-    svg.selectAll('*').remove();
+    // Only initialize if not already initialized
+    if (!gRef.current) {
+      // Create main group with zoom
+      const g = svg.append('g').attr('class', 'main-group');
+      gRef.current = g;
 
-    // Create main group with zoom
-    const g = svg
-      .append('g')
-      .attr('class', 'main-group');
+      const zoom = d3
+        .zoom<SVGSVGElement, unknown>()
+        .scaleExtent([0.1, 4])
+        .on('zoom', (event) => {
+          g.attr('transform', event.transform);
+        });
 
-    const zoom = d3
-      .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 4])
-      .on('zoom', (event) => {
-        g.attr('transform', event.transform);
-      });
+      zoomRef.current = zoom;
+      svg.call(zoom);
 
-    svg.call(zoom);
+      // Center the view
+      const initialTransform = d3.zoomIdentity.translate(width / 2, height / 2);
+      svg.call(zoom.transform, initialTransform);
+    }
+  }, []);
 
-    // Center the view
-    const initialTransform = d3.zoomIdentity.translate(width / 2, height / 2);
-    svg.call(zoom.transform, initialTransform);
+  // Update nodes when results change
+  useEffect(() => {
+    if (!svgRef.current || !gRef.current || results.length === 0) return;
+
+    const g = gRef.current;
+    const width = svgRef.current.clientWidth;
+    const height = svgRef.current.clientHeight;
 
     const themeColors = getThemeColors();
 
-    // Apply aggressive scaling to create dramatic size differences
+    // Apply very aggressive scaling to create dramatic size differences
     // Nodes above 0.5 similarity get exponentially larger
     // Nodes below 0.5 similarity get exponentially smaller
     const scaleSimilarity = (similarity: number) => {
       if (similarity > 0.5) {
-        // Above 0.5: exponential growth (exponent 4)
+        // Above 0.5: exponential growth (exponent 6 for more drama)
         const normalized = (similarity - 0.5) * 2; // 0.5->1.0 becomes 0->1
-        return 0.5 + Math.pow(normalized, 4) * 0.5; // Maps to 0.5->1.0 range
+        return 0.5 + Math.pow(normalized, 6) * 0.5; // Maps to 0.5->1.0 range
       } else {
-        // Below 0.5: exponential decay (exponent 4)
+        // Below 0.5: exponential decay (exponent 6 for more drama)
         const normalized = similarity * 2; // 0->0.5 becomes 0->1
-        return Math.pow(normalized, 4) * 0.5; // Maps to 0->0.5 range
+        return Math.pow(normalized, 6) * 0.5; // Maps to 0->0.5 range
       }
     };
 
     // Calculate node radius based on similarity (aggressively scaled)
     const getNodeRadius = (similarity: number) => {
       const scaled = scaleSimilarity(similarity);
-      // Dramatic range: 10-50px
+      // Dramatic range: 10-50px with heavy skew
       return 10 + scaled * 40;
     };
 
     // Calculate font size based on similarity (scaled proportionally)
     const getFontSize = (similarity: number) => {
       const scaled = scaleSimilarity(similarity);
-      // Font size: 8-13px
+      // Font size: 8-13px with heavy skew
       return 8 + scaled * 5;
     };
 
@@ -120,23 +132,7 @@ export function SemanticGraphView({ queryText, results, onNodeSelect }: Semantic
     // Determine optimal number of clusters using square root heuristic
     const numClusters = Math.max(2, Math.min(5, Math.ceil(Math.sqrt(results.length))));
 
-    // Create nodes with cluster assignment based on primary tag
-    const nodes: GraphNode[] = results.map((node) => {
-      const primaryTag = node.tags[0] || 'untagged';
-      const clusterIndex = uniqueTags.indexOf(primaryTag);
-
-      return {
-        id: node.id,
-        label: node.title.length > 30 ? node.title.substring(0, 30) + '...' : node.title,
-        icon: node.icon,
-        similarity: node.similarity ?? 0.5,
-        tags: node.tags,
-        primaryTag,
-        cluster: clusterIndex >= 0 ? clusterIndex % numClusters : 0,
-      };
-    });
-
-    // Calculate cluster centers (distribute in a grid or circle)
+    // Calculate cluster centers first (needed for initial positions)
     const clusterCenters: { x: number; y: number }[] = [];
     const angleStep = (2 * Math.PI) / numClusters;
     const clusterRadius = Math.min(width, height) * 0.3;
@@ -149,17 +145,71 @@ export function SemanticGraphView({ queryText, results, onNodeSelect }: Semantic
       });
     }
 
-    // Create force simulation without links
-    const simulation = d3
-      .forceSimulation(nodes)
-      .force('charge', d3.forceManyBody().strength(-200)) // Moderate repulsion
-      .force(
+    // Get existing nodes from simulation to preserve positions
+    const existingNodes = simulationRef.current?.nodes() || [];
+    const existingNodeMap = new Map(existingNodes.map(n => [n.id, n]));
+
+    // Create nodes with cluster assignment based on primary tag
+    const nodes: GraphNode[] = results.map((node) => {
+      const primaryTag = node.tags[0] || 'untagged';
+      const clusterIndex = uniqueTags.indexOf(primaryTag);
+      const cluster = clusterIndex >= 0 ? clusterIndex % numClusters : 0;
+
+      // Check if node already exists
+      const existingNode = existingNodeMap.get(node.id);
+
+      return {
+        id: node.id,
+        label: node.title.length > 30 ? node.title.substring(0, 30) + '...' : node.title,
+        icon: node.icon,
+        similarity: node.similarity ?? 0.5,
+        tags: node.tags,
+        primaryTag,
+        cluster,
+        // Preserve existing position if node exists, otherwise start at cluster center
+        x: existingNode?.x ?? clusterCenters[cluster].x + (Math.random() - 0.5) * 50,
+        y: existingNode?.y ?? clusterCenters[cluster].y + (Math.random() - 0.5) * 50,
+        vx: existingNode?.vx ?? 0,
+        vy: existingNode?.vy ?? 0,
+      };
+    });
+
+    // Update or create simulation
+    let simulation = simulationRef.current;
+
+    if (!simulation) {
+      // Create new simulation
+      simulation = d3
+        .forceSimulation(nodes)
+        .force('charge', d3.forceManyBody().strength(-200))
+        .force(
+          'collision',
+          d3.forceCollide().radius((d) => getNodeRadius((d as GraphNode).similarity) + 10)
+        )
+        .force(
+          'cluster',
+          (alpha) => {
+            nodes.forEach((node) => {
+              const center = clusterCenters[node.cluster ?? 0];
+              const k = alpha * 0.1;
+              node.vx = (node.vx ?? 0) + (center.x - (node.x ?? 0)) * k;
+              node.vy = (node.vy ?? 0) + (center.y - (node.y ?? 0)) * k;
+            });
+          }
+        )
+        .alpha(0.8)
+        .alphaDecay(0.015);
+
+      simulationRef.current = simulation;
+    } else {
+      // Update existing simulation with new nodes
+      simulation.nodes(nodes);
+      simulation.force(
         'collision',
         d3.forceCollide().radius((d) => getNodeRadius((d as GraphNode).similarity) + 10)
-      )
-      .force(
+      );
+      simulation.force(
         'cluster',
-        // Custom force to pull nodes toward their cluster center
         (alpha) => {
           nodes.forEach((node) => {
             const center = clusterCenters[node.cluster ?? 0];
@@ -168,11 +218,9 @@ export function SemanticGraphView({ queryText, results, onNodeSelect }: Semantic
             node.vy = (node.vy ?? 0) + (center.y - (node.y ?? 0)) * k;
           });
         }
-      )
-      .alpha(0.8) // Higher initial energy
-      .alphaDecay(0.015); // Slower decay
-
-    simulationRef.current = simulation;
+      );
+      simulation.alpha(0.3).restart();
+    }
 
     // Get node colors based on primary tag
     const getNodeColors = (node: GraphNode) => {
@@ -180,95 +228,123 @@ export function SemanticGraphView({ queryText, results, onNodeSelect }: Semantic
       return color;
     };
 
-    // Create node groups
-    const node = g
+    // Use enter/update/exit pattern for smooth transitions
+    const nodeSelection = g
+      .selectAll<SVGGElement, GraphNode>('g.node-group')
+      .data(nodes, (d) => d.id);
+
+    // EXIT: Remove nodes that are no longer in the data
+    nodeSelection.exit()
+      .transition()
+      .duration(300)
+      .attr('opacity', 0)
+      .remove();
+
+    // ENTER: Add new nodes
+    const nodeEnter = nodeSelection
+      .enter()
       .append('g')
-      .selectAll<SVGGElement, GraphNode>('g')
-      .data(nodes)
-      .join('g')
+      .attr('class', 'node-group')
       .attr('cursor', 'pointer')
-      .call(
-        d3
-          .drag<SVGGElement, GraphNode>()
-          .on('start', (event, d) => {
-            if (!event.active) simulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-          })
-          .on('drag', (event, d) => {
-            d.fx = event.x;
-            d.fy = event.y;
-          })
-          .on('end', (event, d) => {
-            if (!event.active) simulation.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
-          })
-      )
+      .attr('opacity', 0)
       .on('click', (_event, d) => {
         onNodeSelect(d.id);
       });
 
     // Add outer ring
-    node
+    nodeEnter
       .append('circle')
       .attr('class', 'outer-ring')
-      .attr('r', (d) => getNodeRadius(d.similarity) + OUTER_RING_GAP)
       .attr('fill', 'none')
-      .attr('stroke', (d) => getNodeColors(d).outerRing)
       .attr('stroke-width', 2)
-      .attr('stroke-dasharray', '4,3')
-      .attr('opacity', 0.9);
+      .attr('stroke-dasharray', '4,3');
 
     // Add inner ring
-    node
+    nodeEnter
       .append('circle')
       .attr('class', 'inner-ring')
-      .attr('r', (d) => getNodeRadius(d.similarity))
       .attr('fill', '#ffffff')
-      .attr('stroke', (d) => getNodeColors(d).innerRing)
-      .attr('stroke-width', 2.5)
-      .attr('opacity', 1);
+      .attr('stroke-width', 2.5);
 
-    // Add icon at center
-    node.each(function (d: GraphNode) {
-      const nodeGroup = d3.select(this);
+    // Add icon placeholder
+    nodeEnter
+      .append('text')
+      .attr('class', 'node-icon')
+      .attr('text-anchor', 'middle')
+      .attr('dy', '0.35em');
 
-      if (d.icon) {
-        // Add icon as text emoji
-        nodeGroup
-          .append('text')
-          .attr('class', 'node-icon')
-          .attr('text-anchor', 'middle')
-          .attr('dy', '0.35em')
-          .attr('font-size', getNodeRadius(d.similarity) * 1.2)
-          .attr('opacity', 1)
-          .text(d.icon);
-      }
-    });
-
-    // Add labels below nodes
-    node
+    // Add label
+    nodeEnter
       .append('text')
       .attr('class', 'node-label')
       .attr('text-anchor', 'middle')
+      .attr('font-weight', 'normal')
+      .attr('fill', themeColors.baseContent);
+
+    // MERGE enter + update
+    const nodeMerge = nodeEnter.merge(nodeSelection);
+
+    // Fade in new nodes
+    nodeEnter
+      .transition()
+      .duration(300)
+      .attr('opacity', 1);
+
+    // Update all nodes (new and existing)
+    nodeMerge.select('.outer-ring')
+      .transition()
+      .duration(300)
+      .attr('r', (d) => getNodeRadius(d.similarity) + OUTER_RING_GAP)
+      .attr('stroke', (d) => getNodeColors(d).outerRing)
+      .attr('opacity', 0.9);
+
+    nodeMerge.select('.inner-ring')
+      .transition()
+      .duration(300)
+      .attr('r', (d) => getNodeRadius(d.similarity))
+      .attr('stroke', (d) => getNodeColors(d).innerRing)
+      .attr('opacity', 1);
+
+    nodeMerge.select('.node-icon')
+      .transition()
+      .duration(300)
+      .attr('font-size', (d) => getNodeRadius(d.similarity) * 1.2)
+      .attr('opacity', (d) => d.icon ? 1 : 0)
+      .text((d) => d.icon || '');
+
+    nodeMerge.select('.node-label')
+      .transition()
+      .duration(300)
       .attr('dy', (d) => getNodeRadius(d.similarity) + OUTER_RING_GAP + 16)
       .attr('font-size', (d) => getFontSize(d.similarity))
-      .attr('font-weight', 'normal')
-      .attr('fill', themeColors.baseContent)
       .attr('opacity', 0.8)
       .text((d) => d.label);
 
+    // Apply drag behavior
+    nodeMerge.call(
+      d3
+        .drag<SVGGElement, GraphNode>()
+        .on('start', (event, d) => {
+          if (!event.active) simulation.alphaTarget(0.3).restart();
+          d.fx = d.x;
+          d.fy = d.y;
+        })
+        .on('drag', (event, d) => {
+          d.fx = event.x;
+          d.fy = event.y;
+        })
+        .on('end', (event, d) => {
+          if (!event.active) simulation.alphaTarget(0);
+          d.fx = null;
+          d.fy = null;
+        })
+    );
+
     // Update positions on tick
     simulation.on('tick', () => {
-      node.attr('transform', (d) => `translate(${d.x},${d.y})`);
+      nodeMerge.attr('transform', (d) => `translate(${d.x},${d.y})`);
     });
-
-    // Cleanup
-    return () => {
-      simulation.stop();
-    };
-  }, [queryText, results, onNodeSelect]);
+  }, [results, onNodeSelect]);
 
   if (results.length === 0) {
     return null;
