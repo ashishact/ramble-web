@@ -26,6 +26,7 @@ export function SemanticView({ onNodeSelect, customEvents }: SemanticViewProps) 
   const [results, setResults] = useState<KnowledgeNode[]>(savedState.results);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(savedState.hasSearched);
+  const [selectedNodeId, setSelectedNodeId] = useState<number | undefined>();
 
   // Persist state changes
   useEffect(() => {
@@ -132,7 +133,11 @@ export function SemanticView({ onNodeSelect, customEvents }: SemanticViewProps) 
           <SemanticGraphView
             queryText={searchQuery}
             results={results}
-            onNodeSelect={onNodeSelect}
+            onNodeSelect={(nodeId) => {
+              setSelectedNodeId(nodeId);
+              onNodeSelect(nodeId);
+            }}
+            selectedNodeId={selectedNodeId}
           />
         )}
       </div>
