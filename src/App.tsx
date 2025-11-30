@@ -1,11 +1,11 @@
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useSearchParams } from "react-router-dom";
 import { VoiceActivityMonitor } from "./components/VoiceActivityMonitor";
 import { AgentView } from "./components/AgentView";
 import { RightSidebar } from "./components/RightSidebar";
 import { SettingsPage } from "./components/SettingsPage";
 import { CloudflareAIGatewayTest } from "./components/CloudflareAIGatewayTest";
-import { SpeechToTextTest } from "./components/SpeechToTextTest-New";
+import { SpeechToTextTest } from "./components/SpeechToTextTest";
 import { useVoiceAgent } from "./hooks/useVoiceAgent";
 
 export interface TranscriptMessage {

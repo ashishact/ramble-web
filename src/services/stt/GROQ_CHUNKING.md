@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Groq Whisper Large V3 Turbo model is optimized for **10-30 second** audio chunks. This implementation provides three intelligent chunking strategies to handle longer recordings without losing information.
+The Groq Whisper Large V3 Turbo model is optimized for **10-30 second** audio chunks. This implementation provides two intelligent chunking strategies to handle longer recordings without losing information.
 
 ## Chunking Strategies
 
@@ -36,75 +36,25 @@ await stt.connect({
 
 ---
 
-### 2. Silence-Based Chunking
-
-**When to use**: Medium to long recordings (30 seconds to several minutes)
-
-**How it works**:
-1. Continuously monitors audio using frequency analysis
-2. Calculates RMS (Root Mean Square) to detect silence
-3. Splits when:
-   - 30+ seconds recorded AND 0.5+ seconds of silence detected, OR
-   - 60+ seconds recorded AND 0.25+ seconds of silence detected, OR
-   - 3 minutes recorded (hard limit)
-4. Always respects 10-second minimum chunk size
-5. Accumulates all transcripts into final result
-
-**Technical Details**:
-- Uses Web Audio API `AnalyserNode`
-- Silence threshold: RMS < 0.01
-- No external dependencies
-- Runs at ~60fps via `requestAnimationFrame`
-
-**Pros**:
-- No dependencies
-- Lightweight frequency analysis
-- Handles long recordings automatically
-- Never cuts during speech
-
-**Cons**:
-- Less accurate than VAD
-- May miss very quiet speech
-- Requires continuous monitoring
-
-**Example**:
-```ts
-await stt.connect({
-  provider: 'groq-whisper',
-  apiKey: 'your-key',
-  chunkingStrategy: 'silence',
-}, {
-  onTranscript: (transcript) => {
-    console.log('Accumulated:', transcript.text);
-    console.log('Is final:', transcript.isFinal);
-  },
-});
-```
-
----
-
-### 3. VAD-Based Chunking
+### 2. VAD-Based Chunking
 
 **When to use**: Long recordings requiring maximum accuracy
 
 **How it works**:
 1. Uses `@ricky0123/vad-web` for precise voice activity detection
 2. Detects speech start/end using ML model
-3. Accumulates speech segments
-4. Splits when:
-   - 30+ seconds of speech accumulated, OR
-   - 60+ seconds of speech accumulated, OR
-   - 3 minutes (hard limit)
-5. Always respects 10-second minimum
-6. Converts VAD output (Float32Array) to WAV format
-7. Sends to Groq API
-8. Accumulates all transcripts
+3. Accumulates speech segments (silence is discarded)
+4. Sends to API when:
+   - 10+ seconds of speech accumulated AND silence is detected
+5. Converts VAD output (Float32Array) to WAV format
+6. Sends to Groq API
+7. Accumulates all transcripts
 
 **Technical Details**:
 - Uses Silero VAD model (loaded from CDN)
-- Fallback to silence-based if VAD unavailable
+- Fallback to simple if VAD unavailable
 - Processes audio at 16kHz
-- Includes hard limit monitor as safety net
+- Only sends speech chunks, silence is discarded
 
 **Pros**:
 - Most accurate speech detection
@@ -141,14 +91,11 @@ await stt.connect({
 
 ## Constraints
 
-All strategies respect these constraints:
+VAD-based chunking respects this constraint:
 
 | Constraint | Value | Description |
 |------------|-------|-------------|
-| **Minimum** | 10 seconds | Never send chunks shorter than this |
-| **Optimal** | 30 seconds | Try to split around this duration |
-| **Soft Max** | 60 seconds | Split here if silence/speech-end detected |
-| **Hard Max** | 180 seconds | **Always** split at 3 minutes |
+| **Minimum** | 10 seconds | Never send chunks shorter than this (accumulated speech only) |
 
 ## How Transcripts Are Accumulated
 
@@ -195,15 +142,10 @@ Recording stops:
 - **Memory**: Low (one MediaRecorder)
 - **Network**: One API call per recording
 
-### Silence-Based
-- **CPU**: Low (~1-2% for monitoring)
-- **Memory**: Medium (AudioContext + Analyser)
-- **Network**: Multiple API calls (one per chunk)
-
 ### VAD-Based
 - **CPU**: Medium (~5-10% for VAD model)
 - **Memory**: High (VAD model + audio buffers)
-- **Network**: Multiple API calls (one per chunk)
+- **Network**: Multiple API calls (one per 10+ seconds of speech)
 
 ## Choosing a Strategy
 
@@ -211,11 +153,8 @@ Recording stops:
 Recording Duration          Recommended Strategy
 ─────────────────────────────────────────────────
 < 30 seconds               → Simple
-30 seconds - 2 minutes     → Silence-based
-> 2 minutes                → VAD-based
+> 30 seconds               → VAD-based
 Noisy environment          → VAD-based
-Quiet environment          → Silence-based
-No dependencies required   → Silence-based
 Maximum accuracy needed    → VAD-based
 ```
 
@@ -225,7 +164,7 @@ Maximum accuracy needed    → VAD-based
 import { useSTT } from '@/services/stt/useSTT';
 
 function LongFormRecorder() {
-  const [strategy, setStrategy] = useState<'simple' | 'silence' | 'vad'>('vad');
+  const [strategy, setStrategy] = useState<'simple' | 'vad'>('vad');
 
   const stt = useSTT({
     config: {
@@ -240,7 +179,6 @@ function LongFormRecorder() {
       {/* Strategy selector */}
       <select value={strategy} onChange={(e) => setStrategy(e.target.value as any)}>
         <option value="simple">Simple</option>
-        <option value="silence">Silence-based</option>
         <option value="vad">VAD-based</option>
       </select>
 
@@ -265,12 +203,11 @@ function LongFormRecorder() {
 **VAD not working**:
 - Check if `@ricky0123/vad-web` is loaded in index.html
 - Open console, check for `window.vad`
-- System will auto-fallback to silence-based
+- System will auto-fallback to simple
 
 **Chunks too small/large**:
-- Adjust `CHUNK_OPTIMAL_MAX` and `CHUNK_SOFT_MAX` constants
-- Modify `SILENCE_THRESHOLD` for sensitivity
-- Increase `SILENCE_MIN_DURATION` for longer pauses
+- Adjust `CHUNK_MIN_DURATION` constant in provider
+- VAD automatically handles speech detection
 
 **Transcript incomplete**:
 - Check network tab for failed API calls
@@ -290,18 +227,18 @@ function LongFormRecorder() {
 ├─────────────────────────────────────────────────┤
 │                                                 │
 │  Strategy Selection                             │
-│  ┌─────────┬───────────────┬──────────────┐    │
-│  │ Simple  │ Silence-based │  VAD-based   │    │
-│  └─────────┴───────────────┴──────────────┘    │
+│  ┌─────────┬──────────────┐                    │
+│  │ Simple  │  VAD-based   │                    │
+│  └─────────┴──────────────┘                    │
 │                                                 │
 │  Audio Collection                               │
 │  ┌────────────────────────────────────────┐    │
 │  │ MediaRecorder → Blob chunks            │    │
 │  └────────────────────────────────────────┘    │
 │                                                 │
-│  Silence/VAD Monitoring                         │
+│  VAD Monitoring                                 │
 │  ┌────────────────────────────────────────┐    │
-│  │ AudioContext → RMS/VAD → Split logic   │    │
+│  │ VAD → Speech Detection → Accumulation  │    │
 │  └────────────────────────────────────────┘    │
 │                                                 │
 │  Queue Management                               │
@@ -326,10 +263,10 @@ function LongFormRecorder() {
 ## Summary
 
 ✅ **No information loss** - All chunks are transcribed and accumulated
-✅ **Smart splitting** - Never cuts during speech
+✅ **Smart splitting** - VAD never cuts during speech
 ✅ **Automatic handling** - User doesn't need to manage chunks
 ✅ **Final transcript** - Always returns complete accumulated result
-✅ **Configurable** - Three strategies for different use cases
+✅ **Configurable** - Two strategies for different use cases
 ✅ **Robust** - Queue management and error handling
 ✅ **Self-contained** - All logic in provider, transparent to user
 

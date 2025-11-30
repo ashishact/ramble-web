@@ -15,11 +15,11 @@ import type {
 } from './types';
 import { DeepgramProvider } from './providers/DeepgramProvider';
 import { GroqWhisperProvider } from './providers/GroqWhisperProvider';
+import { GeminiProvider } from './providers/GeminiProvider';
 
 export class STTService {
   private static instance: STTService | null = null;
   private provider: ISTTProvider | null = null;
-  private currentCallbacks: STTServiceCallbacks | null = null;
   private currentConfig: STTConfig | null = null;
 
   private constructor() {
@@ -59,9 +59,6 @@ export class STTService {
    * Create and connect to an STT provider
    */
   async connect(config: STTConfig, callbacks: STTServiceCallbacks): Promise<void> {
-    // Store callbacks
-    this.currentCallbacks = callbacks;
-
     // If already connected with same provider and config, just update callbacks
     if (this.provider && this.provider.getProvider() === config.provider &&
         this.provider.isConnected() && !this.configChanged(config)) {
@@ -85,15 +82,6 @@ export class STTService {
   }
 
   /**
-   * Update callbacks without reconnecting
-   */
-  updateCallbacks(callbacks: STTServiceCallbacks): void {
-    this.currentCallbacks = callbacks;
-    // Note: Providers will continue using the original callbacks passed to connect()
-    // This is mainly for tracking purposes
-  }
-
-  /**
    * Disconnect from the current provider
    */
   disconnect(): void {
@@ -101,7 +89,6 @@ export class STTService {
       this.provider.disconnect();
       this.provider = null;
     }
-    this.currentCallbacks = null;
   }
 
   /**
@@ -176,6 +163,8 @@ export class STTService {
       case 'deepgram-nova':
       case 'deepgram-flux':
         return new DeepgramProvider(config);
+      case 'gemini':
+        return new GeminiProvider(config);
       default:
         throw new Error(`Unknown provider: ${config.provider}`);
     }

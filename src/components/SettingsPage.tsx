@@ -199,9 +199,9 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
                             <Icon icon="mdi:open-in-new" className="w-4 h-4" />
                             Get Key
                           </a>
-                          {isConfigured && !isObserverProvider && provider.id !== 'gemini' && (
+                          {isConfigured && !isObserverProvider && provider.id !== 'gemini' && provider.id !== 'deepgram' && (
                             <button
-                              onClick={() => handleObserverProviderChange(provider.id)}
+                              onClick={() => handleObserverProviderChange(provider.id as AppSettings['observerProvider'])}
                               className="btn btn-primary btn-xs"
                             >
                               Use for Observer
@@ -287,7 +287,7 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
             </p>
 
             <div className="flex flex-wrap gap-2">
-              {PROVIDERS.map((provider) => {
+              {PROVIDERS.filter(p => p.id !== 'deepgram').map((provider) => {
                 const providerSettings = settings.providers[provider.id] || { apiKey: '', enabled: false, model: '' };
                 const isConfigured = providerSettings.enabled;
                 const isActive = settings.observerProvider === provider.id;
@@ -295,7 +295,7 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
                 return (
                   <button
                     key={provider.id}
-                    onClick={() => isConfigured && handleObserverProviderChange(provider.id)}
+                    onClick={() => isConfigured && handleObserverProviderChange(provider.id as AppSettings['observerProvider'])}
                     disabled={!isConfigured}
                     className={`btn gap-2 ${
                       isActive

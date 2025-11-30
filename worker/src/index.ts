@@ -42,11 +42,62 @@ export default {
 		if (url.pathname === '/api/cf-gateway' && request.method === 'POST') {
 			try {
 				const body = await request.json();
-				const { apiKey, model, messages, stream = true } = body;
+				const { apiKey, model, system, user, messages, stream = true, audio } = body;
 
 				if (!apiKey) {
 					return new Response(JSON.stringify({ error: 'API key is required' }), {
 						status: 400,
+						headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+					});
+				}
+
+				// Handle Gemini native API format (for multimodal with audio/images)
+				if (model.startsWith('google/')) {
+					const modelName = model.replace('google/', '');
+					const geminiUrl = `https://gateway.ai.cloudflare.com/v1/f107b4eef4a9b8eb99a9d1df6fac9ff2/brokenai/google-ai-studio/v1beta/models/${modelName}:generateContent`;
+
+					let geminiBody;
+
+					// Check if native Gemini format is provided
+					if (body.contents) {
+						// Native format: use as-is
+						geminiBody = { contents: body.contents };
+					} else {
+						// Simple format: transform to Gemini native
+						const parts = [];
+						if (system) parts.push({ text: system });
+						if (user) parts.push({ text: user });
+						if (audio) {
+							parts.push({
+								inline_data: {
+									mime_type: audio.mime_type || 'audio/wav',
+									data: audio.data,
+								},
+							});
+						}
+						geminiBody = { contents: [{ parts }] };
+					}
+
+					const response = await fetch(geminiUrl, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'x-goog-api-key': apiKey,
+						},
+						body: JSON.stringify(geminiBody),
+					});
+
+					if (!response.ok) {
+						const errorData = await response.text();
+						return new Response(JSON.stringify({ error: errorData }), {
+							status: response.status,
+							headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+						});
+					}
+
+					const data = await response.json();
+					return new Response(JSON.stringify(data), {
+						status: response.status,
 						headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
 					});
 				}
@@ -67,6 +118,22 @@ export default {
 				}
 				// OpenAI and Anthropic models stay as-is (openai/model, anthropic/model)
 
+				// Build messages array from simple format or use provided messages
+				let requestMessages;
+
+				if (messages) {
+					// Native format: use messages as-is
+					requestMessages = messages;
+				} else if (system || user) {
+					// Simple format: transform to OpenAI-compatible
+					requestMessages = [];
+					if (system) requestMessages.push({ role: 'system', content: system });
+					if (user) requestMessages.push({ role: 'user', content: user });
+				} else {
+					// Default fallback
+					requestMessages = [{ role: 'user', content: 'Hello, world!' }];
+				}
+
 				// Call Cloudflare AI Gateway
 				const gatewayUrl = `https://gateway.ai.cloudflare.com/v1/f107b4eef4a9b8eb99a9d1df6fac9ff2/brokenai/${endpoint}/chat/completions`;
 
@@ -78,7 +145,7 @@ export default {
 					},
 					body: JSON.stringify({
 						model: transformedModel,
-						messages: messages || [{ role: 'user', content: 'Hello, world!' }],
+						messages: requestMessages,
 						stream: stream,
 					}),
 				});

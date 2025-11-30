@@ -1,26 +1,38 @@
-import { useState, useEffect, useRef } from 'react';
+/**
+ * Speech-to-Text Test Page (Refactored)
+ *
+ * Demonstrates usage of the modular STT service
+ */
+
+import { useState, useEffect, useMemo } from 'react';
+import { useSTT } from '../services/stt/useSTT';
 import { settingsHelpers } from '../stores/settingsStore';
+import type { STTProvider } from '../services/stt';
 
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
-
-type STTProvider = 'groq-whisper' | 'deepgram-v1' | 'deepgram-flux';
+type STTTab = 'groq-whisper' | 'deepgram-nova' | 'deepgram-flux' | 'gemini';
 
 export function SpeechToTextTest() {
-  const [activeTab, setActiveTab] = useState<STTProvider>('groq-whisper');
-  const [groqApiKey, setGroqApiKey] = useState('');
-  const [deepgramApiKey, setDeepgramApiKey] = useState('');
+  const [activeTab, setActiveTab] = useState<STTTab>('groq-whisper');
+  const [apiKeys, setApiKeys] = useState({
+    groq: '',
+    deepgram: '',
+    gemini: '',
+  });
 
   // Load API keys from settings
   useEffect(() => {
     const groqKey = settingsHelpers.getApiKey('groq');
     const deepgramKey = settingsHelpers.getApiKey('deepgram');
+    const geminiKey = settingsHelpers.getApiKey('gemini');
 
-    setGroqApiKey(groqKey);
-    setDeepgramApiKey(deepgramKey);
+    setApiKeys({ groq: groqKey, deepgram: deepgramKey, gemini: geminiKey });
 
     const unsubscribe = settingsHelpers.subscribe((settings) => {
-      setGroqApiKey(settings.providers.groq.apiKey);
-      setDeepgramApiKey(settings.providers.deepgram?.apiKey || '');
+      setApiKeys({
+        groq: settings.providers.groq.apiKey,
+        deepgram: settings.providers.deepgram?.apiKey || '',
+        gemini: settings.providers.gemini?.apiKey || '',
+      });
     });
 
     return unsubscribe;
@@ -42,36 +54,44 @@ export function SpeechToTextTest() {
                 Groq Whisper
               </button>
               <button
-                className={`tab ${activeTab === 'deepgram-v1' ? 'tab-active' : ''}`}
-                onClick={() => setActiveTab('deepgram-v1')}
+                className={`tab ${activeTab === 'deepgram-nova' ? 'tab-active' : ''}`}
+                onClick={() => setActiveTab('deepgram-nova')}
               >
-                Deepgram Live (v1)
+                Deepgram Nova
               </button>
               <button
                 className={`tab ${activeTab === 'deepgram-flux' ? 'tab-active' : ''}`}
                 onClick={() => setActiveTab('deepgram-flux')}
               >
-                Deepgram Flux (v2)
+                Deepgram Flux
+              </button>
+              <button
+                className={`tab ${activeTab === 'gemini' ? 'tab-active' : ''}`}
+                onClick={() => setActiveTab('gemini')}
+              >
+                Gemini
               </button>
             </div>
 
             {/* Tab Content */}
             {activeTab === 'groq-whisper' && (
-              <GroqWhisperTab apiKey={groqApiKey} onApiKeyChange={setGroqApiKey} />
+              <STTTabContent provider="groq-whisper" apiKey={apiKeys.groq} />
             )}
-            {activeTab === 'deepgram-v1' && (
-              <DeepgramLiveTab apiKey={deepgramApiKey} onApiKeyChange={setDeepgramApiKey} version="v1" />
+            {activeTab === 'deepgram-nova' && (
+              <STTTabContent provider="deepgram-nova" apiKey={apiKeys.deepgram} />
             )}
             {activeTab === 'deepgram-flux' && (
-              <DeepgramLiveTab apiKey={deepgramApiKey} onApiKeyChange={setDeepgramApiKey} version="v2" />
+              <STTTabContent provider="deepgram-flux" apiKey={apiKeys.deepgram} />
+            )}
+            {activeTab === 'gemini' && (
+              <STTTabContent provider="gemini" apiKey={apiKeys.gemini} />
             )}
 
             {/* Info Section */}
             <div className="divider mt-8"></div>
             <div className="text-sm opacity-70">
-              <p className="mb-2">All requests are routed through Cloudflare AI Gateway.</p>
-              <p className="font-mono text-xs">Worker URL: {WORKER_URL}</p>
-              <p className="font-mono text-xs">Gateway: f107b4eef4a9b8eb99a9d1df6fac9ff2/brokenai</p>
+              <p className="mb-2">Powered by modular STT service</p>
+              <p>Supports integrated (mic + transcription) and headless (external audio) modes</p>
             </div>
           </div>
         </div>
@@ -80,126 +100,101 @@ export function SpeechToTextTest() {
   );
 }
 
-// Groq Whisper Tab Component
-function GroqWhisperTab({ apiKey, onApiKeyChange }: { apiKey: string; onApiKeyChange: (key: string) => void }) {
-  const [isRecording, setIsRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [transcript, setTranscript] = useState('');
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [error, setError] = useState('');
+interface STTTabContentProps {
+  provider: STTProvider;
+  apiKey: string;
+}
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+function STTTabContent({ provider, apiKey }: STTTabContentProps) {
+  const [chunkingStrategy, setChunkingStrategy] = useState<'simple' | 'vad'>('simple');
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+  // Memoize config to prevent infinite re-renders
+  const config = useMemo(() => ({
+    provider,
+    apiKey,
+    sampleRate: 16000,
+    encoding: 'linear16',
+    chunkingStrategy: (provider === 'groq-whisper' || provider === 'gemini') ? chunkingStrategy : undefined,
+  }), [provider, apiKey, chunkingStrategy]);
 
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+  const stt = useSTT({
+    config,
+    autoConnect: false, // Don't auto-connect - providers will be created when needed
+  });
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        setAudioBlob(blob);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-      setError('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to access microphone');
-    }
+  const providerLabels: Record<STTProvider, string> = {
+    'groq-whisper': 'Groq Whisper (Ultra-fast)',
+    'deepgram-nova': 'Deepgram Nova-3',
+    'deepgram-flux': 'Deepgram Flux (Conversational AI)',
+    'gemini': 'Gemini 2.5 Flash',
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
-
-  const transcribeAudio = async () => {
-    if (!audioBlob || !apiKey) {
-      setError('Please record audio and provide API key');
-      return;
-    }
-
-    setIsTranscribing(true);
-    setError('');
-    setTranscript('');
-
-    try {
-      const formData = new FormData();
-      formData.append('file', audioBlob, 'audio.webm');
-      formData.append('model', 'whisper-large-v3-turbo');
-      formData.append('apiKey', apiKey);
-
-      const response = await fetch(`${WORKER_URL}/api/groq-whisper`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Transcription failed');
-      }
-
-      const data = await response.json();
-      setTranscript(data.text || 'No transcript received');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setIsTranscribing(false);
-    }
+  const providerDescriptions: Record<STTProvider, string> = {
+    'groq-whisper': 'File-based transcription with ultra-low latency. Record audio and transcribe after stopping.',
+    'deepgram-nova': 'Real-time streaming speech-to-text with Nova-3 model.',
+    'deepgram-flux': 'Advanced conversational AI with turn detection and interruption handling.',
+    'gemini': 'Google Gemini AI with multimodal audio transcription. Supports VAD-based chunking.',
   };
 
   return (
     <div className="space-y-4">
-      {/* API Key */}
-      <div className="form-control">
-        <label className="label">
-          <span className="label-text font-semibold">Groq API Key</span>
-          {apiKey && <span className="label-text-alt text-success">✓ Loaded from settings</span>}
-        </label>
-        <input
-          type="password"
-          placeholder="Enter your Groq API Key"
-          className="input input-bordered w-full"
-          value={apiKey}
-          onChange={(e) => onApiKeyChange(e.target.value)}
-        />
-        {!apiKey && (
+      {/* API Key Status */}
+      {!apiKey && (
+        <div className="alert alert-warning">
+          <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span>
+            No API key configured. <a href="/settings" className="link link-primary">Go to Settings →</a>
+          </span>
+        </div>
+      )}
+
+      {/* Groq Whisper & Gemini Chunking Strategy */}
+      {(provider === 'groq-whisper' || provider === 'gemini') && (
+        <div className="form-control">
+          <label className="label">
+            <span className="label-text font-semibold">Chunking Strategy</span>
+          </label>
+          <select
+            className="select select-bordered w-full"
+            value={chunkingStrategy}
+            onChange={(e) => setChunkingStrategy(e.target.value as any)}
+            disabled={stt.isRecording}
+          >
+            <option value="simple">Simple (Send entire recording)</option>
+            <option value="vad">VAD-based (Voice Activity Detection, intelligent chunking)</option>
+          </select>
           <label className="label">
             <span className="label-text-alt">
-              <a href="/settings" className="link link-primary">Configure API key in Settings →</a>
+              {chunkingStrategy === 'simple' && 'Best for short recordings under 30 seconds'}
+              {chunkingStrategy === 'vad' && 'Uses ML to detect speech, sends only speech chunks (10s+ minimum)'}
             </span>
           </label>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Recording Controls */}
-      <div className="card bg-base-200">
-        <div className="card-body">
-          <h3 className="font-semibold mb-4">Audio Recording</h3>
-
-          <div className="flex gap-4">
-            {!isRecording ? (
-              <button className="btn btn-primary" onClick={startRecording}>
+      {/* Controls */}
+      <div className="flex gap-4">
+        {/* For Groq Whisper & Gemini - no connect needed, auto-connected */}
+        {(provider === 'groq-whisper' || provider === 'gemini') ? (
+          <>
+            {!stt.isRecording ? (
+              <button
+                className="btn btn-success"
+                onClick={stt.startRecording}
+                disabled={!apiKey}
+              >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
                 </svg>
                 Start Recording
               </button>
             ) : (
-              <button className="btn btn-error" onClick={stopRecording}>
+              <button
+                className="btn btn-error"
+                onClick={stt.stopRecording}
+              >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
                 </svg>
@@ -207,324 +202,114 @@ function GroqWhisperTab({ apiKey, onApiKeyChange }: { apiKey: string; onApiKeyCh
               </button>
             )}
 
-            {audioBlob && (
+            {stt.transcript && (
               <button
-                className={`btn btn-success ${isTranscribing ? 'loading' : ''}`}
-                onClick={transcribeAudio}
-                disabled={isTranscribing || !apiKey}
+                className="btn btn-ghost"
+                onClick={stt.clearTranscript}
               >
-                {isTranscribing ? 'Transcribing...' : 'Transcribe Audio'}
+                Clear
               </button>
             )}
-          </div>
+          </>
+        ) : (
+          /* For Deepgram - need to connect/disconnect */
+          <>
+            {!stt.isConnected ? (
+              <button
+                className="btn btn-primary"
+                onClick={stt.connect}
+                disabled={!apiKey}
+              >
+                Connect
+              </button>
+            ) : (
+              <>
+                {!stt.isRecording ? (
+                  <button
+                    className="btn btn-success"
+                    onClick={stt.startRecording}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
+                    </svg>
+                    Start Recording
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-error"
+                    onClick={stt.stopRecording}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
+                    </svg>
+                    Stop Recording
+                  </button>
+                )}
 
-          {isRecording && (
-            <div className="mt-4">
-              <span className="loading loading-bars loading-md text-error"></span>
-              <span className="ml-2 text-error">Recording...</span>
-            </div>
-          )}
+                <button
+                  className="btn btn-ghost"
+                  onClick={stt.disconnect}
+                >
+                  Disconnect
+                </button>
 
-          {audioBlob && !isRecording && (
-            <div className="mt-4 text-success">
-              ✓ Audio recorded successfully
-            </div>
-          )}
-        </div>
+                {stt.transcript && (
+                  <button
+                    className="btn btn-ghost"
+                    onClick={stt.clearTranscript}
+                  >
+                    Clear
+                  </button>
+                )}
+              </>
+            )}
+          </>
+        )}
       </div>
 
+      {/* Status Indicators */}
+      {stt.isRecording && (
+        <div className="flex items-center gap-2">
+          <span className="loading loading-bars loading-md text-success"></span>
+          <span className="text-success">
+            {(provider === 'groq-whisper' || provider === 'gemini') ? 'Recording...' : 'Recording and transcribing...'}
+          </span>
+        </div>
+      )}
+
+      {stt.isConnected && !stt.isRecording && provider !== 'groq-whisper' && provider !== 'gemini' && (
+        <div className="text-success">✓ Connected and ready</div>
+      )}
+
       {/* Error Display */}
-      {error && (
+      {stt.error && (
         <div className="alert alert-error">
           <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span>{error}</span>
+          <div>
+            <div className="font-bold">{stt.error.code}</div>
+            <div className="text-sm">{stt.error.message}</div>
+          </div>
         </div>
       )}
 
       {/* Transcript Display */}
-      {transcript && (
-        <div className="card bg-base-200">
-          <div className="card-body">
-            <h3 className="font-semibold mb-2">Transcript:</h3>
-            <p className="whitespace-pre-wrap">{transcript}</p>
-          </div>
-        </div>
-      )}
-
-      <div className="text-sm opacity-70">
-        <p className="font-semibold">Model: whisper-large-v3-turbo</p>
-        <p>Record audio and transcribe using Groq's ultra-fast Whisper API.</p>
-      </div>
-    </div>
-  );
-}
-
-// Deepgram Live Tab Component
-function DeepgramLiveTab({
-  apiKey,
-  onApiKeyChange,
-  version
-}: {
-  apiKey: string;
-  onApiKeyChange: (key: string) => void;
-  version: 'v1' | 'v2';
-}) {
-  const [isConnected, setIsConnected] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [transcript, setTranscript] = useState('');
-  const [error, setError] = useState('');
-
-  const websocketRef = useRef<WebSocket | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const isManualCloseRef = useRef(false);
-  const currentTurnIndexRef = useRef<number>(-1);
-  const finalTranscriptRef = useRef<string>('');
-
-  const connect = async () => {
-    if (!apiKey) {
-      setError('Please provide Deepgram API key');
-      return;
-    }
-
-    try {
-      setError('');
-      isManualCloseRef.current = false;
-
-      // Get microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-
-      // Connect directly to Deepgram API (not through worker)
-      // Using Sec-WebSocket-Protocol for authentication
-      const params = new URLSearchParams({
-        encoding: 'linear16',
-        sample_rate: '16000',
-      });
-
-      // Add model parameter
-      if (version === 'v2') {
-        // Flux v2 - no channels parameter
-        params.append('model', 'flux-general-en');
-      } else {
-        // For v1, use nova-3 model with channels
-        params.append('model', 'nova-3');
-        params.append('channels', '1');
-      }
-
-      const wsUrl = `wss://api.deepgram.com/${version}/listen?${params}`;
-
-      // Use Sec-WebSocket-Protocol header for authentication
-      const ws = new WebSocket(wsUrl, ['token', apiKey]);
-      websocketRef.current = ws;
-
-      ws.onopen = () => {
-        console.log('Deepgram WebSocket connected');
-        setIsConnected(true);
-        startStreaming(stream, ws);
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('Deepgram message:', data);
-
-          // Handle v1 response format
-          if (version === 'v1' && data.channel?.alternatives?.[0]?.transcript) {
-            const text = data.channel.alternatives[0].transcript;
-            if (text.trim()) {
-              setTranscript(prev => prev + ' ' + text);
-            }
-          }
-
-          // Handle v2 (Flux) response format - TurnInfo events
-          if (version === 'v2' && data.type === 'TurnInfo') {
-            const text = data.transcript;
-            const turnIndex = data.turn_index;
-
-            if (data.event === 'EndOfTurn' && text && text.trim()) {
-              // Final result - append to final transcript
-              finalTranscriptRef.current += (finalTranscriptRef.current ? ' ' : '') + text;
-              setTranscript(finalTranscriptRef.current);
-              currentTurnIndexRef.current = turnIndex;
-            } else if (data.event === 'Update' && text) {
-              // Interim result - show final + current interim
-              setTranscript(finalTranscriptRef.current + (finalTranscriptRef.current ? ' ' : '') + text);
-            }
-          }
-        } catch (err) {
-          console.error('Failed to parse message:', err);
-        }
-      };
-
-      ws.onerror = (err) => {
-        console.error('WebSocket error:', err);
-        setError(`WebSocket connection error (${version})`);
-      };
-
-      ws.onclose = (event) => {
-        console.log('Deepgram WebSocket closed:', event.code, event.reason);
-        setIsConnected(false);
-        setIsRecording(false);
-        // Only show error if it was not a manual close and not a normal close
-        if (!isManualCloseRef.current && event.code !== 1000) {
-          setError(`WebSocket closed unexpectedly: ${event.code} - ${event.reason || 'No reason provided'}`);
-        }
-        cleanup();
-      };
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect');
-    }
-  };
-
-  const startStreaming = (stream: MediaStream, ws: WebSocket) => {
-    // Create AudioContext to process raw audio data
-    const audioContext = new AudioContext({ sampleRate: 16000 });
-    const source = audioContext.createMediaStreamSource(stream);
-    const processor = audioContext.createScriptProcessor(4096, 1, 1);
-
-    source.connect(processor);
-    processor.connect(audioContext.destination);
-
-    processor.onaudioprocess = (e) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        const inputData = e.inputBuffer.getChannelData(0);
-
-        // Convert Float32Array to Int16Array (linear16 PCM)
-        const pcmData = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          const s = Math.max(-1, Math.min(1, inputData[i]));
-          pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-        }
-
-        ws.send(pcmData.buffer);
-      }
-    };
-
-    // Store reference for cleanup
-    (mediaRecorderRef.current as any) = { processor, audioContext, source };
-    setIsRecording(true);
-  };
-
-  const disconnect = () => {
-    isManualCloseRef.current = true;
-    cleanup();
-    setIsConnected(false);
-    setIsRecording(false);
-  };
-
-  const cleanup = () => {
-    if (mediaRecorderRef.current) {
-      const ref = mediaRecorderRef.current as any;
-      if (ref.processor) {
-        ref.processor.disconnect();
-        ref.source.disconnect();
-        ref.audioContext.close();
-      } else if (typeof ref.stop === 'function') {
-        ref.stop();
-      }
-      mediaRecorderRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (websocketRef.current) {
-      websocketRef.current.close();
-      websocketRef.current = null;
-    }
-  };
-
-  const clearTranscript = () => {
-    setTranscript('');
-    finalTranscriptRef.current = '';
-    currentTurnIndexRef.current = -1;
-  };
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => cleanup();
-  }, []);
-
-  return (
-    <div className="space-y-4">
-      {/* API Key */}
-      <div className="form-control">
-        <label className="label">
-          <span className="label-text font-semibold">Deepgram API Key</span>
-          {apiKey && <span className="label-text-alt text-success">✓ Loaded from settings</span>}
-        </label>
-        <input
-          type="password"
-          placeholder="Enter your Deepgram API Key"
-          className="input input-bordered w-full"
-          value={apiKey}
-          onChange={(e) => onApiKeyChange(e.target.value)}
-          disabled={isConnected}
-        />
-        {!apiKey && (
-          <label className="label">
-            <span className="label-text-alt">
-              <a href="/settings" className="link link-primary">Configure API key in Settings →</a>
-            </span>
-          </label>
-        )}
-      </div>
-
-      {/* Connection Controls */}
-      <div className="flex gap-4">
-        {!isConnected ? (
-          <button className="btn btn-primary" onClick={connect} disabled={!apiKey}>
-            Connect & Start
-          </button>
-        ) : (
-          <button className="btn btn-error" onClick={disconnect}>
-            Stop & Disconnect
-          </button>
-        )}
-
-        {transcript && (
-          <button className="btn btn-ghost" onClick={clearTranscript}>
-            Clear Transcript
-          </button>
-        )}
-      </div>
-
-      {/* Status */}
-      {isRecording && (
-        <div className="flex items-center gap-2">
-          <span className="loading loading-bars loading-md text-success"></span>
-          <span className="text-success">Live transcription active...</span>
-        </div>
-      )}
-
-      {/* Error Display */}
-      {error && (
-        <div className="alert alert-error">
-          <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* Live Transcript Display */}
       <div className="card bg-base-200">
         <div className="card-body">
-          <h3 className="font-semibold mb-2">Live Transcript:</h3>
+          <h3 className="font-semibold mb-2">Transcript:</h3>
           <div className="min-h-[200px] max-h-[400px] overflow-y-auto">
-            <p className="whitespace-pre-wrap">{transcript || 'Transcript will appear here...'}</p>
+            <p className="whitespace-pre-wrap">
+              {stt.transcript || 'Transcript will appear here...'}
+            </p>
           </div>
         </div>
       </div>
 
+      {/* Provider Info */}
       <div className="text-sm opacity-70">
-        <p className="font-semibold">
-          {version === 'v1' ? 'Deepgram Nova-3 (v1)' : 'Deepgram Flux (v2)'}
-        </p>
-        <p>Real-time streaming speech-to-text with direct WebSocket connection to Deepgram API.</p>
+        <p className="font-semibold">{providerLabels[provider]}</p>
+        <p>{providerDescriptions[provider]}</p>
       </div>
     </div>
   );

@@ -1,15 +1,8 @@
 /**
- * Groq Whisper STT Provider
+ * Gemini STT Provider
  *
- * Ultra-fast Whisper API with intelligent chunking
- * Supports 2 chunking strategies:
- *   1. Simple: Send entire recording (default)
- *   2. VAD-based: Split using Voice Activity Detection (@ricky0123/vad-web)
- *
- * Constraints:
- *   - Optimal: 10-30 seconds per chunk
- *   - Max: 3 minutes per chunk (hard limit)
- *   - Never cut during speech
+ * Uses Google Gemini 2.5 Flash API for audio transcription via Cloudflare AI Gateway
+ * Supports VAD-based chunking (same as Groq Whisper)
  */
 
 import type {
@@ -21,13 +14,11 @@ import type {
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
 
-// Chunking configuration
+// Chunking configuration (same as Groq)
 const CHUNK_MIN_DURATION = 10; // seconds
 
-export type ChunkingStrategy = 'simple' | 'vad';
-
-export interface GroqWhisperConfig extends STTConfig {
-  chunkingStrategy?: ChunkingStrategy;
+export interface GeminiSTTConfig extends STTConfig {
+  chunkingStrategy?: 'simple' | 'vad';
 }
 
 interface AudioChunk {
@@ -37,27 +28,27 @@ interface AudioChunk {
   duration: number;
 }
 
-export class GroqWhisperProvider implements ISTTProvider {
-  private config: GroqWhisperConfig;
+export class GeminiProvider implements ISTTProvider {
+  private config: GeminiSTTConfig;
   private callbacks: STTServiceCallbacks = {};
+  private connected = false;
+  private recording = false;
   private stream: MediaStream | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
-  private connected = false;
-  private recording = false;
-  private chunkingStrategy: ChunkingStrategy;
+  private chunkingStrategy: 'simple' | 'vad';
 
   // For VAD-based chunking
   private vad: any = null;
   private vadAudioChunks: Float32Array[] = [];
-  private vadAccumulatedDuration = 0; // Total duration of accumulated speech in seconds
+  private vadAccumulatedDuration = 0;
 
   // Accumulated transcript
   private fullTranscript = '';
   private pendingChunks: AudioChunk[] = [];
   private isProcessing = false;
 
-  constructor(config: GroqWhisperConfig) {
+  constructor(config: GeminiSTTConfig) {
     this.config = config;
     this.chunkingStrategy = config.chunkingStrategy || 'simple';
   }
@@ -84,39 +75,30 @@ export class GroqWhisperProvider implements ISTTProvider {
   }
 
   async startRecording(): Promise<void> {
-    if (!this.connected || this.recording) {
-      throw new Error('Cannot start recording: not connected or already recording');
+    if (!this.connected) {
+      throw new Error('Not connected');
     }
 
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      this.fullTranscript = '';
-      this.pendingChunks = [];
+    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    this.fullTranscript = '';
+    this.pendingChunks = [];
 
-      // Initialize based on chunking strategy
-      switch (this.chunkingStrategy) {
-        case 'simple':
-          await this.startSimpleRecording();
-          break;
-        case 'vad':
-          await this.startVADBasedRecording();
-          break;
-      }
-
-      this.recording = true;
-      this.callbacks.onStatusChange?.({
-        connected: true,
-        recording: true,
-        provider: this.config.provider,
-      });
-    } catch (err) {
-      this.callbacks.onError?.({
-        code: 'MICROPHONE_ERROR',
-        message: err instanceof Error ? err.message : 'Failed to access microphone',
-        provider: this.config.provider,
-      });
-      throw err;
+    // Initialize based on chunking strategy
+    switch (this.chunkingStrategy) {
+      case 'simple':
+        await this.startSimpleRecording();
+        break;
+      case 'vad':
+        await this.startVADBasedRecording();
+        break;
     }
+
+    this.recording = true;
+    this.callbacks.onStatusChange?.({
+      connected: true,
+      recording: true,
+      provider: this.config.provider,
+    });
   }
 
   stopRecording(): void {
@@ -127,7 +109,7 @@ export class GroqWhisperProvider implements ISTTProvider {
 
     // For VAD: send any remaining accumulated chunks
     if (this.chunkingStrategy === 'vad' && this.vadAudioChunks.length > 0) {
-      console.log('[VAD] Sending remaining chunks on stop:', this.vadAccumulatedDuration.toFixed(2), 'seconds');
+      console.log('[Gemini] Sending remaining chunks on stop:', this.vadAccumulatedDuration.toFixed(2), 'seconds');
       this.processVADChunks();
     }
 
@@ -141,13 +123,8 @@ export class GroqWhisperProvider implements ISTTProvider {
     });
   }
 
-  async sendAudio(audioData: ArrayBuffer | Blob): Promise<void> {
-    if (!this.connected) {
-      throw new Error('Cannot send audio: not connected');
-    }
-
-    const blob = audioData instanceof Blob ? audioData : new Blob([audioData]);
-    await this.transcribeAudio(blob);
+  sendAudio(_audioData: ArrayBuffer | Blob): void {
+    throw new Error('Gemini STT does not support external audio input');
   }
 
   isConnected(): boolean {
@@ -163,7 +140,7 @@ export class GroqWhisperProvider implements ISTTProvider {
   }
 
   // ========================================================================
-  // Strategy 1: Simple - Send entire recording
+  // Strategy 1: Simple recording (send entire recording)
   // ========================================================================
 
   private async startSimpleRecording(): Promise<void> {
@@ -178,12 +155,13 @@ export class GroqWhisperProvider implements ISTTProvider {
 
     this.mediaRecorder.onstop = async () => {
       const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
-      await this.transcribeAudio(blob);
       this.audioChunks = [];
-      this.cleanupAudio();
+
+      // Convert to base64 and transcribe
+      await this.transcribeAudio(blob, true);
     };
 
-    this.mediaRecorder.start();
+    this.mediaRecorder.start(100);
   }
 
   // ========================================================================
@@ -191,33 +169,33 @@ export class GroqWhisperProvider implements ISTTProvider {
   // ========================================================================
 
   private async startVADBasedRecording(): Promise<void> {
-    // Check if VAD is available (loaded from CDN in index.html)
+    // Check if VAD is available
     if (typeof (window as any).vad === 'undefined') {
-      console.warn('VAD not available, falling back to simple chunking');
+      console.warn('[Gemini] VAD not available, falling back to simple');
       return this.startSimpleRecording();
     }
 
     // Initialize VAD
     this.vad = await (window as any).vad.MicVAD.new({
       onSpeechStart: () => {
-        console.log('Speech started');
+        console.log('[Gemini] Speech started');
       },
       onSpeechEnd: async (audio: Float32Array) => {
         const chunkDuration = audio.length / 16000;
-        console.log('[VAD] Speech ended, duration:', chunkDuration.toFixed(2), 'seconds');
+        console.log('[Gemini] Speech ended, duration:', chunkDuration.toFixed(2), 'seconds');
 
         // Accumulate this speech chunk (silence is discarded)
         this.vadAudioChunks.push(audio);
         this.vadAccumulatedDuration += chunkDuration;
 
-        console.log('[VAD] Total accumulated speech:', this.vadAccumulatedDuration.toFixed(2), 'seconds');
+        console.log('[Gemini] Total accumulated speech:', this.vadAccumulatedDuration.toFixed(2), 'seconds');
 
         // Send if we have at least 10 seconds of speech and silence continues
         if (this.vadAccumulatedDuration >= CHUNK_MIN_DURATION) {
-          console.log('[VAD] Sending accumulated speech chunks to API');
+          console.log('[Gemini] Sending accumulated speech chunks to API');
           await this.processVADChunks();
         } else {
-          console.log('[VAD] Waiting for more speech (need', CHUNK_MIN_DURATION, 'seconds minimum)');
+          console.log('[Gemini] Waiting for more speech (need', CHUNK_MIN_DURATION, 'seconds minimum)');
         }
       },
     });
@@ -237,7 +215,7 @@ export class GroqWhisperProvider implements ISTTProvider {
       offset += chunk.length;
     }
 
-    console.log('[VAD] Combined', this.vadAudioChunks.length, 'speech chunks into', this.vadAccumulatedDuration.toFixed(2), 'seconds');
+    console.log('[Gemini] Combined', this.vadAudioChunks.length, 'speech chunks into', this.vadAccumulatedDuration.toFixed(2), 'seconds');
 
     // Convert to WAV
     const blob = this.float32ToWav(combined, 16000);
@@ -275,20 +253,21 @@ export class GroqWhisperProvider implements ISTTProvider {
     writeString(36, 'data');
     view.setUint32(40, samples.length * 2, true);
 
-    // Convert samples
-    for (let i = 0; i < samples.length; i++) {
+    // PCM samples
+    let offset = 44;
+    for (let i = 0; i < samples.length; i++, offset += 2) {
       const s = Math.max(-1, Math.min(1, samples[i]));
-      view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
     }
 
     return new Blob([buffer], { type: 'audio/wav' });
   }
 
   // ========================================================================
-  // Transcription Queue Management
+  // Transcription
   // ========================================================================
 
-  private async queueTranscription(blob: Blob): Promise<void> {
+  private queueTranscription(blob: Blob): void {
     const chunk: AudioChunk = {
       blob,
       startTime: 0,
@@ -297,53 +276,52 @@ export class GroqWhisperProvider implements ISTTProvider {
     };
 
     this.pendingChunks.push(chunk);
-
-    // Process queue if not already processing
-    if (!this.isProcessing) {
-      this.processTranscriptionQueue();
-    }
+    this.processQueue();
   }
 
-  private async processTranscriptionQueue(): Promise<void> {
-    if (this.pendingChunks.length === 0) {
-      this.isProcessing = false;
-      return;
-    }
+  private async processQueue(): Promise<void> {
+    if (this.isProcessing || this.pendingChunks.length === 0) return;
 
     this.isProcessing = true;
     const chunk = this.pendingChunks.shift()!;
 
     try {
-      await this.transcribeAudio(chunk.blob, false); // Don't send final event
+      await this.transcribeAudio(chunk.blob, false);
     } catch (err) {
-      console.error('Failed to transcribe chunk:', err);
+      console.error('[Gemini] Transcription error:', err);
     }
 
-    // Process next chunk
-    this.processTranscriptionQueue();
+    this.isProcessing = false;
+    this.processQueue();
   }
-
-  // ========================================================================
-  // Transcription
-  // ========================================================================
 
   private async transcribeAudio(audioBlob: Blob, isFinal = true): Promise<void> {
     try {
-      console.log('[GroqWhisper] Transcribing audio blob:', {
+      console.log('[Gemini] Transcribing audio blob:', {
         size: audioBlob.size,
         type: audioBlob.type,
         hasApiKey: !!this.config.apiKey,
-        apiKeyLength: this.config.apiKey?.length
       });
 
-      const formData = new FormData();
-      formData.append('file', audioBlob, 'audio.webm');
-      formData.append('model', this.config.model || 'whisper-large-v3-turbo');
-      formData.append('apiKey', this.config.apiKey);
+      // Convert blob to base64
+      const base64Audio = await this.blobToBase64(audioBlob);
 
-      const response = await fetch(`${WORKER_URL}/api/groq-whisper`, {
+      // Call worker API (using simple format that gets transformed to Gemini native)
+      const response = await fetch(`${WORKER_URL}/api/cf-gateway`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          apiKey: this.config.apiKey,
+          model: `google/${this.config.model || 'gemini-2.5-flash'}`,
+          system: 'Transcribe this audio accurately. Only return the transcription text, nothing else.',
+          audio: {
+            mime_type: 'audio/wav',
+            data: base64Audio,
+          },
+          stream: false,
+        }),
       });
 
       if (!response.ok) {
@@ -352,13 +330,13 @@ export class GroqWhisperProvider implements ISTTProvider {
       }
 
       const data = await response.json();
-      const text = data.text || '';
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
       if (text.trim()) {
         // Accumulate to full transcript
         this.fullTranscript += (this.fullTranscript ? ' ' : '') + text.trim();
 
-        // Send interim result (accumulated so far)
+        // Send accumulated result
         this.callbacks.onTranscript?.({
           text: this.fullTranscript,
           isFinal,
@@ -374,6 +352,18 @@ export class GroqWhisperProvider implements ISTTProvider {
     }
   }
 
+  private async blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
   // ========================================================================
   // Cleanup
   // ========================================================================
@@ -381,7 +371,6 @@ export class GroqWhisperProvider implements ISTTProvider {
   private cleanupChunkingResources(): void {
     // VAD cleanup
     if (this.vad) {
-      // VAD doesn't have a destroy method, just set to null
       this.vad = null;
     }
     this.vadAudioChunks = [];
@@ -401,7 +390,7 @@ export class GroqWhisperProvider implements ISTTProvider {
     this.cleanupChunkingResources();
     this.cleanupAudio();
     this.recording = false;
+    this.fullTranscript = '';
     this.pendingChunks = [];
-    this.isProcessing = false;
   }
 }

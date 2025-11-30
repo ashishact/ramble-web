@@ -24,7 +24,7 @@ export class DeepgramProvider implements ISTTProvider {
   private isManualClose = false;
   private finalTranscript = '';
   private version: 'v1' | 'v2';
-  private keepaliveInterval: NodeJS.Timeout | null = null;
+  private keepaliveInterval: number | null = null;
 
   constructor(config: STTConfig) {
     this.config = config;

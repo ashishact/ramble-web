@@ -4,7 +4,7 @@
  * Core type definitions for the STT module
  */
 
-export type STTProvider = 'groq-whisper' | 'deepgram-nova' | 'deepgram-flux';
+export type STTProvider = 'groq-whisper' | 'deepgram-nova' | 'deepgram-flux' | 'gemini';
 
 export interface STTConfig {
   provider: STTProvider;
