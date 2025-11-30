@@ -1,87 +1,53 @@
-import { useRef, useCallback } from 'react';
+/**
+ * Audio Player Hook - plays PCM audio from Gemini
+ */
 
-export const useAudioPlayer = () => {
+import { useRef, useCallback, useState } from 'react';
+
+interface UseAudioPlayerOptions {
+  sampleRate?: number;
+  onPlaybackStart?: () => void;
+  onPlaybackEnd?: () => void;
+}
+
+interface UseAudioPlayerReturn {
+  isPlaying: boolean;
+  playAudio: (pcmData: ArrayBuffer) => void;
+  stop: () => void;
+  clearBuffer: () => void;
+}
+
+export function useAudioPlayer(options: UseAudioPlayerOptions = {}): UseAudioPlayerReturn {
+  const { sampleRate = 24000, onPlaybackStart, onPlaybackEnd } = options;
+
+  const [isPlaying, setIsPlaying] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioQueueRef = useRef<AudioBuffer[]>([]);
-  const pausedQueueRef = useRef<AudioBuffer[]>([]); // Store paused audio
   const isPlayingRef = useRef(false);
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const isInterruptedRef = useRef(false);
-  const currentSessionIdRef = useRef<string | null>(null); // Track current response session
 
   const initAudioContext = useCallback(() => {
     if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext();
+      audioContextRef.current = new AudioContext({ sampleRate });
     }
     return audioContextRef.current;
-  }, []);
-
-  const playAudio = useCallback(async (base64Audio: string, sessionId?: string) => {
-    try {
-      // Gemini: Use Web Audio API with PCM conversion
-      const audioContext = initAudioContext();
-
-      // Decode base64 to ArrayBuffer
-      const binaryString = atob(base64Audio);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      // Manual PCM conversion for Gemini
-      const evenLength = bytes.length - (bytes.length % 2);
-      const evenBytes = bytes.slice(0, evenLength);
-      const pcmData = new Int16Array(evenBytes.buffer, evenBytes.byteOffset, evenLength / 2);
-      const floatData = new Float32Array(pcmData.length);
-      for (let i = 0; i < pcmData.length; i++) {
-        floatData[i] = pcmData[i] / (pcmData[i] < 0 ? 0x8000 : 0x7fff);
-      }
-      const audioBuffer = audioContext.createBuffer(1, floatData.length, 24000);
-      audioBuffer.copyToChannel(floatData, 0);
-
-      // Check if this is a new response session (different session ID)
-      const isNewSession = sessionId && sessionId !== currentSessionIdRef.current;
-
-      if (isNewSession) {
-        console.log(`[Audio] New response session: ${sessionId} (previous: ${currentSessionIdRef.current})`);
-        console.log('[Audio] Clearing old audio queue for new response');
-
-        // Clear old audio from previous response
-        audioQueueRef.current = [];
-        pausedQueueRef.current = [];
-        isInterruptedRef.current = false;
-
-        // Update session ID
-        currentSessionIdRef.current = sessionId;
-      }
-
-      // Add to queue
-      audioQueueRef.current.push(audioBuffer);
-
-      // Start playback if not already playing and not interrupted
-      if (!isPlayingRef.current && !isInterruptedRef.current) {
-        playNextInQueue();
-      }
-    } catch (error) {
-      console.error('Error playing audio:', error);
-    }
-  }, []);
+  }, [sampleRate]);
 
   const playNextInQueue = useCallback(() => {
     if (audioQueueRef.current.length === 0) {
       isPlayingRef.current = false;
+      setIsPlaying(false);
+      onPlaybackEnd?.();
       return;
     }
 
-    if (isInterruptedRef.current) {
-      // User is speaking, don't play
-      return;
-    }
+    const audioContext = audioContextRef.current;
+    if (!audioContext) return;
 
     isPlayingRef.current = true;
-    const audioContext = audioContextRef.current!;
-    const buffer = audioQueueRef.current.shift()!;
+    setIsPlaying(true);
 
+    const buffer = audioQueueRef.current.shift()!;
     const source = audioContext.createBufferSource();
     source.buffer = buffer;
     source.connect(audioContext.destination);
@@ -93,58 +59,67 @@ export const useAudioPlayer = () => {
     };
 
     source.start();
-  }, []);
+  }, [onPlaybackEnd]);
 
-  const pauseAudio = useCallback(() => {
-    console.log('[Audio] Pausing audio - user is speaking');
+  const playAudio = useCallback((pcmData: ArrayBuffer) => {
+    try {
+      const audioContext = initAudioContext();
 
-    // Stop current playing audio
+      // Resume if suspended (needed after user interaction)
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+
+      // Convert PCM16 to Float32
+      // Ensure even length for Int16Array
+      const evenLength = pcmData.byteLength - (pcmData.byteLength % 2);
+      const int16Array = new Int16Array(pcmData, 0, evenLength / 2);
+      const float32Array = new Float32Array(int16Array.length);
+
+      for (let i = 0; i < int16Array.length; i++) {
+        float32Array[i] = int16Array[i] / (int16Array[i] < 0 ? 0x8000 : 0x7fff);
+      }
+
+      // Create audio buffer
+      const audioBuffer = audioContext.createBuffer(1, float32Array.length, sampleRate);
+      audioBuffer.copyToChannel(float32Array, 0);
+
+      // Add to queue
+      audioQueueRef.current.push(audioBuffer);
+
+      // Start playback if not already playing
+      if (!isPlayingRef.current) {
+        onPlaybackStart?.();
+        playNextInQueue();
+      }
+    } catch (error) {
+      console.error('[AudioPlayer] Error:', error);
+    }
+  }, [initAudioContext, sampleRate, playNextInQueue, onPlaybackStart]);
+
+  const stop = useCallback(() => {
     if (currentSourceRef.current) {
-      currentSourceRef.current.stop();
+      try {
+        currentSourceRef.current.stop();
+      } catch {
+        // Ignore
+      }
       currentSourceRef.current = null;
     }
-
-    // Move current queue to paused queue
-    pausedQueueRef.current = [...audioQueueRef.current];
     audioQueueRef.current = [];
     isPlayingRef.current = false;
-    isInterruptedRef.current = true;
-  }, []);
+    setIsPlaying(false);
+    onPlaybackEnd?.();
+  }, [onPlaybackEnd]);
 
-  const resumeAudio = useCallback(() => {
-    console.log('[Audio] Resuming audio - user stopped speaking');
-
-    isInterruptedRef.current = false;
-
-    // Restore paused queue if no new audio has arrived
-    if (audioQueueRef.current.length === 0 && pausedQueueRef.current.length > 0) {
-      console.log('[Audio] Restoring paused audio queue');
-      audioQueueRef.current = [...pausedQueueRef.current];
-      pausedQueueRef.current = [];
-    }
-
-    // Start playing
-    if (!isPlayingRef.current && audioQueueRef.current.length > 0) {
-      playNextInQueue();
-    }
-  }, []);
-
-  const stopAudio = useCallback(() => {
-    if (currentSourceRef.current) {
-      currentSourceRef.current.stop();
-      currentSourceRef.current = null;
-    }
+  const clearBuffer = useCallback(() => {
     audioQueueRef.current = [];
-    pausedQueueRef.current = [];
-    isPlayingRef.current = false;
-    isInterruptedRef.current = false;
-    currentSessionIdRef.current = null;
   }, []);
 
   return {
+    isPlaying,
     playAudio,
-    stopAudio,
-    pauseAudio,
-    resumeAudio,
+    stop,
+    clearBuffer,
   };
-};
+}

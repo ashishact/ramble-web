@@ -4,7 +4,7 @@
 import { NodeCard } from './NodeCard';
 import { SearchBar } from './SearchBar';
 import { RelatedNodesList } from './RelatedNodesList';
-import type { KnowledgeNode } from './types';
+import type { KnowledgeNode } from '../../backend/types';
 
 interface NodeInfoPanelProps {
   currentNode: KnowledgeNode | null;

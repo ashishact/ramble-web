@@ -1,5 +1,11 @@
 import { useState, useEffect } from 'react';
-import type { RelatedNodesListProps, RelatedKnowledgeNode } from './types';
+import { fetchRelatedNodes } from '../../backend/api';
+import type { RelatedKnowledgeNode } from '../../backend/types';
+
+interface RelatedNodesListProps {
+  nodeId: number;
+  onNodeClick: (nodeId: number) => void;
+}
 
 export function RelatedNodesList({ nodeId, onNodeClick }: RelatedNodesListProps) {
   const [relatedNodes, setRelatedNodes] = useState<RelatedKnowledgeNode[]>([]);
@@ -7,7 +13,7 @@ export function RelatedNodesList({ nodeId, onNodeClick }: RelatedNodesListProps)
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchRelatedNodes = async () => {
+    const loadRelatedNodes = async () => {
       if (!nodeId) {
         setRelatedNodes([]);
         return;
@@ -17,12 +23,7 @@ export function RelatedNodesList({ nodeId, onNodeClick }: RelatedNodesListProps)
       setError(null);
 
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-        const response = await fetch(`${apiUrl}/knowledge/nodes/${nodeId}/related`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch related nodes');
-        }
-        const data = await response.json();
+        const data = await fetchRelatedNodes(nodeId);
         setRelatedNodes(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
@@ -32,7 +33,7 @@ export function RelatedNodesList({ nodeId, onNodeClick }: RelatedNodesListProps)
       }
     };
 
-    fetchRelatedNodes();
+    loadRelatedNodes();
   }, [nodeId]);
 
   if (loading) {

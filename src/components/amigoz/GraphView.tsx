@@ -18,7 +18,8 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
-import type { KnowledgeNode } from './types';
+import { selectNode, fetchNodeRelationships } from '../../backend/api';
+import type { KnowledgeNode } from '../../backend/types';
 import type { GraphNode, GraphLink } from './graph/types';
 import {
   OUTER_RING_GAP,
@@ -529,93 +530,82 @@ export function GraphView({ currentNode, onNodeClick, relationshipChangeKey }: G
     }
 
     async function handleNodeClick(nodeId: number) {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-
-      // Update backend's current node
+      // Update current node in store
       try {
-        await fetch(`${apiUrl}/knowledge/current-node`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ nodeId }),
-        });
+        await selectNode(nodeId);
       } catch (err) {
         console.error('Error updating current node:', err);
       }
 
       // Fetch and add relationships
       try {
-        const response = await fetch(`${apiUrl}/knowledge/nodes/${nodeId}/relationships`);
-        if (response.ok) {
-          const relationships = await response.json();
+        const relationships = await fetchNodeRelationships(nodeId);
 
-          if (relationships.length > 0) {
-            const clickedNode = allNodesMapRef.current.get(nodeId);
-            const existingConnectedNodes = Array.from(allNodesMapRef.current.values())
-              .filter(n => n.x !== undefined && n.y !== undefined);
+        if (relationships.length > 0) {
+          const clickedNode = allNodesMapRef.current.get(nodeId);
+          const existingConnectedNodes = Array.from(allNodesMapRef.current.values())
+            .filter(n => n.x !== undefined && n.y !== undefined);
 
-            // Collect new nodes to add
-            const newNodes: Array<{ id: number; title: string; childCount: number }> = [];
+          // Collect new nodes to add
+          const newNodes: Array<{ id: number; title: string; childCount: number }> = [];
 
-            relationships.forEach((rel: any) => {
-              if (!allNodesMapRef.current.has(rel.sourceNodeId)) {
-                newNodes.push({
-                  id: rel.sourceNodeId,
-                  title: rel.source_title || `Node ${rel.sourceNodeId}`,
-                  childCount: rel.source_child_count || 0,
-                });
-              } else {
-                const existingNode = allNodesMapRef.current.get(rel.sourceNodeId);
-                if (existingNode) {
-                  existingNode.childCount = rel.source_child_count || 0;
-                }
-              }
-
-              if (!allNodesMapRef.current.has(rel.targetNodeId)) {
-                newNodes.push({
-                  id: rel.targetNodeId,
-                  title: rel.target_title || `Node ${rel.targetNodeId}`,
-                  childCount: rel.target_child_count || 0,
-                });
-              } else {
-                const existingNode = allNodesMapRef.current.get(rel.targetNodeId);
-                if (existingNode) {
-                  existingNode.childCount = rel.target_child_count || 0;
-                }
-              }
-            });
-
-            // Add new nodes with smart angular distribution
-            newNodes.forEach((newNode, index) => {
-              const position = calculateInitialPosition(
-                clickedNode,
-                existingConnectedNodes,
-                index,
-                newNodes.length
-              );
-
-              allNodesMapRef.current.set(newNode.id, {
-                id: newNode.id,
-                label: newNode.title,
-                childCount: newNode.childCount,
-                x: position.x,
-                y: position.y,
+          relationships.forEach((rel: any) => {
+            if (!allNodesMapRef.current.has(rel.sourceNodeId)) {
+              newNodes.push({
+                id: rel.sourceNodeId,
+                title: rel.source_title || `Node ${rel.sourceNodeId}`,
+                childCount: rel.source_child_count || 0,
               });
-            });
-
-            // Add edges
-            relationships.forEach((rel: any) => {
-              const edgeId = `${rel.sourceNodeId}-${rel.targetNodeId}`;
-              if (!allEdgesMapRef.current.has(edgeId)) {
-                allEdgesMapRef.current.set(edgeId, {
-                  id: edgeId,
-                  source: rel.sourceNodeId,
-                  target: rel.targetNodeId,
-                });
+            } else {
+              const existingNode = allNodesMapRef.current.get(rel.sourceNodeId);
+              if (existingNode) {
+                existingNode.childCount = rel.source_child_count || 0;
               }
+            }
+
+            if (!allNodesMapRef.current.has(rel.targetNodeId)) {
+              newNodes.push({
+                id: rel.targetNodeId,
+                title: rel.target_title || `Node ${rel.targetNodeId}`,
+                childCount: rel.target_child_count || 0,
+              });
+            } else {
+              const existingNode = allNodesMapRef.current.get(rel.targetNodeId);
+              if (existingNode) {
+                existingNode.childCount = rel.target_child_count || 0;
+              }
+            }
+          });
+
+          // Add new nodes with smart angular distribution
+          newNodes.forEach((newNode, index) => {
+            const position = calculateInitialPosition(
+              clickedNode,
+              existingConnectedNodes,
+              index,
+              newNodes.length
+            );
+
+            allNodesMapRef.current.set(newNode.id, {
+              id: newNode.id,
+              label: newNode.title,
+              childCount: newNode.childCount,
+              x: position.x,
+              y: position.y,
             });
-          }
+          });
+
+          // Add edges
+          relationships.forEach((rel: any) => {
+            const edgeId = `${rel.sourceNodeId}-${rel.targetNodeId}`;
+            if (!allEdgesMapRef.current.has(edgeId)) {
+              allEdgesMapRef.current.set(edgeId, {
+                id: edgeId,
+                source: rel.sourceNodeId,
+                target: rel.targetNodeId,
+              });
+            }
+          });
         }
       } catch (err) {
         console.error('Error fetching relationships:', err);
@@ -671,15 +661,7 @@ export function GraphView({ currentNode, onNodeClick, relationshipChangeKey }: G
     // Fetch initial relationships
     const fetchInitialRelationships = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-        const response = await fetch(`${apiUrl}/knowledge/nodes/${currentNode.id}/relationships`);
-
-        if (!response.ok) {
-          console.log('[GraphView] Failed to fetch relationships:', response.status);
-          return;
-        }
-
-        const relationships = await response.json();
+        const relationships = await fetchNodeRelationships(currentNode.id);
         console.log('[GraphView] Initial relationships fetched:', relationships.length);
 
         if (relationships.length === 0) {

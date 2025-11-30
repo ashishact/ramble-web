@@ -1,4 +1,9 @@
-import type { NodeCardProps } from './types';
+import type { KnowledgeNode } from '../../backend/types';
+
+interface NodeCardProps {
+  node: KnowledgeNode | null;
+  onNodeClick?: (nodeId: number) => void;
+}
 
 export function NodeCard({ node }: NodeCardProps) {
   if (!node) {

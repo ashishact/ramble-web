@@ -6,6 +6,7 @@ import { ViewToggle } from './ViewToggle';
 import { NodeInfoPanel } from './NodeInfoPanel';
 import { RightSidebar } from '../RightSidebar';
 import { useCurrentNode } from './hooks/useCurrentNode';
+import type { ObserverMessage } from '../../services/observerAgentAI';
 
 type ViewMode = 'graph' | 'semantic';
 
@@ -20,6 +21,8 @@ interface AmigozViewProps {
   isConnected: boolean;
   customEvents: { event: string; data: any } | null;
   transcripts: TranscriptMessage[];
+  observerMessages?: ObserverMessage[];
+  observerStatus?: { status: string; description: string };
   isRecording: boolean;
   onSendText: (text: string) => void;
   onToggleRecording: () => void;
@@ -28,16 +31,20 @@ interface AmigozViewProps {
     lastSpeechTime: number;
     lastGeminiTime: number;
   };
+  onOpenSettings?: () => void;
 }
 
 export function AmigozView({
   customEvents,
   transcripts,
+  observerMessages,
+  observerStatus,
   isConnected,
   isRecording,
   onSendText,
   onToggleRecording,
-  vadStatus
+  vadStatus,
+  onOpenSettings
 }: AmigozViewProps) {
   // Manage current node state
   const { currentNode, relationshipVersion, loadNodeById } = useCurrentNode({ customEvents });
@@ -93,11 +100,14 @@ export function AmigozView({
       <Panel defaultSize={20} minSize={15}>
         <RightSidebar
           transcripts={transcripts}
+          observerMessages={observerMessages}
+          observerStatus={observerStatus}
           isConnected={isConnected}
           isRecording={isRecording}
           onSendText={onSendText}
           onToggleRecording={onToggleRecording}
           vadStatus={vadStatus}
+          onOpenSettings={onOpenSettings}
         />
       </Panel>
     </PanelGroup>

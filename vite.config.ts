@@ -8,4 +8,6 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  // Enable SPA fallback for client-side routing
+  appType: 'spa',
 })

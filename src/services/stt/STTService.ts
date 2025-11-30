@@ -1,0 +1,193 @@
+/**
+ * STT Service (Singleton)
+ *
+ * Main entry point for Speech-to-Text functionality
+ * Provides a unified interface for all STT providers
+ *
+ * This service lives outside React and is shared across all components
+ */
+
+import type {
+  ISTTProvider,
+  STTConfig,
+  STTServiceCallbacks,
+  STTProvider,
+} from './types';
+import { DeepgramProvider } from './providers/DeepgramProvider';
+import { GroqWhisperProvider } from './providers/GroqWhisperProvider';
+
+export class STTService {
+  private static instance: STTService | null = null;
+  private provider: ISTTProvider | null = null;
+  private currentCallbacks: STTServiceCallbacks | null = null;
+  private currentConfig: STTConfig | null = null;
+
+  private constructor() {
+    // Private constructor for singleton
+  }
+
+  /**
+   * Get the singleton instance
+   */
+  static getInstance(): STTService {
+    if (!STTService.instance) {
+      STTService.instance = new STTService();
+    }
+    return STTService.instance;
+  }
+
+  /**
+   * Check if config has meaningfully changed
+   */
+  private configChanged(newConfig: STTConfig): boolean {
+    if (!this.currentConfig) return true;
+
+    // Check if provider changed
+    if (this.currentConfig.provider !== newConfig.provider) return true;
+
+    // Check if apiKey changed (important!)
+    if (this.currentConfig.apiKey !== newConfig.apiKey) return true;
+
+    // Check other important config changes
+    if (this.currentConfig.model !== newConfig.model) return true;
+    if (this.currentConfig.chunkingStrategy !== newConfig.chunkingStrategy) return true;
+
+    return false;
+  }
+
+  /**
+   * Create and connect to an STT provider
+   */
+  async connect(config: STTConfig, callbacks: STTServiceCallbacks): Promise<void> {
+    // Store callbacks
+    this.currentCallbacks = callbacks;
+
+    // If already connected with same provider and config, just update callbacks
+    if (this.provider && this.provider.getProvider() === config.provider &&
+        this.provider.isConnected() && !this.configChanged(config)) {
+      // Provider already connected with same config, no need to reconnect
+      return;
+    }
+
+    // Cleanup any existing provider
+    if (this.provider) {
+      this.provider.disconnect();
+    }
+
+    // Store new config
+    this.currentConfig = config;
+
+    // Create provider instance
+    this.provider = this.createProvider(config);
+
+    // Connect
+    await this.provider.connect(callbacks);
+  }
+
+  /**
+   * Update callbacks without reconnecting
+   */
+  updateCallbacks(callbacks: STTServiceCallbacks): void {
+    this.currentCallbacks = callbacks;
+    // Note: Providers will continue using the original callbacks passed to connect()
+    // This is mainly for tracking purposes
+  }
+
+  /**
+   * Disconnect from the current provider
+   */
+  disconnect(): void {
+    if (this.provider) {
+      this.provider.disconnect();
+      this.provider = null;
+    }
+    this.currentCallbacks = null;
+  }
+
+  /**
+   * Start recording from microphone
+   * (Integrated mode: microphone + transcription)
+   */
+  async startRecording(): Promise<void> {
+    if (!this.provider) {
+      throw new Error('No provider connected. Call connect() first or the provider will be created automatically.');
+    }
+    await this.provider.startRecording();
+  }
+
+  /**
+   * Ensure provider exists with current config, create if needed
+   */
+  async ensureProvider(config: STTConfig, callbacks: STTServiceCallbacks): Promise<void> {
+    if (!this.provider || this.configChanged(config)) {
+      await this.connect(config, callbacks);
+    }
+  }
+
+  /**
+   * Stop recording
+   */
+  stopRecording(): void {
+    if (!this.provider) {
+      throw new Error('No provider connected');
+    }
+    this.provider.stopRecording();
+  }
+
+  /**
+   * Send audio data for transcription
+   * (Headless mode: external audio source)
+   */
+  sendAudio(audioData: ArrayBuffer | Blob): void {
+    if (!this.provider) {
+      throw new Error('No provider connected');
+    }
+    this.provider.sendAudio(audioData);
+  }
+
+  /**
+   * Check connection status
+   */
+  isConnected(): boolean {
+    return this.provider?.isConnected() ?? false;
+  }
+
+  /**
+   * Check recording status
+   */
+  isRecording(): boolean {
+    return this.provider?.isRecording() ?? false;
+  }
+
+  /**
+   * Get current provider
+   */
+  getProvider(): STTProvider | null {
+    return this.provider?.getProvider() ?? null;
+  }
+
+  /**
+   * Factory method to create provider instances
+   */
+  private createProvider(config: STTConfig): ISTTProvider {
+    switch (config.provider) {
+      case 'groq-whisper':
+        return new GroqWhisperProvider(config);
+      case 'deepgram-nova':
+      case 'deepgram-flux':
+        return new DeepgramProvider(config);
+      default:
+        throw new Error(`Unknown provider: ${config.provider}`);
+    }
+  }
+}
+
+/**
+ * Get the singleton STT service instance
+ */
+export function getSTTService(): STTService {
+  return STTService.getInstance();
+}
+
+// Re-export types for convenience
+export * from './types';

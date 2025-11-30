@@ -1,230 +1,128 @@
-import { useEffect, useState, useRef } from "react";
-import { useAudioRecorder } from "./hooks/useAudioRecorder";
-import { useAudioPlayer } from "./hooks/useAudioPlayer";
-import { useGeminiSocket } from "./hooks/useGeminiSocket";
-import { VoiceActivityMonitor, notifyGeminiResponse } from "./components/VoiceActivityMonitor";
+import { useState, useMemo } from "react";
+import { BrowserRouter, Routes, Route, useNavigate, useSearchParams } from "react-router-dom";
+import { VoiceActivityMonitor } from "./components/VoiceActivityMonitor";
 import { AgentView } from "./components/AgentView";
 import { RightSidebar } from "./components/RightSidebar";
+import { SettingsPage } from "./components/SettingsPage";
+import { CloudflareAIGatewayTest } from "./components/CloudflareAIGatewayTest";
+import { SpeechToTextTest } from "./components/SpeechToTextTest-New";
+import { useVoiceAgent } from "./hooks/useVoiceAgent";
 
-interface TranscriptMessage {
+export interface TranscriptMessage {
   role: 'user' | 'model';
   text: string;
   timestamp: number;
   isComplete?: boolean;
 }
 
-function App() {
-  // Parse agent from URL query params
-  const [agent, setAgent] = useState<string>('health');
+function MainPage() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const agent = searchParams.get('agent') || 'amigoz';
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const agentParam = params.get('agent');
-    if (agentParam) {
-      setAgent(agentParam);
-    }
-  }, []);
+  // Voice Agent - connects to Gemini Live (System I) and Observer Agent (System II)
+  const {
+    isConnected,
+    isConnecting,
+    connectionError,
+    isRecording,
+    isListening,
+    isPlaying,
+    observerStatus,
+    observerMessages,
+    currentUserTranscript,
+    currentModelTranscript,
+    recentMessages,
+    sendText,
+    toggleRecording,
+  } = useVoiceAgent();
 
-  const [isActive, setIsActive] = useState(false);
-  const [shouldSendAudio, setShouldSendAudio] = useState(true);
-  const shouldSendAudioRef = useRef(true);
-  const [transcripts, setTranscripts] = useState<TranscriptMessage[]>([]);
-  const [customEvents, setCustomEvents] = useState<{ event: string; data: any } | null>(null);
-  const transcriptionBuffer = useRef({ userText: '', modelText: '' });
-  const lastSentMessageRef = useRef<string>('');
-  const [vadStatus, setVadStatus] = useState({
-    userSpeaking: false,
-    lastSpeechTime: Date.now(),
-    lastGeminiTime: Date.now(),
-  });
-  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
-  const { playAudio, stopAudio } = useAudioPlayer();
-
-  const { isConnected, sendAudioData, sendTextMessage, onMessage } = useGeminiSocket(agent);
-
-  useEffect(() => {
-    onMessage((message) => {
-      notifyGeminiResponse();
-
-      // Handle interruption from Gemini (user started speaking)
-      if (message.serverContent?.interrupted) {
-        stopAudio();
-      }
-
-      // Handle custom events from agents
-      if (message.customEvent) {
-        setCustomEvents({ event: message.customEvent, data: message.data });
-      }
-
-      // Accumulate and show transcription chunks in real-time
-      if (message.serverContent?.inputTranscription?.text) {
-        transcriptionBuffer.current.userText += message.serverContent.inputTranscription.text;
-
-        // Update or add user transcription message
-        setTranscripts(prev => {
-          const lastMessage = prev[prev.length - 1];
-          if (lastMessage && lastMessage.role === 'user' && !lastMessage.isComplete) {
-            // Update existing incomplete message
-            return [...prev.slice(0, -1), {
-              ...lastMessage,
-              text: transcriptionBuffer.current.userText,
-            }];
-          } else {
-            // Add new message
-            return [...prev, {
-              role: 'user',
-              text: transcriptionBuffer.current.userText,
-              timestamp: Date.now(),
-              isComplete: false,
-            }];
-          }
-        });
-      }
-
-      if (message.serverContent?.outputTranscription?.text) {
-        transcriptionBuffer.current.modelText += message.serverContent.outputTranscription.text;
-
-        // Update or add model transcription message
-        setTranscripts(prev => {
-          const lastMessage = prev[prev.length - 1];
-          if (lastMessage && lastMessage.role === 'model' && !lastMessage.isComplete) {
-            // Update existing incomplete message
-            return [...prev.slice(0, -1), {
-              ...lastMessage,
-              text: transcriptionBuffer.current.modelText,
-            }];
-          } else {
-            // Add new message
-            return [...prev, {
-              role: 'model',
-              text: transcriptionBuffer.current.modelText,
-              timestamp: Date.now(),
-              isComplete: false,
-            }];
-          }
-        });
-      }
-
-      // Mark messages as complete when turn is complete
-      if (message.serverContent?.turnComplete) {
-        setTranscripts(prev => {
-          const updated = [...prev];
-          const lastMessage = updated[updated.length - 1];
-          if (lastMessage && !lastMessage.isComplete) {
-            updated[updated.length - 1] = { ...lastMessage, isComplete: true };
-          }
-          return updated;
-        });
-
-        // Clear buffers
-        transcriptionBuffer.current.userText = '';
-        transcriptionBuffer.current.modelText = '';
-      }
-
-      if (message.serverContent?.modelTurn?.parts) {
-        const hasNewAudio = message.serverContent.modelTurn.parts.some(
-          (part: any) => part.inlineData?.mimeType?.startsWith("audio/"),
-        );
-
-        if (hasNewAudio) {
-          // Extract session ID from message (sent by backend)
-          const sessionId = message.responseSessionId;
-
-          for (const part of message.serverContent.modelTurn.parts) {
-            if (part.inlineData?.mimeType?.startsWith("audio/")) {
-              playAudio(part.inlineData.data, sessionId);
-            }
-          }
-        }
-      }
-
-      if (message.setupComplete) {
-        console.log("Gemini setup complete");
-      }
-
-      if (message.serverContent?.turnComplete) {
-        console.log("AI turn complete");
-      }
-    });
-  }, [onMessage, playAudio]);
-
-  // Update ref whenever shouldSendAudio changes
-  useEffect(() => {
-    shouldSendAudioRef.current = shouldSendAudio;
-  }, [shouldSendAudio]);
-
-  const handleSendText = (text: string) => {
-    const trimmedText = text.trim();
-
-    // Don't send if empty or same as last message
-    if (!trimmedText || !isConnected) {
-      return;
-    }
-
-    if (trimmedText === lastSentMessageRef.current) {
-      console.log('Skipping duplicate message:', trimmedText);
-      return;
-    }
-
-    sendTextMessage(trimmedText);
-    lastSentMessageRef.current = trimmedText;
-
-    // Add user message to transcripts immediately
-    setTranscripts(prev => [...prev, {
-      role: 'user',
-      text: trimmedText,
-      timestamp: Date.now(),
-      isComplete: true,
-    }]);
-  };
-
-  const handleToggleRecording = async () => {
-    if (isActive) {
-      // Stop
-      stopRecording();
-      stopAudio();
-      setIsActive(false);
-    } else {
-      // Start
-      try {
-        await startRecording(
-          (audioData) => {
-            sendAudioData(audioData);
-          },
-          () => shouldSendAudioRef.current, // Use ref to get current value
-        );
-        setIsActive(true);
-      } catch (error) {
-        console.error("Failed to start recording:", error);
-      }
-    }
-  };
-
-  const handleVadStatusChange = (shouldSend: boolean) => {
-    setShouldSendAudio(shouldSend);
-  };
-
-  const handleUserSpeakingChange = (isSpeaking: boolean) => {
-    setVadStatus(prev => ({
-      ...prev,
-      userSpeaking: isSpeaking,
-      lastSpeechTime: isSpeaking ? Date.now() : prev.lastSpeechTime,
+  // Convert recentMessages to TranscriptMessage format for components
+  const transcripts: TranscriptMessage[] = useMemo(() => {
+    const msgs = recentMessages.map(msg => ({
+      role: msg.role,
+      text: msg.content,
+      timestamp: new Date(msg.timestamp).getTime(),
+      isComplete: msg.isComplete,
     }));
+
+    // Add current streaming transcripts if any
+    if (currentUserTranscript) {
+      msgs.push({
+        role: 'user' as const,
+        text: currentUserTranscript,
+        timestamp: Date.now(),
+        isComplete: false,
+      });
+    }
+    if (currentModelTranscript) {
+      msgs.push({
+        role: 'model' as const,
+        text: currentModelTranscript,
+        timestamp: Date.now(),
+        isComplete: false,
+      });
+    }
+
+    return msgs;
+  }, [recentMessages, currentUserTranscript, currentModelTranscript]);
+
+  // VAD status for components
+  const vadStatus = useMemo(() => ({
+    userSpeaking: isListening,
+    lastSpeechTime: Date.now(),
+    lastGeminiTime: isPlaying ? Date.now() : Date.now() - 1000,
+  }), [isListening, isPlaying]);
+
+  // Custom events for AgentView
+  const customEvents = useMemo(() => {
+    if (observerStatus.status === 'processing') {
+      return { event: 'observer-processing', data: observerStatus.description };
+    }
+    return null;
+  }, [observerStatus]);
+
+  // Handle VAD status change (for future use)
+  const handleVadStatusChange = (_shouldSend: boolean) => {
+    // VAD is handled internally by Gemini Live now
   };
+
+  const handleUserSpeakingChange = (_isSpeaking: boolean) => {
+    // User speaking is tracked by Gemini Live transcription
+  };
+
+  // Show connection error if any
+  const effectiveIsConnected = isConnected || isConnecting;
 
   return (
     <div className="h-screen bg-base-300 flex overflow-hidden">
+      {/* Connection error banner */}
+      {connectionError && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-error text-error-content px-4 py-2 text-center">
+          {connectionError}
+          <button
+            className="ml-4 btn btn-xs btn-ghost"
+            onClick={() => navigate('/settings')}
+          >
+            Configure API Key
+          </button>
+        </div>
+      )}
+
       {/* For amigoz agent: full-width 3-panel layout (D3, Nodes, Chat) */}
       {agent === 'amigoz' ? (
         <AgentView
           agent={agent}
-          isConnected={isConnected}
+          isConnected={effectiveIsConnected}
           customEvents={customEvents}
           transcripts={transcripts}
+          observerMessages={observerMessages}
+          observerStatus={observerStatus}
           isRecording={isRecording}
-          onSendText={handleSendText}
-          onToggleRecording={handleToggleRecording}
+          onSendText={sendText}
+          onToggleRecording={toggleRecording}
           vadStatus={vadStatus}
+          onOpenSettings={() => navigate('/settings')}
         />
       ) : (
         <>
@@ -232,37 +130,54 @@ function App() {
           <div className="flex-1 w-4/5 overflow-auto bg-base-100">
             <AgentView
               agent={agent}
-              isConnected={isConnected}
+              isConnected={effectiveIsConnected}
               customEvents={customEvents}
               transcripts={transcripts}
               isRecording={isRecording}
-              onSendText={handleSendText}
-              onToggleRecording={handleToggleRecording}
+              onSendText={sendText}
+              onToggleRecording={toggleRecording}
               vadStatus={vadStatus}
+              onOpenSettings={() => navigate('/settings')}
             />
           </div>
 
           {/* Right Sidebar - Chat & Transcription (1/5) */}
           <RightSidebar
             transcripts={transcripts}
-            isConnected={isConnected}
+            observerMessages={observerMessages}
+            observerStatus={observerStatus}
+            isConnected={effectiveIsConnected}
             isRecording={isRecording}
-            onSendText={handleSendText}
-            onToggleRecording={handleToggleRecording}
+            onSendText={sendText}
+            onToggleRecording={toggleRecording}
             vadStatus={vadStatus}
+            onOpenSettings={() => navigate('/settings')}
           />
         </>
       )}
 
-      {/* Hidden VAD Monitor - still needed for detection */}
+      {/* Hidden VAD Monitor - kept for potential future use */}
       <div className="hidden">
         <VoiceActivityMonitor
-          isActive={isActive}
+          isActive={isRecording}
           onShouldSendChange={handleVadStatusChange}
           onUserSpeakingChange={handleUserSpeakingChange}
         />
       </div>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<MainPage />} />
+        <Route path="/settings" element={<SettingsPage onBack={() => window.history.back()} />} />
+        <Route path="/cf-gateway-test" element={<CloudflareAIGatewayTest />} />
+        <Route path="/stt-test" element={<SpeechToTextTest />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 

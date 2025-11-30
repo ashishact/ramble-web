@@ -1,10 +1,10 @@
 /**
  * Custom hook for managing current node state
- * Handles fetching, selecting, and syncing with WebSocket events
+ * Handles fetching, selecting, and syncing with custom events
  */
 import { useState, useEffect, useCallback } from 'react';
-import { selectNode, fetchCurrentNode } from '../../../utils/knowledgeApi';
-import type { KnowledgeNode } from '../types';
+import { selectNode, fetchCurrentNode } from '../../../backend/api';
+import type { KnowledgeNode } from '../../../backend/types';
 
 interface UseCurrentNodeOptions {
   customEvents: { event: string; data: any } | null;
@@ -33,7 +33,7 @@ export function useCurrentNode({ customEvents }: UseCurrentNodeOptions) {
     loadCurrentNode();
   }, []);
 
-  // Listen for node and relationship updates from backend
+  // Listen for node and relationship updates
   useEffect(() => {
     if (!customEvents) return;
 
@@ -53,9 +53,7 @@ export function useCurrentNode({ customEvents }: UseCurrentNodeOptions) {
   // Load a node by ID when selected
   const loadNodeById = useCallback(async (nodeId: number) => {
     try {
-      // This sets the current node in the backend and returns the node data
       const node = await selectNode(nodeId);
-      // Immediately update the state (don't wait for WebSocket event)
       if (node) {
         setCurrentNode(node);
       }

@@ -1,15 +1,21 @@
 import { useState, useRef, useCallback } from 'react';
 
-export const useAudioRecorder = () => {
+interface UseAudioRecorderReturn {
+  isRecording: boolean;
+  startRecording: (onData: (data: string) => void) => Promise<void>;
+  stopRecording: () => void;
+}
+
+export const useAudioRecorder = (): UseAudioRecorderReturn => {
   const [isRecording, setIsRecording] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const onDataCallbackRef = useRef<((data: string) => void) | null>(null);
-  const shouldSendRef = useRef<(() => boolean) | null>(null);
 
   const startRecording = useCallback(
-    async (onData: (data: string) => void, shouldSendCheck?: () => boolean) => {
+    async (onData: (data: string) => void) => {
       try {
+        console.log('[AudioRecorder] Starting...');
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             channelCount: 1,
@@ -21,24 +27,13 @@ export const useAudioRecorder = () => {
 
         streamRef.current = stream;
         onDataCallbackRef.current = onData;
-        shouldSendRef.current = shouldSendCheck || null;
 
         // Create audio context for processing
         audioContextRef.current = new AudioContext({ sampleRate: 16000 });
         const source = audioContextRef.current.createMediaStreamSource(stream);
-        const processor = audioContextRef.current.createScriptProcessor(
-          4096,
-          1,
-          1,
-        );
+        const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
 
         processor.onaudioprocess = (e) => {
-          // Check if we should send audio (based on VAD inactivity timeout)
-          if (shouldSendRef.current && !shouldSendRef.current()) {
-            // Don't process or send audio if inactive
-            return;
-          }
-
           const inputData = e.inputBuffer.getChannelData(0);
           // Convert Float32 to Int16 PCM
           const pcmData = new Int16Array(inputData.length);
@@ -48,9 +43,7 @@ export const useAudioRecorder = () => {
           }
 
           // Convert to base64
-          const base64 = btoa(
-            String.fromCharCode(...new Uint8Array(pcmData.buffer)),
-          );
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
 
           if (onDataCallbackRef.current) {
             onDataCallbackRef.current(base64);
@@ -61,8 +54,9 @@ export const useAudioRecorder = () => {
         processor.connect(audioContextRef.current.destination);
 
         setIsRecording(true);
+        console.log('[AudioRecorder] Recording started');
       } catch (error) {
-        console.error('Error starting recording:', error);
+        console.error('[AudioRecorder] Error starting recording:', error);
         throw error;
       }
     },
@@ -70,6 +64,7 @@ export const useAudioRecorder = () => {
   );
 
   const stopRecording = useCallback(() => {
+    console.log('[AudioRecorder] Stopping...');
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -82,6 +77,7 @@ export const useAudioRecorder = () => {
 
     onDataCallbackRef.current = null;
     setIsRecording(false);
+    console.log('[AudioRecorder] Stopped');
   }, []);
 
   return {

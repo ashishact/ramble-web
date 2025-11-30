@@ -1,17 +1,8 @@
 import { useState, useEffect } from 'react';
-import { semanticSearch } from '../../utils/knowledgeApi';
+import { semanticSearch } from '../../backend/api';
 import { SemanticGraphView } from './semantic/SemanticGraphView';
 import { semanticSearchState } from './semantic/semanticSearchState';
-
-interface KnowledgeNode {
-  id: number;
-  title: string;
-  content: string;
-  tags: string[];
-  icon?: string;
-  similarity?: number;
-  createdAt: string;
-}
+import type { KnowledgeNode } from '../../backend/types';
 
 interface SemanticViewProps {
   onNodeSelect: (nodeId: number) => void;

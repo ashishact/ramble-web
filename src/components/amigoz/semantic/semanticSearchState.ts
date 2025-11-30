@@ -3,15 +3,7 @@
  * Preserves search query and results when toggling views
  */
 
-interface KnowledgeNode {
-  id: number;
-  title: string;
-  content: string;
-  tags: string[];
-  icon?: string;
-  similarity?: number;
-  createdAt: string;
-}
+import type { KnowledgeNode } from '../../../backend/types';
 
 interface SemanticSearchState {
   searchQuery: string;

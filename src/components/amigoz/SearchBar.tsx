@@ -1,5 +1,10 @@
 import { useState, useCallback } from 'react';
-import type { SearchBarProps, KnowledgeNode } from './types';
+import { searchNodes } from '../../backend/api';
+import type { KnowledgeNode } from '../../backend/types';
+
+interface SearchBarProps {
+  onNodeSelect: (nodeId: number) => void;
+}
 
 export function SearchBar({ onNodeSelect }: SearchBarProps) {
   const [query, setQuery] = useState('');
@@ -17,14 +22,7 @@ export function SearchBar({ onNodeSelect }: SearchBarProps) {
     setIsSearching(true);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(
-        `${apiUrl}/knowledge/nodes/search?q=${encodeURIComponent(searchQuery)}&limit=10`
-      );
-      if (!response.ok) {
-        throw new Error('Failed to search nodes');
-      }
-      const data = await response.json();
+      const data = await searchNodes(searchQuery, 10);
       setResults(data);
       setShowResults(true);
     } catch (err) {
