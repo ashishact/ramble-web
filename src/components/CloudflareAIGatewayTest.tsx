@@ -1,34 +1,11 @@
 import { useState, useEffect } from 'react';
 import { settingsHelpers } from '../stores/settingsStore';
-
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
-
-type Provider = 'gemini' | 'openai' | 'anthropic' | 'groq';
-
-// Model options for each provider (using provider/model format)
-const PROVIDER_MODELS: Record<Provider, { label: string; value: string }[]> = {
-  gemini: [
-    { label: 'Gemini 2.5 Flash', value: 'google/gemini-2.5-flash' },
-    { label: 'Gemini 2.5 Flash Lite', value: 'google/gemini-2.5-flash-lite' },
-  ],
-  openai: [
-    { label: 'GPT-5', value: 'openai/gpt-5' },
-    { label: 'GPT-5 Mini', value: 'openai/gpt-5-mini' },
-    { label: 'GPT-5 Nano', value: 'openai/gpt-5-nano' },
-  ],
-  anthropic: [
-    { label: 'Claude Sonnet 4.5', value: 'anthropic/claude-sonnet-4-5-20250929' },
-    { label: 'Claude Haiku 4.5', value: 'anthropic/claude-haiku-4-5-20251001' },
-    { label: 'Claude Opus 4.5', value: 'anthropic/claude-opus-4-5-20251101' },
-  ],
-  groq: [
-    { label: 'GPT OSS 120B', value: 'groq/openai/gpt-oss-120b' },
-    { label: 'GPT OSS 20B', value: 'groq/openai/gpt-oss-20b' },
-    { label: 'Kimi K2 Instruct', value: 'groq/moonshotai/kimi-k2-instruct-0905' },
-    { label: 'Qwen 3 32B', value: 'groq/qwen/qwen3-32b' },
-    { label: 'Llama 3.1 8B Instant', value: 'groq/llama-3.1-8b-instant' },
-  ],
-};
+import {
+  type Provider,
+  type Message,
+  PROVIDER_MODELS,
+  streamChat,
+} from '../services/cfGateway';
 
 export function CloudflareAIGatewayTest() {
   const [provider, setProvider] = useState<Provider>('gemini');
@@ -70,82 +47,32 @@ export function CloudflareAIGatewayTest() {
     setError('');
     setResponse('');
 
-    try {
-      const apiResponse = await fetch(`${WORKER_URL}/api/cf-gateway`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+    const messages: Message[] = [{ role: 'user', content: prompt }];
+
+    await streamChat(
+      {
+        provider,
+        model,
+        apiKey,
+        messages,
+      },
+      {
+        onToken: (token) => {
+          setResponse((prev) => prev + token);
         },
-        body: JSON.stringify({
-          apiKey: apiKey,
-          model: model,
-          messages: [{ role: 'user', content: prompt }],
-          stream: true,
-        }),
-      });
-
-      if (!apiResponse.ok) {
-        const errorData = await apiResponse.json();
-        throw new Error(errorData.error || 'Failed to get response from API');
-      }
-
-      // Handle streaming response
-      const reader = apiResponse.body?.getReader();
-      if (!reader) {
-        throw new Error('Stream not available');
-      }
-
-      const decoder = new TextDecoder();
-      let accumulatedResponse = '';
-      let buffer = ''; // Buffer for incomplete chunks
-
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) break;
-
-        // Decode the chunk and add to buffer
-        buffer += decoder.decode(value, { stream: true });
-
-        // Split by newlines to process complete lines
-        const lines = buffer.split('\n');
-
-        // Keep the last potentially incomplete line in the buffer
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim(); // Remove 'data: ' prefix and trim
-
-            if (data === '[DONE]' || !data) {
-              continue;
-            }
-
-            try {
-              const parsed = JSON.parse(data);
-              const content = parsed.choices?.[0]?.delta?.content;
-
-              if (content) {
-                accumulatedResponse += content;
-                setResponse(accumulatedResponse);
-              }
-            } catch (e) {
-              // Skip invalid JSON chunks silently
-              // This is normal for streaming as chunks can be incomplete
-            }
+        onComplete: (fullText) => {
+          setIsLoading(false);
+          if (!fullText) {
+            setResponse('No response received');
           }
-        }
+        },
+        onError: (err) => {
+          setIsLoading(false);
+          setError(err.message);
+          console.error('Error calling Cloudflare AI Gateway:', err);
+        },
       }
-
-      if (!accumulatedResponse) {
-        setResponse('No response received');
-      }
-    } catch (err) {
-      console.error('Error calling Cloudflare AI Gateway:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error occurred');
-    } finally {
-      setIsLoading(false);
-    }
+    );
   };
 
   return (
@@ -202,7 +129,7 @@ export function CloudflareAIGatewayTest() {
                   </span>
                   {apiKey && (
                     <span className="label-text-alt text-success">
-                      ✓ Loaded from settings
+                      Loaded from settings
                     </span>
                   )}
                 </label>
@@ -218,7 +145,7 @@ export function CloudflareAIGatewayTest() {
                   <label className="label">
                     <span className="label-text-alt">
                       <a href="/settings" className="link link-primary">
-                        Configure API key in Settings →
+                        Configure API key in Settings
                       </a>
                     </span>
                   </label>
@@ -278,8 +205,7 @@ export function CloudflareAIGatewayTest() {
                 Provider: {provider.charAt(0).toUpperCase() + provider.slice(1)} | Model: {model}
               </p>
               <p className="mb-2">This test uses the Cloudflare AI Gateway via your worker.</p>
-              <p className="font-mono text-xs">Worker URL: {WORKER_URL}</p>
-              <p className="font-mono text-xs">Gateway: f107b4eef4a9b8eb99a9d1df6fac9ff2/brokenai</p>
+              <p className="font-mono text-xs">Using cfGateway module</p>
             </div>
           </div>
         </div>

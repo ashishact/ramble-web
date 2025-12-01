@@ -62,6 +62,30 @@ export default {
 					if (body.contents) {
 						// Native format: use as-is
 						geminiBody = { contents: body.contents };
+					} else if (messages && Array.isArray(messages) && messages.length > 0) {
+						// OpenAI-format messages: transform to Gemini native format
+						// Extract system instruction if present
+						let systemInstruction = undefined;
+						const geminiContents = [];
+
+						for (const msg of messages) {
+							if (msg.role === 'system') {
+								// System messages become systemInstruction in Gemini
+								systemInstruction = { parts: [{ text: msg.content }] };
+							} else {
+								// Map user/assistant to user/model in Gemini
+								const role = msg.role === 'assistant' ? 'model' : 'user';
+								geminiContents.push({
+									role,
+									parts: [{ text: msg.content }],
+								});
+							}
+						}
+
+						geminiBody = {
+							contents: geminiContents,
+							...(systemInstruction && { systemInstruction }),
+						};
 					} else {
 						// Simple format: transform to Gemini native
 						const parts = [];
@@ -96,6 +120,27 @@ export default {
 					}
 
 					const data = await response.json();
+
+					// Transform Gemini response to OpenAI SSE format for streaming clients
+					if (stream) {
+						// Extract text from Gemini response
+						const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+						// Create SSE response in OpenAI format
+						const sseData = `data: ${JSON.stringify({
+							choices: [{ delta: { content: text } }]
+						})}\n\ndata: [DONE]\n\n`;
+
+						return new Response(sseData, {
+							headers: {
+								'Content-Type': 'text/event-stream',
+								'Cache-Control': 'no-cache',
+								'Connection': 'keep-alive',
+								...CORS_HEADERS,
+							},
+						});
+					}
+
 					return new Response(JSON.stringify(data), {
 						status: response.status,
 						headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
