@@ -145,6 +145,65 @@ export async function runMetaObserver(): Promise<void> {
   await runMetaAnalysis();
 }
 
+/**
+ * Retry a failed observer operation
+ */
+export async function retryObserverError(errorId: string): Promise<void> {
+  // Search through all sessions for the error
+  const allSessions = observerHelpers.getAllSessions();
+  let foundError: import('../../stores/observerStore').ObserverError | null = null;
+
+  // Search through all sessions for the error
+  for (const session of allSessions) {
+    const sessionErrors = observerHelpers.getObserverErrors(session.id);
+    const err = sessionErrors.find(e => e.id === errorId);
+    if (err) {
+      foundError = err;
+      break;
+    }
+  }
+
+  // Also check global errors
+  if (!foundError) {
+    const globalErrors = observerHelpers.getObserverErrors('_global');
+    foundError = globalErrors.find(e => e.id === errorId) || null;
+  }
+
+  if (!foundError) {
+    console.error('[ObserverAPI] Error not found:', errorId);
+    return;
+  }
+
+  console.log('[ObserverAPI] Retrying failed operation:', foundError.phase, 'for session:', foundError.sessionId);
+
+  try {
+    switch (foundError.phase) {
+      case 'knowledge':
+        if (foundError.retryData.messageIds) {
+          await processMessages(foundError.sessionId, foundError.retryData.messageIds);
+        }
+        break;
+      case 'suggestion':
+        await generateSuggestions(foundError.sessionId);
+        break;
+      case 'system2':
+        await runDeepAnalysis(foundError.sessionId, foundError.retryData.knowledgeCount || 16);
+        break;
+      case 'meta':
+        await runMetaAnalysis();
+        break;
+    }
+
+    // Mark as resolved on success
+    observerHelpers.resolveObserverError(errorId);
+    console.log('[ObserverAPI] Retry successful, error resolved');
+  } catch (retryError) {
+    console.error('[ObserverAPI] Retry failed:', retryError);
+    // Update the error message but keep it unresolved
+    throw retryError;
+  }
+}
+
 // ============================================================================
 // Session Management
 // ============================================================================

@@ -9,6 +9,7 @@
  * - Update session state with key facts
  */
 
+import { jsonrepair } from 'jsonrepair';
 import { geminiFlash, type Message as ChatMessage } from '../cfGateway';
 import {
   observerHelpers,
@@ -102,36 +103,52 @@ Extract knowledge from these messages.`;
 }
 
 /**
- * Parse the LLM response
+ * Parse the LLM response with JSON repair fallback
+ * @throws Error if JSON cannot be parsed or repaired
  */
-function parseResponse(responseText: string): KnowledgeExtractionResponse | null {
-  try {
-    // Try to extract JSON from the response
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error('[KnowledgeObserver] No JSON found in response');
-      return null;
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]);
-
-    // Validate structure
-    if (!Array.isArray(parsed.sentences)) {
-      parsed.sentences = [];
-    }
-    if (!Array.isArray(parsed.entities)) {
-      parsed.entities = [];
-    }
-    if (typeof parsed.stateUpdates !== 'object') {
-      parsed.stateUpdates = {};
-    }
-
-    return parsed;
-  } catch (error) {
-    console.error('[KnowledgeObserver] Failed to parse response:', error);
-    console.error('[KnowledgeObserver] Raw response:', responseText);
-    return null;
+function parseResponse(responseText: string): KnowledgeExtractionResponse {
+  // Try to extract JSON from the response
+  const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    console.error('[KnowledgeObserver] No JSON found in response');
+    throw new Error('No JSON found in LLM response');
   }
+
+  let parsed: KnowledgeExtractionResponse;
+  const jsonStr = jsonMatch[0];
+
+  // First try normal parsing
+  try {
+    parsed = JSON.parse(jsonStr);
+    console.log('[KnowledgeObserver] JSON parsed successfully');
+  } catch (parseError) {
+    // Try to repair the JSON
+    console.warn('[KnowledgeObserver] JSON parse failed, attempting repair...');
+    console.warn('[KnowledgeObserver] Parse error:', parseError);
+
+    try {
+      const repairedJson = jsonrepair(jsonStr);
+      parsed = JSON.parse(repairedJson);
+      console.log('[KnowledgeObserver] JSON repaired successfully');
+    } catch (repairError) {
+      console.error('[KnowledgeObserver] JSON repair failed:', repairError);
+      console.error('[KnowledgeObserver] Raw response:', responseText);
+      throw new Error(`Failed to parse or repair JSON: ${repairError}`);
+    }
+  }
+
+  // Validate and normalize structure
+  if (!Array.isArray(parsed.sentences)) {
+    parsed.sentences = [];
+  }
+  if (!Array.isArray(parsed.entities)) {
+    parsed.entities = [];
+  }
+  if (typeof parsed.stateUpdates !== 'object' || parsed.stateUpdates === null) {
+    parsed.stateUpdates = {};
+  }
+
+  return parsed;
 }
 
 /**
@@ -181,12 +198,8 @@ export async function processMessages(
   console.log('[KnowledgeObserver] Calling Gemini Flash...');
   const responseText = await geminiFlash.chat(apiKey, chatMessages, systemPrompt);
 
-  // Parse response
+  // Parse response (will throw on failure)
   const response = parseResponse(responseText);
-  if (!response) {
-    console.error('[KnowledgeObserver] Failed to parse response, skipping');
-    return;
-  }
 
   console.log('[KnowledgeObserver] Extracted', response.sentences.length, 'sentences');
 

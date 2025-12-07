@@ -30,10 +30,13 @@
     "ai": "^5.0.102",
     "d3": "^7.9.0",
     "daisyui": "^5.3.10",
+    "jsonrepair": "^3.13.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-markdown": "^10.1.0",
     "react-resizable-panels": "^3.0.6",
     "react-router-dom": "^7.9.6",
+    "remark-gfm": "^4.0.1",
     "tailwindcss": "^4.1.14",
     "tinybase": "^6.7.3",
     "zod": "^4.1.12"

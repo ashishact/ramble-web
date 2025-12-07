@@ -14,6 +14,54 @@
  */
 
 import { createStore, type Store } from 'tinybase';
+
+// ============================================================================
+// Global Color Palette - Soft, desaturated colors
+// ============================================================================
+
+export const PALETTE = {
+  // Pinks & Peaches
+  softPeach: '#F7DAD9',
+  rosewater: '#F4C8C8',
+  blushCoral: '#F9C9B9',
+  lightApricot: '#FFE0D6',
+  pinkMist: '#FDE2E4',
+  dustyRose: '#E7BFBF',
+  candyPink: '#FCE7F3',
+  bubblegumTint: '#F8E0EB',
+  blushPetal: '#FFE5F0',
+
+  // Purples & Lilacs
+  paleLilac: '#F7E8FF',
+  lavenderFog: '#D8C7FF',
+  softViolet: '#E3D9FF',
+  lilacGrey: '#D6D2E0',
+  cloudPurple: '#F0E6F6',
+
+  // Greens & Mints
+  mintMist: '#CFF7E3',
+  pastelMint: '#D8F8EB',
+  pastelSage: '#D8E8D0',
+  gentleGreen: '#E4F2DF',
+  springMist: '#E9F7E5',
+  seafoamGrey: '#EDF5E1',
+
+  // Blues
+  powderBlue: '#CDE7F0',
+  iceBlue: '#D5F1FF',
+  babySky: '#E0F4FF',
+  fogBlue: '#C7E6F8',
+  frostAqua: '#E3F3F8',
+  cloudBlue: '#EEF7FA',
+
+  // Yellows & Creams
+  butterCream: '#FFF2C7',
+  paleDune: '#FFF6D9',
+  softVanilla: '#FFF8E1',
+  lemonWhip: '#FAF3C2',
+} as const;
+
+export type PaletteColor = keyof typeof PALETTE;
 import { createIndexedDbPersister, type IndexedDbPersister } from 'tinybase/persisters/persister-indexed-db';
 
 // ============================================================================
@@ -138,6 +186,23 @@ export interface Document {
   createdAt: string;
 }
 
+export type ObserverPhase = 'knowledge' | 'suggestion' | 'system2' | 'meta';
+
+export interface ObserverError {
+  id: string;
+  sessionId: string;
+  phase: ObserverPhase;
+  error: string;
+  // Data needed to retry the operation
+  retryData: {
+    messageIds?: string[];      // For knowledge observer
+    knowledgeCount?: number;    // For system2 thinker
+  };
+  resolved: boolean;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
 // ============================================================================
 // Store Initialization
 // ============================================================================
@@ -155,6 +220,7 @@ type SuggestionListener = (suggestions: Suggestion[]) => void;
 type TagListener = (tags: Tag[]) => void;
 type CategoryListener = (categories: Category[]) => void;
 type EntityListener = (entities: Entity[]) => void;
+type ObserverErrorListener = (errors: ObserverError[]) => void;
 
 const sessionListeners = new Set<SessionListener>();
 const messageListeners = new Map<string, Set<MessageListener>>(); // sessionId -> listeners
@@ -163,6 +229,7 @@ const suggestionListeners = new Map<string, Set<SuggestionListener>>();
 const tagListeners = new Set<TagListener>();
 const categoryListeners = new Set<CategoryListener>();
 const entityListeners = new Set<EntityListener>();
+const observerErrorListeners = new Map<string, Set<ObserverErrorListener>>(); // sessionId -> listeners
 
 // Notify functions
 const notifySessionListeners = () => {
@@ -187,10 +254,15 @@ const notifyKnowledgeListeners = (sessionId: string) => {
 };
 
 const notifySuggestionListeners = (sessionId: string) => {
+  console.log('[ObserverStore] notifySuggestionListeners called for session:', sessionId);
+  console.log('[ObserverStore] Registered listener sessionIds:', Array.from(suggestionListeners.keys()));
   const listeners = suggestionListeners.get(sessionId);
   if (listeners) {
     const suggestions = observerHelpers.getSuggestions(sessionId);
+    console.log('[ObserverStore] Found', listeners.size, 'listeners, sending', suggestions.length, 'suggestions');
     listeners.forEach(listener => listener(suggestions));
+  } else {
+    console.log('[ObserverStore] No listeners found for session:', sessionId);
   }
 };
 
@@ -209,26 +281,47 @@ const notifyEntityListeners = () => {
   entityListeners.forEach(listener => listener(entities));
 };
 
+const notifyObserverErrorListeners = (sessionId: string) => {
+  const listeners = observerErrorListeners.get(sessionId);
+  if (listeners) {
+    const errors = observerHelpers.getObserverErrors(sessionId);
+    listeners.forEach(listener => listener(errors));
+  }
+};
+
 // UUID generator
 const generateId = () => crypto.randomUUID();
 
-// Default initial data
+// Default initial data - using soft palette colors
 const DEFAULT_PRIVACY: Privacy[] = [
-  { name: 'public', description: 'Visible to everyone', color: '#22c55e', icon: 'globe', commit: { by: 'user', timestamp: new Date().toISOString() } },
-  { name: 'private', description: 'Only visible to you', color: '#ef4444', icon: 'lock', commit: { by: 'user', timestamp: new Date().toISOString() } },
-  { name: 'friends', description: 'Visible to friends', color: '#3b82f6', icon: 'users', commit: { by: 'user', timestamp: new Date().toISOString() } },
-  { name: 'family', description: 'Visible to family', color: '#a855f7', icon: 'home', commit: { by: 'user', timestamp: new Date().toISOString() } },
-  { name: 'work', description: 'Work-related content', color: '#f59e0b', icon: 'briefcase', commit: { by: 'user', timestamp: new Date().toISOString() } },
-  { name: 'school', description: 'School-related content', color: '#06b6d4', icon: 'book', commit: { by: 'user', timestamp: new Date().toISOString() } },
-  { name: 'personal', description: 'Personal content', color: '#ec4899', icon: 'heart', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'public', description: 'Visible to everyone', color: PALETTE.mintMist, icon: 'globe', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'private', description: 'Only visible to you', color: PALETTE.rosewater, icon: 'lock', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'friends', description: 'Visible to friends', color: PALETTE.powderBlue, icon: 'users', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'family', description: 'Visible to family', color: PALETTE.lavenderFog, icon: 'home', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'work', description: 'Work-related content', color: PALETTE.butterCream, icon: 'briefcase', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'school', description: 'School-related content', color: PALETTE.iceBlue, icon: 'book', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'personal', description: 'Personal content', color: PALETTE.candyPink, icon: 'heart', commit: { by: 'user', timestamp: new Date().toISOString() } },
 ];
 
 const DEFAULT_CATEGORIES: Category[] = [
-  { name: 'general', description: 'General thoughts and ideas', color: '#6b7280', icon: 'folder', commit: { by: 'user', timestamp: new Date().toISOString() } },
-  { name: 'ideas', description: 'New ideas and concepts', color: '#eab308', icon: 'lightbulb', commit: { by: 'user', timestamp: new Date().toISOString() } },
-  { name: 'tasks', description: 'Tasks and to-dos', color: '#22c55e', icon: 'check-circle', commit: { by: 'user', timestamp: new Date().toISOString() } },
-  { name: 'notes', description: 'Notes and observations', color: '#3b82f6', icon: 'file-text', commit: { by: 'user', timestamp: new Date().toISOString() } },
-  { name: 'questions', description: 'Questions to explore', color: '#a855f7', icon: 'help-circle', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'general', description: 'General thoughts and ideas', color: PALETTE.lilacGrey, icon: 'folder', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'ideas', description: 'New ideas and concepts', color: PALETTE.lemonWhip, icon: 'lightbulb', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'tasks', description: 'Tasks and to-dos', color: PALETTE.pastelMint, icon: 'check-circle', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'notes', description: 'Notes and observations', color: PALETTE.fogBlue, icon: 'file-text', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'questions', description: 'Questions to explore', color: PALETTE.paleLilac, icon: 'help-circle', commit: { by: 'user', timestamp: new Date().toISOString() } },
+];
+
+const DEFAULT_TAGS: Tag[] = [
+  { name: 'important', description: 'High priority item', color: PALETTE.dustyRose, icon: 'alert-circle', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'urgent', description: 'Time-sensitive item', color: PALETTE.blushCoral, icon: 'clock', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'follow-up', description: 'Needs follow-up action', color: PALETTE.butterCream, icon: 'arrow-right', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'reference', description: 'Reference material', color: PALETTE.powderBlue, icon: 'bookmark', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'learning', description: 'Learning or study related', color: PALETTE.softViolet, icon: 'book-open', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'project', description: 'Project related', color: PALETTE.gentleGreen, icon: 'folder', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'meeting', description: 'Meeting notes or info', color: PALETTE.frostAqua, icon: 'users', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'decision', description: 'Decision point or outcome', color: PALETTE.bubblegumTint, icon: 'check-square', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'blocker', description: 'Blocking issue', color: PALETTE.softPeach, icon: 'x-circle', commit: { by: 'user', timestamp: new Date().toISOString() } },
+  { name: 'insight', description: 'Key insight or realization', color: PALETTE.cloudPurple, icon: 'zap', commit: { by: 'user', timestamp: new Date().toISOString() } },
 ];
 
 // Initialize store
@@ -261,6 +354,9 @@ const initStore = async (): Promise<void> => {
     store.addTableListener('tags', () => notifyTagListeners());
     store.addTableListener('categories', () => notifyCategoryListeners());
     store.addTableListener('entities', () => notifyEntityListeners());
+    store.addTableListener('observerErrors', () => {
+      observerErrorListeners.forEach((_, sessionId) => notifyObserverErrorListeners(sessionId));
+    });
 
     isInitialized = true;
     console.log('[ObserverStore] Initialized with IndexedDB');
@@ -299,6 +395,20 @@ const seedDefaultData = () => {
       });
     });
     console.log('[ObserverStore] Seeded default categories');
+  }
+
+  // Seed tags if empty
+  const tagTable = store.getTable('tags');
+  if (!tagTable || Object.keys(tagTable).length === 0) {
+    DEFAULT_TAGS.forEach(t => {
+      store.setRow('tags', t.name, {
+        description: t.description,
+        color: t.color,
+        icon: t.icon,
+        commit: JSON.stringify(t.commit),
+      });
+    });
+    console.log('[ObserverStore] Seeded default tags');
   }
 };
 
@@ -675,6 +785,11 @@ export const observerHelpers = {
     store.setCell('tags', name, 'commit', JSON.stringify({ by, timestamp: new Date().toISOString() }));
   },
 
+  deleteTag: (name: string) => {
+    if (!isInitialized) return;
+    store.delRow('tags', name);
+  },
+
   suggestTag: (tag: Omit<Tag, 'commit'>) => {
     if (!isInitialized) return;
     store.setRow('tags', tag.name, {
@@ -711,6 +826,11 @@ export const observerHelpers = {
   commitCategory: (name: string, by: 'user' | 'ai') => {
     if (!isInitialized) return;
     store.setCell('categories', name, 'commit', JSON.stringify({ by, timestamp: new Date().toISOString() }));
+  },
+
+  deleteCategory: (name: string) => {
+    if (!isInitialized) return;
+    store.delRow('categories', name);
   },
 
   suggestCategory: (category: Omit<Category, 'commit'>) => {
@@ -826,7 +946,11 @@ export const observerHelpers = {
       updatedAt: suggestion.updatedAt,
     });
 
-    console.log('[ObserverStore] Added suggestion:', id);
+    console.log('[ObserverStore] Added suggestion:', id, 'for session:', sessionId, 'contents:', contents.length);
+
+    // Manually notify listeners since table listener may not fire immediately
+    notifySuggestionListeners(sessionId);
+
     return suggestion;
   },
 
@@ -837,16 +961,20 @@ export const observerHelpers = {
     return Object.entries(table)
       .map(([id, row]) => rowToSuggestion(id, row))
       .filter(s => s.sessionId === sessionId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()); // Ascending: oldest first, newest at bottom
   },
 
   subscribeToSuggestions: (sessionId: string, listener: SuggestionListener): (() => void) => {
+    console.log('[ObserverStore] subscribeToSuggestions called for session:', sessionId);
     if (!suggestionListeners.has(sessionId)) {
       suggestionListeners.set(sessionId, new Set());
     }
     suggestionListeners.get(sessionId)!.add(listener);
+    console.log('[ObserverStore] Listener added, total listeners for session:', suggestionListeners.get(sessionId)!.size);
     if (isInitialized) {
-      listener(observerHelpers.getSuggestions(sessionId));
+      const initialSuggestions = observerHelpers.getSuggestions(sessionId);
+      console.log('[ObserverStore] Sending initial suggestions:', initialSuggestions.length);
+      listener(initialSuggestions);
     }
     return () => {
       const listeners = suggestionListeners.get(sessionId);
@@ -912,4 +1040,238 @@ export const observerHelpers = {
       .map(([hash, row]) => rowToDocument(hash, row))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
+
+  // =========================================================================
+  // Direct Store Access (for chat/query interface)
+  // =========================================================================
+
+  /**
+   * Get the raw TinyBase store instance
+   * Use with caution - direct mutations bypass helpers
+   */
+  getStore: (): Store | null => {
+    if (!isInitialized) return null;
+    return store;
+  },
+
+  /**
+   * Execute a read query on the store
+   * Returns the result or throws an error
+   */
+  executeQuery: (queryFn: (store: Store) => unknown): unknown => {
+    if (!isInitialized) {
+      throw new Error('Store not initialized');
+    }
+    return queryFn(store);
+  },
+
+  /**
+   * Execute a mutation on the store
+   * Returns the result or throws an error
+   */
+  executeMutation: (mutationFn: (store: Store) => unknown): unknown => {
+    if (!isInitialized) {
+      throw new Error('Store not initialized');
+    }
+    return mutationFn(store);
+  },
+
+  /**
+   * Get the schema of the TinyBase database
+   * Returns table names, their columns, and sample data types
+   */
+  getSchema: (): DatabaseSchema => {
+    if (!isInitialized) {
+      return { tables: {}, initialized: false };
+    }
+
+    const tables: Record<string, TableSchema> = {};
+    const tableNames = ['sessions', 'messages', 'knowledge', 'tags', 'categories', 'privacy', 'entities', 'suggestions', 'documents'];
+
+    for (const tableName of tableNames) {
+      const table = store.getTable(tableName);
+      const rowCount = table ? Object.keys(table).length : 0;
+      const columns: Record<string, ColumnSchema> = {};
+
+      // Get column info from first row if exists
+      if (table && rowCount > 0) {
+        const firstRow = Object.values(table)[0] as Record<string, unknown>;
+        for (const [colName, value] of Object.entries(firstRow)) {
+          columns[colName] = {
+            type: typeof value,
+            sample: typeof value === 'string' && value.length > 100
+              ? value.substring(0, 100) + '...'
+              : value,
+          };
+        }
+      }
+
+      tables[tableName] = {
+        rowCount,
+        columns,
+        primaryKey: tableName === 'tags' || tableName === 'categories' || tableName === 'privacy'
+          ? 'name'
+          : tableName === 'documents'
+            ? 'hash'
+            : 'id',
+      };
+    }
+
+    return { tables, initialized: true };
+  },
+
+  // =========================================================================
+  // Observer Errors
+  // =========================================================================
+
+  /**
+   * Add an observer error with retry data
+   */
+  addObserverError: (
+    sessionId: string,
+    phase: ObserverPhase,
+    error: string,
+    retryData: ObserverError['retryData']
+  ): string => {
+    if (!isInitialized) return '';
+    const id = generateId();
+    const now = new Date().toISOString();
+
+    store.setRow('observerErrors', id, {
+      sessionId,
+      phase,
+      error,
+      retryData: JSON.stringify(retryData),
+      resolved: false,
+      createdAt: now,
+    });
+
+    notifyObserverErrorListeners(sessionId);
+    return id;
+  },
+
+  /**
+   * Get all unresolved observer errors for a session
+   */
+  getObserverErrors: (sessionId: string): ObserverError[] => {
+    if (!isInitialized) return [];
+    const table = store.getTable('observerErrors');
+    if (!table) return [];
+
+    return Object.entries(table)
+      .filter(([, row]) => row.sessionId === sessionId && !row.resolved)
+      .map(([id, row]) => ({
+        id,
+        sessionId: row.sessionId as string,
+        phase: row.phase as ObserverPhase,
+        error: row.error as string,
+        retryData: JSON.parse(row.retryData as string || '{}'),
+        resolved: row.resolved as boolean,
+        createdAt: row.createdAt as string,
+        resolvedAt: row.resolvedAt as string | undefined,
+      }));
+  },
+
+  /**
+   * Mark an observer error as resolved
+   */
+  resolveObserverError: (errorId: string): void => {
+    if (!isInitialized) return;
+    const row = store.getRow('observerErrors', errorId);
+    if (!row) return;
+
+    store.setCell('observerErrors', errorId, 'resolved', true);
+    store.setCell('observerErrors', errorId, 'resolvedAt', new Date().toISOString());
+
+    notifyObserverErrorListeners(row.sessionId as string);
+  },
+
+  /**
+   * Delete an observer error
+   */
+  deleteObserverError: (errorId: string): void => {
+    if (!isInitialized) return;
+    const row = store.getRow('observerErrors', errorId);
+    if (!row) return;
+
+    const sessionId = row.sessionId as string;
+    store.delRow('observerErrors', errorId);
+    notifyObserverErrorListeners(sessionId);
+  },
+
+  /**
+   * Subscribe to observer errors for a session
+   */
+  subscribeToObserverErrors: (sessionId: string, listener: ObserverErrorListener): (() => void) => {
+    if (!observerErrorListeners.has(sessionId)) {
+      observerErrorListeners.set(sessionId, new Set());
+    }
+    observerErrorListeners.get(sessionId)!.add(listener);
+
+    // Send initial data
+    if (isInitialized) {
+      listener(observerHelpers.getObserverErrors(sessionId));
+    }
+
+    return () => {
+      const listeners = observerErrorListeners.get(sessionId);
+      if (listeners) {
+        listeners.delete(listener);
+        if (listeners.size === 0) {
+          observerErrorListeners.delete(sessionId);
+        }
+      }
+    };
+  },
+
+  /**
+   * Get a summary of all data for context
+   */
+  getDataSummary: (): DataSummary => {
+    if (!isInitialized) {
+      return { sessions: 0, messages: 0, knowledge: 0, tags: 0, categories: 0, entities: 0, suggestions: 0, documents: 0 };
+    }
+
+    return {
+      sessions: Object.keys(store.getTable('sessions') || {}).length,
+      messages: Object.keys(store.getTable('messages') || {}).length,
+      knowledge: Object.keys(store.getTable('knowledge') || {}).length,
+      tags: Object.keys(store.getTable('tags') || {}).length,
+      categories: Object.keys(store.getTable('categories') || {}).length,
+      entities: Object.keys(store.getTable('entities') || {}).length,
+      suggestions: Object.keys(store.getTable('suggestions') || {}).length,
+      documents: Object.keys(store.getTable('documents') || {}).length,
+    };
+  },
 };
+
+// ============================================================================
+// Schema Types for Chat Interface
+// ============================================================================
+
+export interface ColumnSchema {
+  type: string;
+  sample: unknown;
+}
+
+export interface TableSchema {
+  rowCount: number;
+  columns: Record<string, ColumnSchema>;
+  primaryKey: string;
+}
+
+export interface DatabaseSchema {
+  tables: Record<string, TableSchema>;
+  initialized: boolean;
+}
+
+export interface DataSummary {
+  sessions: number;
+  messages: number;
+  knowledge: number;
+  tags: number;
+  categories: number;
+  entities: number;
+  suggestions: number;
+  documents: number;
+}

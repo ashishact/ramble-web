@@ -7,6 +7,7 @@ import { SettingsPage } from "./components/SettingsPage";
 import { CloudflareAIGatewayTest } from "./components/CloudflareAIGatewayTest";
 import { SpeechToTextTest } from "./components/SpeechToTextTest";
 import { ObserverPage } from "./components/ObserverPage";
+import { ChatPage } from "./components/ChatPage";
 import { useVoiceAgent } from "./hooks/useVoiceAgent";
 
 export interface TranscriptMessage {
@@ -178,6 +179,7 @@ function App() {
         <Route path="/cf-gateway-test" element={<CloudflareAIGatewayTest />} />
         <Route path="/stt-test" element={<SpeechToTextTest />} />
         <Route path="/observer" element={<ObserverPage />} />
+        <Route path="/chat" element={<ChatPage />} />
       </Routes>
     </BrowserRouter>
   );

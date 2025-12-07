@@ -7,7 +7,7 @@
  * - Triggers observers in sequence: Knowledge → Suggestion
  */
 
-import { observerHelpers } from '../../stores/observerStore';
+import { observerHelpers, type ObserverPhase } from '../../stores/observerStore';
 
 export interface QueueItem {
   messageIds: string[];
@@ -17,10 +17,10 @@ export interface QueueItem {
 export type QueueStatus = 'idle' | 'processing';
 
 export interface ObserverQueueCallbacks {
-  onStatusChange?: (status: QueueStatus, description?: string) => void;
+  onStatusChange?: (status: QueueStatus, description?: string, phase?: ObserverPhase) => void;
   onKnowledgeProcessed?: (sessionId: string, messageIds: string[]) => void;
   onSuggestionProcessed?: (sessionId: string) => void;
-  onError?: (error: Error, phase: 'knowledge' | 'suggestion') => void;
+  onError?: (error: Error, phase: ObserverPhase) => void;
 }
 
 // Queue state
@@ -112,7 +112,7 @@ async function processNext(): Promise<void> {
 
   isProcessing = true;
   status = 'processing';
-  callbacks.onStatusChange?.('processing', 'Processing messages...');
+  callbacks.onStatusChange?.('processing', 'Processing messages...', undefined);
 
   // Get the next item
   const item = queue.shift()!;
@@ -120,25 +120,41 @@ async function processNext(): Promise<void> {
 
   console.log('[ObserverQueue] Processing', messageIds.length, 'messages for session:', sessionId);
 
+  let currentPhase: ObserverPhase = 'knowledge';
+
   try {
     // Phase 1: Knowledge Observer
     if (knowledgeObserverFn) {
-      callbacks.onStatusChange?.('processing', 'Extracting knowledge...');
+      currentPhase = 'knowledge';
+      callbacks.onStatusChange?.('processing', 'Extracting knowledge...', 'knowledge');
       await knowledgeObserverFn(sessionId, messageIds);
       callbacks.onKnowledgeProcessed?.(sessionId, messageIds);
     }
 
     // Phase 2: Suggestion Observer
     if (suggestionObserverFn) {
-      callbacks.onStatusChange?.('processing', 'Generating suggestions...');
+      currentPhase = 'suggestion';
+      callbacks.onStatusChange?.('processing', 'Generating suggestions...', 'suggestion');
       await suggestionObserverFn(sessionId);
       callbacks.onSuggestionProcessed?.(sessionId);
     }
 
     console.log('[ObserverQueue] Completed processing for session:', sessionId);
   } catch (error) {
-    console.error('[ObserverQueue] Error processing:', error);
-    callbacks.onError?.(error instanceof Error ? error : new Error(String(error)), 'knowledge');
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error('[ObserverQueue] Error processing:', err);
+
+    // Save error to store with retry data
+    observerHelpers.addObserverError(
+      sessionId,
+      currentPhase,
+      err.message,
+      {
+        messageIds: currentPhase === 'knowledge' ? messageIds : undefined,
+      }
+    );
+
+    callbacks.onError?.(err, currentPhase);
   }
 
   isProcessing = false;
@@ -149,7 +165,7 @@ async function processNext(): Promise<void> {
     processNext();
   } else {
     status = 'idle';
-    callbacks.onStatusChange?.('idle');
+    callbacks.onStatusChange?.('idle', undefined, undefined);
   }
 }
 
@@ -212,13 +228,24 @@ export async function checkSystem2Trigger(sessionId: string): Promise<void> {
   // Run every 16 items
   if (count > 0 && count % KNOWLEDGE_THRESHOLD === 0) {
     console.log('[ObserverQueue] Triggering System 2 Thinker for session:', sessionId);
-    callbacks.onStatusChange?.('processing', 'Running deep analysis...');
+    callbacks.onStatusChange?.('processing', 'Running deep analysis...', 'system2');
 
     try {
       await system2ThinkerFn(sessionId);
       console.log('[ObserverQueue] System 2 Thinker completed for session:', sessionId);
     } catch (error) {
-      console.error('[ObserverQueue] System 2 Thinker error:', error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error('[ObserverQueue] System 2 Thinker error:', err);
+
+      // Save error with retry data
+      observerHelpers.addObserverError(
+        sessionId,
+        'system2',
+        err.message,
+        { knowledgeCount: count }
+      );
+
+      callbacks.onError?.(err, 'system2');
     }
   }
 }
@@ -249,14 +276,25 @@ export async function checkMetaTrigger(): Promise<void> {
 
   if (lastRun !== today) {
     console.log('[ObserverQueue] Triggering Meta Observer (daily run)');
-    callbacks.onStatusChange?.('processing', 'Analyzing system structure...');
+    callbacks.onStatusChange?.('processing', 'Analyzing system structure...', 'meta');
 
     try {
       await metaObserverFn();
       localStorage.setItem(META_STORAGE_KEY, today);
       console.log('[ObserverQueue] Meta Observer completed');
     } catch (error) {
-      console.error('[ObserverQueue] Meta Observer error:', error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error('[ObserverQueue] Meta Observer error:', err);
+
+      // Meta observer is global, use a placeholder session ID
+      observerHelpers.addObserverError(
+        '_global',
+        'meta',
+        err.message,
+        {}
+      );
+
+      callbacks.onError?.(err, 'meta');
     }
   }
 }
