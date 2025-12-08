@@ -1,0 +1,393 @@
+/**
+ * Extraction Pipeline
+ *
+ * Orchestrates the extraction process:
+ * 1. Pattern matching to determine which extractors to run
+ * 2. Token budgeting to fit context
+ * 3. LLM calls for extraction
+ * 4. Result aggregation and deduplication
+ */
+
+import type { ConversationUnit, ClaimType } from '../types';
+import type {
+  ExtractionProgram,
+  ExtractorContext,
+  ExtractedClaim,
+  ExtractedEntity,
+  PatternMatch,
+  TokenBudget,
+} from '../extractors/types';
+import { extractorRegistry } from '../extractors/registry';
+import { findPatternMatches } from '../extractors/patternMatcher';
+import { callLLM } from './llmClient';
+import { createLogger } from '../utils/logger';
+import { estimateTokens } from '../utils/tokens';
+
+const logger = createLogger('Pipeline');
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface PipelineInput {
+  /** The conversation unit to process */
+  unit: ConversationUnit;
+  /** Summary of preceding context */
+  precedingContext: string;
+  /** Recent claims for context */
+  recentClaims: Array<{
+    statement: string;
+    claim_type: ClaimType;
+    subject: string;
+  }>;
+  /** Active thought chains */
+  activeChains: Array<{
+    id: string;
+    topic: string;
+  }>;
+  /** Known entities */
+  knownEntities: Array<{
+    canonical_name: string;
+    entity_type: string;
+  }>;
+  /** Optional: specific extractors to run (otherwise runs all matching) */
+  extractorIds?: string[];
+}
+
+export interface PipelineOutput {
+  /** All extracted claims */
+  claims: ExtractedClaim[];
+  /** All extracted entities */
+  entities: ExtractedEntity[];
+  /** Which extractors ran */
+  extractorsRun: string[];
+  /** Total processing time */
+  processingTimeMs: number;
+  /** Total tokens used */
+  tokensUsed: number;
+}
+
+// ============================================================================
+// Pipeline Implementation
+// ============================================================================
+
+/**
+ * Run the extraction pipeline on a conversation unit
+ */
+export async function runExtractionPipeline(input: PipelineInput): Promise<PipelineOutput> {
+  const startTime = Date.now();
+  let totalTokens = 0;
+
+  console.log('[Pipeline] Starting extraction for:', input.unit.sanitized_text.slice(0, 100));
+  logger.info('Starting extraction pipeline', {
+    unitId: input.unit.id,
+    textLength: input.unit.sanitized_text.length,
+  });
+
+  // Step 1: Determine which extractors to run
+  const extractorsToRun = selectExtractors(input);
+
+  if (extractorsToRun.length === 0) {
+    console.log('[Pipeline] No extractors matched!');
+    logger.debug('No extractors matched for this unit');
+    return {
+      claims: [],
+      entities: [],
+      extractorsRun: [],
+      processingTimeMs: Date.now() - startTime,
+      tokensUsed: 0,
+    };
+  }
+
+  console.log('[Pipeline] Running extractors:', extractorsToRun.map((e) => e.extractor.config.id));
+  logger.debug('Selected extractors', {
+    count: extractorsToRun.length,
+    ids: extractorsToRun.map((e) => e.extractor.config.id),
+  });
+
+  // Step 2: Run extractors (can be parallelized with token budgeting)
+  const allClaims: ExtractedClaim[] = [];
+  const allEntities: ExtractedEntity[] = [];
+  const extractorsRun: string[] = [];
+
+  // Run in batches based on provider to avoid rate limiting
+  const groqExtractors = extractorsToRun.filter((e) => e.extractor.config.llm_provider === 'groq');
+  const geminiExtractors = extractorsToRun.filter((e) => e.extractor.config.llm_provider === 'gemini');
+
+  // Run Groq extractors in parallel (fast)
+  if (groqExtractors.length > 0) {
+    const results = await Promise.all(
+      groqExtractors.map((e) => runSingleExtractor(e.extractor, e.matches, input))
+    );
+
+    for (const result of results) {
+      allClaims.push(...result.claims);
+      allEntities.push(...result.entities);
+      extractorsRun.push(result.extractorId);
+      totalTokens += result.tokens;
+    }
+  }
+
+  // Run Gemini extractors sequentially (rate limited)
+  for (const e of geminiExtractors) {
+    const result = await runSingleExtractor(e.extractor, e.matches, input);
+    allClaims.push(...result.claims);
+    allEntities.push(...result.entities);
+    extractorsRun.push(result.extractorId);
+    totalTokens += result.tokens;
+  }
+
+  // Step 3: Deduplicate and merge results
+  const dedupedClaims = deduplicateClaims(allClaims);
+  const dedupedEntities = deduplicateEntities(allEntities);
+
+  logger.info('Extraction pipeline complete', {
+    claimsExtracted: dedupedClaims.length,
+    entitiesExtracted: dedupedEntities.length,
+    extractorsRun: extractorsRun.length,
+    processingTimeMs: Date.now() - startTime,
+    tokensUsed: totalTokens,
+  });
+
+  return {
+    claims: dedupedClaims,
+    entities: dedupedEntities,
+    extractorsRun,
+    processingTimeMs: Date.now() - startTime,
+    tokensUsed: totalTokens,
+  };
+}
+
+/**
+ * Select which extractors should run based on pattern matching
+ */
+function selectExtractors(input: PipelineInput): Array<{
+  extractor: ExtractionProgram;
+  matches: PatternMatch[];
+}> {
+  const allExtractors = extractorRegistry.getAllSortedByPriority();
+
+  // If specific extractors requested, filter to those
+  let candidates = allExtractors;
+  if (input.extractorIds && input.extractorIds.length > 0) {
+    const idSet = new Set(input.extractorIds);
+    candidates = candidates.filter((e) => idSet.has(e.config.id));
+  }
+
+  // Split into always-run and pattern-based
+  const alwaysRun = candidates.filter((e) => e.config.always_run);
+  const patternBased = candidates.filter((e) => !e.config.always_run);
+
+  const result: Array<{ extractor: ExtractionProgram; matches: PatternMatch[] }> = [];
+
+  // Always-run extractors
+  for (const extractor of alwaysRun) {
+    result.push({ extractor, matches: [] });
+  }
+
+  // Pattern-based extractors
+  if (patternBased.length > 0) {
+    const matchResults = findPatternMatches(input.unit.sanitized_text, patternBased);
+
+    for (const matchResult of matchResults) {
+      const extractor = patternBased.find((e) => e.config.id === matchResult.extractor_id);
+      if (extractor) {
+        result.push({ extractor, matches: matchResult.matches });
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Run a single extractor
+ */
+async function runSingleExtractor(
+  extractor: ExtractionProgram,
+  matches: PatternMatch[],
+  input: PipelineInput
+): Promise<{
+  extractorId: string;
+  claims: ExtractedClaim[];
+  entities: ExtractedEntity[];
+  tokens: number;
+}> {
+  const config = extractor.config;
+
+  try {
+    // Build context
+    const context: ExtractorContext = {
+      unit: {
+        id: input.unit.id,
+        raw_text: input.unit.raw_text,
+        sanitized_text: input.unit.sanitized_text,
+        source: input.unit.source,
+        preceding_context_summary: input.precedingContext,
+      },
+      matches,
+      recent_claims: input.recentClaims,
+      active_chains: input.activeChains,
+      known_entities: input.knownEntities,
+    };
+
+    // Build prompt
+    const prompt = extractor.buildPrompt(context);
+
+    // Call LLM
+    const response = await callLLM({
+      provider: config.llm_provider,
+      prompt,
+      options: config.llm_options,
+    });
+
+    // Parse response
+    let result = extractor.parseResponse(response.content, context);
+
+    // Post-process if available
+    if (extractor.postProcess) {
+      result.claims = extractor.postProcess(result.claims, context);
+    }
+
+    // Update metadata
+    result.metadata.tokens_used = response.tokens_used.total;
+    result.metadata.processing_time_ms = response.processing_time_ms;
+
+    logger.debug('Extractor completed', {
+      extractorId: config.id,
+      claimsFound: result.claims.length,
+      entitiesFound: result.entities.length,
+    });
+
+    return {
+      extractorId: config.id,
+      claims: result.claims,
+      entities: result.entities,
+      tokens: response.tokens_used.total,
+    };
+  } catch (error) {
+    logger.error('Extractor failed', {
+      extractorId: config.id,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+
+    // Return empty results on error
+    return {
+      extractorId: config.id,
+      claims: [],
+      entities: [],
+      tokens: 0,
+    };
+  }
+}
+
+/**
+ * Deduplicate claims by statement similarity
+ */
+function deduplicateClaims(claims: ExtractedClaim[]): ExtractedClaim[] {
+  const seen = new Map<string, ExtractedClaim>();
+
+  for (const claim of claims) {
+    // Create a simplified key for deduplication
+    const key = claim.statement.toLowerCase().trim();
+
+    const existing = seen.get(key);
+    if (!existing || claim.confidence > existing.confidence) {
+      seen.set(key, claim);
+    }
+  }
+
+  return Array.from(seen.values());
+}
+
+/**
+ * Deduplicate entities by canonical name
+ */
+function deduplicateEntities(entities: ExtractedEntity[]): ExtractedEntity[] {
+  const seen = new Map<string, ExtractedEntity>();
+
+  for (const entity of entities) {
+    const key = entity.canonical_name.toLowerCase().trim();
+
+    const existing = seen.get(key);
+    if (existing) {
+      // Merge aliases
+      const allAliases = new Set([...existing.aliases, ...entity.aliases]);
+      existing.aliases = Array.from(allAliases);
+    } else {
+      seen.set(key, { ...entity });
+    }
+  }
+
+  return Array.from(seen.values());
+}
+
+/**
+ * Build context with token budgeting
+ */
+export function buildBudgetedContext(
+  input: PipelineInput,
+  budget: TokenBudget
+): {
+  precedingContext: string;
+  recentClaims: typeof input.recentClaims;
+  activeChains: typeof input.activeChains;
+  knownEntities: typeof input.knownEntities;
+} {
+  // Start with full context
+  let precedingContext = input.precedingContext;
+  let recentClaims = input.recentClaims;
+  let activeChains = input.activeChains;
+  let knownEntities = input.knownEntities;
+
+  // Estimate base tokens
+  const baseTokens = estimateTokens(input.unit.sanitized_text);
+
+  // Budget remaining for context
+  const remainingBudget = budget.context_tokens - baseTokens;
+
+  if (remainingBudget <= 0) {
+    // No room for context
+    return {
+      precedingContext: '',
+      recentClaims: [],
+      activeChains: [],
+      knownEntities: [],
+    };
+  }
+
+  // Allocate tokens proportionally
+  const contextTokens = Math.min(estimateTokens(precedingContext), remainingBudget * 0.4);
+  if (estimateTokens(precedingContext) > contextTokens) {
+    // Truncate preceding context
+    precedingContext = truncateToTokens(precedingContext, Math.floor(contextTokens));
+  }
+
+  // Limit claims
+  const maxClaims = Math.min(budget.max_claims, recentClaims.length);
+  recentClaims = recentClaims.slice(0, maxClaims);
+
+  // Limit chains and entities
+  activeChains = activeChains.slice(0, 5);
+  knownEntities = knownEntities.slice(0, 10);
+
+  return {
+    precedingContext,
+    recentClaims,
+    activeChains,
+    knownEntities,
+  };
+}
+
+/**
+ * Truncate text to approximately N tokens
+ */
+function truncateToTokens(text: string, maxTokens: number): string {
+  const words = text.split(/\s+/);
+  const wordsPerToken = 0.75; // Rough estimate
+  const maxWords = Math.floor(maxTokens * wordsPerToken);
+
+  if (words.length <= maxWords) return text;
+
+  return words.slice(0, maxWords).join(' ') + '...';
+}

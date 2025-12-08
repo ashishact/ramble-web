@@ -120,25 +120,33 @@ export class GroqWhisperProvider implements ISTTProvider {
   }
 
   stopRecording(): void {
-    if (this.mediaRecorder && this.recording) {
-      this.mediaRecorder.stop();
-      this.recording = false;
-    }
+    console.log('[GroqWhisper] stopRecording called, recording:', this.recording);
 
-    // For VAD: send any remaining accumulated chunks
+    // For VAD: send any remaining accumulated chunks before stopping
     if (this.chunkingStrategy === 'vad' && this.vadAudioChunks.length > 0) {
       console.log('[VAD] Sending remaining chunks on stop:', this.vadAccumulatedDuration.toFixed(2), 'seconds');
       this.processVADChunks();
     }
 
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+    }
+
+    this.recording = false;
+
     // Cleanup strategy-specific resources
     this.cleanupChunkingResources();
+
+    // Also cleanup audio stream immediately so next recording can start fresh
+    this.cleanupAudio();
 
     this.callbacks.onStatusChange?.({
       connected: this.connected,
       recording: false,
       provider: this.config.provider,
     });
+
+    console.log('[GroqWhisper] stopRecording complete, ready for next recording');
   }
 
   async sendAudio(audioData: ArrayBuffer | Blob): Promise<void> {
