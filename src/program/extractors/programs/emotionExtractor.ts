@@ -44,7 +44,7 @@ class EmotionExtractor extends BaseExtractor {
       { id: 'conflicted', type: 'keyword', pattern: 'conflicted', weight: 0.8 },
       { id: 'torn', type: 'keyword', pattern: 'torn', weight: 0.7 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: {
       temperature: 0.4,
       max_tokens: 800,

@@ -131,6 +131,38 @@ export type {
   MemoryServiceConfig,
 } from './types';
 
+// LLM Tier Types
+export type {
+  LLMTier,
+  LLMTierConfig,
+  LLMTierSettings,
+  LLMProvider as ConcreteProvider,
+  STTTier,
+  STTTierConfig,
+  STTTierSettings,
+  STTProvider as ConcreteSTTProvider,
+} from './types/llmTiers';
+export {
+  DEFAULT_LLM_TIER_SETTINGS,
+  DEFAULT_STT_TIER_SETTINGS,
+  PROVIDER_DISPLAY_NAMES,
+  LLM_TIER_INFO,
+  STT_TIER_INFO,
+} from './types/llmTiers';
+
+// LLM Resolver
+export {
+  resolveLLMTier,
+  getLLMTierSettings,
+  updateLLMTierSettings,
+  resetLLMTier,
+  resolveSTTTier,
+  getSTTTierSettings,
+  updateSTTTierSettings,
+  resetSTTTier,
+  getTokenBudgetForTier,
+} from './services/llmResolver';
+
 // Goal Manager
 export {
   GoalManager,
@@ -222,6 +254,14 @@ export {
   createDecayHandler,
 } from './memory';
 
+// Sync Service
+export {
+  syncExtractors,
+  syncObservers,
+  syncAll,
+  type SyncResult,
+} from './sync';
+
 // Migrations
 export type { Migration, MigrationResult, MigrationStatus, MigrationRecord } from './migrations';
 
@@ -230,3 +270,4 @@ export { createLogger, type LogLevel } from './utils/logger';
 export { generateId } from './utils/id';
 export { now, exponentialDecay, SALIENCE_HALFLIFE, HALF_LIFE } from './utils/time';
 export { estimateTokens } from './utils/tokens';
+export { replaceVariables, extractVariables, validateVariables } from './utils/template';

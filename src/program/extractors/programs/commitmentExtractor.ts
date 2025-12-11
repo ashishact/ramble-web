@@ -34,7 +34,7 @@ class CommitmentExtractor extends BaseExtractor {
       // Accountability
       { id: 'accountability', type: 'keyword', pattern: "I'm responsible|counting on me|depending on me|my word", weight: 0.8 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: { temperature: 0.2, max_tokens: 1500 },
     min_confidence: 0.6,
     priority: 75,

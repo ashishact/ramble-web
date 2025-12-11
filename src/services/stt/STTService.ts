@@ -16,6 +16,7 @@ import type {
 import { DeepgramProvider } from './providers/DeepgramProvider';
 import { GroqWhisperProvider } from './providers/GroqWhisperProvider';
 import { GeminiProvider } from './providers/GeminiProvider';
+import { resolveSTTTier } from '../../program/services/llmResolver';
 
 export class STTService {
   private static instance: STTService | null = null;
@@ -37,20 +38,41 @@ export class STTService {
   }
 
   /**
+   * Resolve config tier to actual provider
+   */
+  private resolveConfig(config: STTConfig): STTConfig {
+    // If tier is specified, resolve it to provider
+    if (config.tier) {
+      const resolved = resolveSTTTier(config.tier);
+      return {
+        ...config,
+        provider: resolved.provider,
+        model: resolved.model || config.model,
+      };
+    }
+    // Otherwise use provider directly (legacy mode)
+    return config;
+  }
+
+  /**
    * Check if config has meaningfully changed
    */
   private configChanged(newConfig: STTConfig): boolean {
     if (!this.currentConfig) return true;
 
+    // Resolve both configs for comparison
+    const resolvedCurrent = this.resolveConfig(this.currentConfig);
+    const resolvedNew = this.resolveConfig(newConfig);
+
     // Check if provider changed
-    if (this.currentConfig.provider !== newConfig.provider) return true;
+    if (resolvedCurrent.provider !== resolvedNew.provider) return true;
 
     // Check if apiKey changed (important!)
-    if (this.currentConfig.apiKey !== newConfig.apiKey) return true;
+    if (resolvedCurrent.apiKey !== resolvedNew.apiKey) return true;
 
     // Check other important config changes
-    if (this.currentConfig.model !== newConfig.model) return true;
-    if (this.currentConfig.chunkingStrategy !== newConfig.chunkingStrategy) return true;
+    if (resolvedCurrent.model !== resolvedNew.model) return true;
+    if (resolvedCurrent.chunkingStrategy !== resolvedNew.chunkingStrategy) return true;
 
     return false;
   }
@@ -59,8 +81,11 @@ export class STTService {
    * Create and connect to an STT provider
    */
   async connect(config: STTConfig, callbacks: STTServiceCallbacks): Promise<void> {
+    // Resolve tier to actual provider
+    const resolvedConfig = this.resolveConfig(config);
+
     // If already connected with same provider and config, just update callbacks
-    if (this.provider && this.provider.getProvider() === config.provider &&
+    if (this.provider && this.provider.getProvider() === resolvedConfig.provider &&
         this.provider.isConnected() && !this.configChanged(config)) {
       // Provider already connected with same config, no need to reconnect
       return;
@@ -74,8 +99,8 @@ export class STTService {
     // Store new config
     this.currentConfig = config;
 
-    // Create provider instance
-    this.provider = this.createProvider(config);
+    // Create provider instance using resolved config
+    this.provider = this.createProvider(resolvedConfig);
 
     // Connect
     await this.provider.connect(callbacks);
@@ -157,6 +182,10 @@ export class STTService {
    * Factory method to create provider instances
    */
   private createProvider(config: STTConfig): ISTTProvider {
+    if (!config.provider) {
+      throw new Error('Provider must be specified in config (or resolved from tier)');
+    }
+
     switch (config.provider) {
       case 'groq-whisper':
         return new GroqWhisperProvider(config);

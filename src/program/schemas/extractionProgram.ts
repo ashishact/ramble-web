@@ -7,6 +7,7 @@
  */
 
 import { z } from 'zod';
+import { LLMTierSchema } from '../types/llmTiers';
 
 // ============================================================================
 // Extraction Program Schema
@@ -23,9 +24,8 @@ export const ExtractionProgramSchema = z.object({
   patterns_json: z.string(), // JSON array of pattern definitions
   always_run: z.boolean(), // If true, runs on every text (ignores patterns)
 
-  // LLM configuration
-  llm_provider: z.enum(['groq', 'gemini']),
-  llm_model: z.string().nullable(),
+  // LLM configuration - uses tier abstraction (small/medium/large)
+  llm_tier: LLMTierSchema,
   llm_temperature: z.number().min(0).max(2).nullable(),
   llm_max_tokens: z.number().int().positive().nullable(),
 
@@ -64,7 +64,6 @@ export const CreateExtractionProgramSchema = ExtractionProgramSchema.omit({
   success_rate: true,
   run_count: true,
   avg_processing_time_ms: true,
-  llm_model: true,
   llm_temperature: true,
   llm_max_tokens: true,
 });

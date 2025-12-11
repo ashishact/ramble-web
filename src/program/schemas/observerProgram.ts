@@ -8,6 +8,7 @@
 
 import { z } from 'zod';
 import { ObserverTypeSchema, TriggerTypeSchema } from './observer';
+import { LLMTierSchema } from '../types/llmTiers';
 
 // ============================================================================
 // Observer Program Schema
@@ -29,8 +30,7 @@ export const ObserverProgramSchema = z.object({
 
   // LLM configuration (if this observer uses LLM)
   uses_llm: z.boolean(),
-  llm_provider: z.enum(['groq', 'gemini']).nullable(),
-  llm_model: z.string().nullable(),
+  llm_tier: LLMTierSchema.nullable(), // Uses tier abstraction (small/medium/large)
   llm_temperature: z.number().min(0).max(2).nullable(),
   llm_max_tokens: z.number().int().positive().nullable(),
 

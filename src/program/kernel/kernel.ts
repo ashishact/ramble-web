@@ -19,7 +19,7 @@ import { ObserverDispatcher, createStandardDispatcher, type DispatcherStats } fr
 import { CorrectionService, createCorrectionService, type ProcessTextResult } from '../corrections';
 import { MemoryService, createMemoryService } from '../memory';
 import { MigrationManager, createMigrationManager, ALL_MIGRATIONS, type MigrationStatus, type MigrationResult } from '../migrations';
-// import { extractorRegistry } from '../extractors/registry'; // Will be used for sync
+import { syncAll, type SyncResult } from '../sync';
 import { createLogger } from '../utils/logger';
 import { now } from '../utils/time';
 
@@ -175,6 +175,10 @@ export class ProgramKernel {
       this.dispatcher = createStandardDispatcher(this.store, {
         autoRun: this.config.autoObservers,
       });
+
+      // Sync extractors and observers from code to database
+      const syncResult = syncAll(this.store, this.dispatcher.getObservers());
+      logger.info('Synced extractors and observers to database', syncResult);
 
       // Initialize correction service
       this.correctionService = createCorrectionService(this.store.corrections, {
@@ -478,6 +482,7 @@ export class ProgramKernel {
       precedingContext: this.buildPrecedingContext(payload.sessionId, unit.id),
       recentClaims: this.getRecentClaimsForPipeline(),
       knownEntities: this.getKnownEntityInfo(),
+      store: this.store!,
     };
 
     // Run extraction
@@ -1184,6 +1189,28 @@ export class ProgramKernel {
   getObserverStats(): DispatcherStats {
     this.ensureInitialized();
     return this.dispatcher!.getStats();
+  }
+
+  // ==========================================================================
+  // Sync Management
+  // ==========================================================================
+
+  /**
+   * Sync extractors and observers from code to database
+   */
+  syncPrograms(): SyncResult {
+    this.ensureInitialized();
+    const result = syncAll(this.store!, this.dispatcher!.getObservers());
+    logger.info('Synced programs', result);
+    return result;
+  }
+
+  /**
+   * Get all observer programs from database
+   */
+  getObserverPrograms() {
+    this.ensureInitialized();
+    return this.store!.observerPrograms.getAll();
   }
 
   // ==========================================================================

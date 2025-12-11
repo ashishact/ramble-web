@@ -23,7 +23,13 @@ export function MigrationPanel({ getMigrationStatus, runMigration, runAllPending
   }, []);
 
   const refreshStatus = () => {
-    setStatus(getMigrationStatus());
+    try {
+      setStatus(getMigrationStatus());
+    } catch (error) {
+      // Kernel not initialized yet - this is fine
+      console.debug('Migration panel: Kernel not initialized yet');
+      setStatus(null);
+    }
   };
 
   const handleRunMigration = async (version: number) => {

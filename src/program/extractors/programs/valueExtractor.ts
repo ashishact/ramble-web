@@ -34,7 +34,7 @@ class ValueExtractor extends BaseExtractor {
       // Non-negotiable
       { id: 'non_neg', type: 'keyword', pattern: 'non-negotiable|always|never compromise', weight: 0.85 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: { temperature: 0.2, max_tokens: 1500 },
     min_confidence: 0.6,
     priority: 85,

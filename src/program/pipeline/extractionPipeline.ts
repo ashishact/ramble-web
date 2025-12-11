@@ -17,6 +17,7 @@ import type {
   PatternMatch,
   TokenBudget,
 } from '../extractors/types';
+import type { ProgramStoreInstance } from '../store/programStore';
 import { extractorRegistry } from '../extractors/registry';
 import { findPatternMatches } from '../extractors/patternMatcher';
 import { callLLM } from './llmClient';
@@ -52,6 +53,8 @@ export interface PipelineInput {
   }>;
   /** Optional: specific extractors to run (otherwise runs all matching) */
   extractorIds?: string[];
+  /** Store instance for checking active flags */
+  store: ProgramStoreInstance;
 }
 
 export interface PipelineOutput {
@@ -110,14 +113,14 @@ export async function runExtractionPipeline(input: PipelineInput): Promise<Pipel
   const allEntities: ExtractedEntity[] = [];
   const extractorsRun: string[] = [];
 
-  // Run in batches based on provider to avoid rate limiting
-  const groqExtractors = extractorsToRun.filter((e) => e.extractor.config.llm_provider === 'groq');
-  const geminiExtractors = extractorsToRun.filter((e) => e.extractor.config.llm_provider === 'gemini');
+  // Run extractors by tier priority - run small tier in parallel, others sequentially
+  const smallTierExtractors = extractorsToRun.filter((e) => e.extractor.config.llm_tier === 'small');
+  const otherTierExtractors = extractorsToRun.filter((e) => e.extractor.config.llm_tier !== 'small');
 
-  // Run Groq extractors in parallel (fast)
-  if (groqExtractors.length > 0) {
+  // Run small tier extractors in parallel (fast and cheap)
+  if (smallTierExtractors.length > 0) {
     const results = await Promise.all(
-      groqExtractors.map((e) => runSingleExtractor(e.extractor, e.matches, input))
+      smallTierExtractors.map((e) => runSingleExtractor(e.extractor, e.matches, input))
     );
 
     for (const result of results) {
@@ -128,8 +131,8 @@ export async function runExtractionPipeline(input: PipelineInput): Promise<Pipel
     }
   }
 
-  // Run Gemini extractors sequentially (rate limited)
-  for (const e of geminiExtractors) {
+  // Run medium/large tier extractors sequentially (potentially expensive/rate limited)
+  for (const e of otherTierExtractors) {
     const result = await runSingleExtractor(e.extractor, e.matches, input);
     allClaims.push(...result.claims);
     allEntities.push(...result.entities);
@@ -167,8 +170,16 @@ function selectExtractors(input: PipelineInput): Array<{
 }> {
   const allExtractors = extractorRegistry.getAllSortedByPriority();
 
+  // Filter by active flag from database
+  const activeExtractors = allExtractors.filter((e) => {
+    const dbRecord = input.store.extractionPrograms.getById(e.config.id);
+    // If no DB record, treat as active (shouldn't happen after sync)
+    // If DB record exists, check active flag
+    return !dbRecord || dbRecord.active;
+  });
+
   // If specific extractors requested, filter to those
-  let candidates = allExtractors;
+  let candidates = activeExtractors;
   if (input.extractorIds && input.extractorIds.length > 0) {
     const idSet = new Set(input.extractorIds);
     candidates = candidates.filter((e) => idSet.has(e.config.id));
@@ -234,9 +245,9 @@ async function runSingleExtractor(
     // Build prompt
     const prompt = extractor.buildPrompt(context);
 
-    // Call LLM
+    // Call LLM using tier abstraction
     const response = await callLLM({
-      provider: config.llm_provider,
+      tier: config.llm_tier,
       prompt,
       options: config.llm_options,
     });

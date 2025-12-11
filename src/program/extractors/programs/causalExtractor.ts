@@ -36,7 +36,7 @@ class CausalExtractor extends BaseExtractor {
       // Reason-giving
       { id: 'reason', type: 'keyword', pattern: 'the reason|the cause|what makes|what causes', weight: 0.8 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: { temperature: 0.2, max_tokens: 1500 },
     min_confidence: 0.5,
     priority: 75,

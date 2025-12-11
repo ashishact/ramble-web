@@ -33,7 +33,7 @@ class ChangeMarkerExtractor extends BaseExtractor {
       // New vs old
       { id: 'new_old', type: 'keyword', pattern: 'new|old|previous|former|current|now', weight: 0.5 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: { temperature: 0.2, max_tokens: 1500 },
     min_confidence: 0.5,
     priority: 58,

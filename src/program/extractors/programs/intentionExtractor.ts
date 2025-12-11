@@ -42,7 +42,7 @@ class IntentionExtractor extends BaseExtractor {
       { id: 'thinking_about', type: 'regex', pattern: 'thinking\\s+(?:about|of)', weight: 0.6 },
       { id: 'considering', type: 'keyword', pattern: 'considering', weight: 0.6 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: {
       temperature: 0.3,
       max_tokens: 800,

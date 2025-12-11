@@ -204,6 +204,12 @@ export class ObserverDispatcher {
 
     return Array.from(this.observers.values())
       .filter((observer) => {
+        // Check if observer is active in database
+        const dbRecord = this.store.observerPrograms.getByType(observer.config.type);
+        if (dbRecord && !dbRecord.active) {
+          return false;
+        }
+
         // Check if observer listens to this event type
         if (!observer.config.triggers.includes(event.type)) {
           return false;
@@ -336,6 +342,13 @@ export class ObserverDispatcher {
    */
   getRegisteredObservers(): string[] {
     return Array.from(this.observers.keys());
+  }
+
+  /**
+   * Get all registered observers (for sync)
+   */
+  getObservers(): Map<string, Observer> {
+    return this.observers;
   }
 
   /**

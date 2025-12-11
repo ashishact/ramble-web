@@ -137,7 +137,7 @@ If insufficient data for any category, use empty array.`;
 
     try {
       const response = await callLLM({
-        provider: 'groq',
+        tier: 'small',
         systemPrompt: 'You are a narrative analyst. Identify patterns in self-perception and storytelling. Respond only with valid JSON.',
         prompt,
         options: {

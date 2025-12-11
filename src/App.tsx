@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, useNavigate, useSearchParams } from "reac
 import { VoiceActivityMonitor } from "./components/VoiceActivityMonitor";
 import { AgentView } from "./components/AgentView";
 import { RightSidebar } from "./components/RightSidebar";
-import { SettingsPage } from "./components/SettingsPage";
+import { SettingsPageNew } from "./components/SettingsPageNew";
 import { CloudflareAIGatewayTest } from "./components/CloudflareAIGatewayTest";
 import { SpeechToTextTest } from "./components/SpeechToTextTest";
 import { ObserverPage } from "./components/ObserverPage";
@@ -176,7 +176,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<MainPage />} />
-        <Route path="/settings" element={<SettingsPage onBack={() => window.history.back()} />} />
+        <Route path="/settings" element={<SettingsPageNew onBack={() => window.history.back()} />} />
         <Route path="/cf-gateway-test" element={<CloudflareAIGatewayTest />} />
         <Route path="/stt-test" element={<SpeechToTextTest />} />
         <Route path="/observer" element={<ObserverPage />} />

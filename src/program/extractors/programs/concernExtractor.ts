@@ -49,7 +49,7 @@ class ConcernExtractor extends BaseExtractor {
       { id: 'lose', type: 'regex', pattern: '(?:might|could|will)\\s+lose', weight: 0.8 },
       { id: 'miss', type: 'regex', pattern: '(?:might|could|will)\\s+miss', weight: 0.7 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: {
       temperature: 0.3,
       max_tokens: 800,

@@ -33,7 +33,7 @@ class QuestionExtractor extends BaseExtractor {
       // Knowledge gaps
       { id: 'need_to', type: 'keyword', pattern: 'need to find out|need to learn|need to figure out', weight: 0.8 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: { temperature: 0.2, max_tokens: 1500 },
     min_confidence: 0.5,
     priority: 70,

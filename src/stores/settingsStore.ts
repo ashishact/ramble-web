@@ -5,6 +5,12 @@
  */
 
 import { z } from 'zod/v4';
+import {
+  LLMTierSettingsSchema,
+  STTTierSettingsSchema,
+  DEFAULT_LLM_TIER_SETTINGS,
+  DEFAULT_STT_TIER_SETTINGS,
+} from '../program/types/llmTiers';
 
 // Schema for app settings
 export const appSettingsSchema = z.object({
@@ -36,6 +42,10 @@ export const appSettingsSchema = z.object({
       enabled: z.boolean().default(false),
     }),
   }),
+  // LLM tier mappings - application uses tiers, settings define which provider/model for each tier
+  llmTiers: LLMTierSettingsSchema.default(DEFAULT_LLM_TIER_SETTINGS),
+  // STT tier mappings
+  sttTiers: STTTierSettingsSchema.default(DEFAULT_STT_TIER_SETTINGS),
   voiceProvider: z.literal('gemini').default('gemini'),
   observerProvider: z.enum(['gemini', 'anthropic', 'openai', 'groq']).default('gemini'),
   voice: z.object({
@@ -64,6 +74,8 @@ const DEFAULT_SETTINGS: AppSettings = {
     groq: { apiKey: '', model: 'openai/gpt-oss-120b', enabled: false },
     deepgram: { apiKey: '', model: 'nova-3', enabled: false },
   },
+  llmTiers: DEFAULT_LLM_TIER_SETTINGS,
+  sttTiers: DEFAULT_STT_TIER_SETTINGS,
   voiceProvider: 'gemini',
   observerProvider: 'gemini',
   voice: {
@@ -235,3 +247,6 @@ export const settingsHelpers = {
     notifyListeners();
   },
 };
+
+// Export simple getter for use in non-reactive contexts
+export const getSettings = (): AppSettings => cachedSettings;

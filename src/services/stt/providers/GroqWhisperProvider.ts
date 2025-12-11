@@ -46,6 +46,7 @@ export class GroqWhisperProvider implements ISTTProvider {
   private connected = false;
   private recording = false;
   private chunkingStrategy: ChunkingStrategy;
+  private providerType: STTProvider;
 
   // For VAD-based chunking
   private vad: any = null;
@@ -58,7 +59,11 @@ export class GroqWhisperProvider implements ISTTProvider {
   private isProcessing = false;
 
   constructor(config: GroqWhisperConfig) {
+    if (!config.provider) {
+      throw new Error('Provider must be specified in config');
+    }
     this.config = config;
+    this.providerType = config.provider;
     this.chunkingStrategy = config.chunkingStrategy || 'simple';
   }
 
@@ -69,7 +74,7 @@ export class GroqWhisperProvider implements ISTTProvider {
     this.callbacks.onStatusChange?.({
       connected: true,
       recording: false,
-      provider: this.config.provider,
+      provider: this.providerType,
     });
   }
 
@@ -79,7 +84,7 @@ export class GroqWhisperProvider implements ISTTProvider {
     this.callbacks.onStatusChange?.({
       connected: false,
       recording: false,
-      provider: this.config.provider,
+      provider: this.providerType,
     });
   }
 
@@ -107,13 +112,13 @@ export class GroqWhisperProvider implements ISTTProvider {
       this.callbacks.onStatusChange?.({
         connected: true,
         recording: true,
-        provider: this.config.provider,
+        provider: this.providerType,
       });
     } catch (err) {
       this.callbacks.onError?.({
         code: 'MICROPHONE_ERROR',
         message: err instanceof Error ? err.message : 'Failed to access microphone',
-        provider: this.config.provider,
+        provider: this.providerType,
       });
       throw err;
     }
@@ -143,7 +148,7 @@ export class GroqWhisperProvider implements ISTTProvider {
     this.callbacks.onStatusChange?.({
       connected: this.connected,
       recording: false,
-      provider: this.config.provider,
+      provider: this.providerType,
     });
 
     console.log('[GroqWhisper] stopRecording complete, ready for next recording');
@@ -167,7 +172,7 @@ export class GroqWhisperProvider implements ISTTProvider {
   }
 
   getProvider(): STTProvider {
-    return this.config.provider;
+    return this.providerType;
   }
 
   // ========================================================================
@@ -377,7 +382,7 @@ export class GroqWhisperProvider implements ISTTProvider {
       this.callbacks.onError?.({
         code: 'TRANSCRIPTION_ERROR',
         message: err instanceof Error ? err.message : 'Failed to transcribe audio',
-        provider: this.config.provider,
+        provider: this.providerType,
       });
     }
   }

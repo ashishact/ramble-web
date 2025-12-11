@@ -31,7 +31,7 @@ class PreferenceExtractor extends BaseExtractor {
       // Taste
       { id: 'taste', type: 'keyword', pattern: 'my taste|my style|my type|my kind of', weight: 0.7 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: { temperature: 0.2, max_tokens: 1200 },
     min_confidence: 0.5,
     priority: 55,

@@ -25,9 +25,14 @@ export class DeepgramProvider implements ISTTProvider {
   private finalTranscript = '';
   private version: 'v1' | 'v2';
   private keepaliveInterval: number | null = null;
+  private providerType: STTProvider;
 
   constructor(config: STTConfig) {
+    if (!config.provider) {
+      throw new Error('Provider must be specified in config');
+    }
     this.config = config;
+    this.providerType = config.provider;
     this.version = config.provider === 'deepgram-flux' ? 'v2' : 'v1';
   }
 
@@ -66,7 +71,7 @@ export class DeepgramProvider implements ISTTProvider {
       this.callbacks.onStatusChange?.({
         connected: true,
         recording: false,
-        provider: this.config.provider,
+        provider: this.providerType,
       });
 
       // Send keepalive to prevent timeout
@@ -133,7 +138,7 @@ export class DeepgramProvider implements ISTTProvider {
         this.callbacks.onError?.({
           code: 'PARSE_ERROR',
           message: err instanceof Error ? err.message : 'Failed to parse message',
-          provider: this.config.provider,
+          provider: this.providerType,
         });
       }
     };
@@ -143,7 +148,7 @@ export class DeepgramProvider implements ISTTProvider {
       this.callbacks.onError?.({
         code: 'CONNECTION_ERROR',
         message: 'WebSocket connection error',
-        provider: this.config.provider,
+        provider: this.providerType,
       });
     };
 
@@ -160,14 +165,14 @@ export class DeepgramProvider implements ISTTProvider {
       this.callbacks.onStatusChange?.({
         connected: false,
         recording: false,
-        provider: this.config.provider,
+        provider: this.providerType,
       });
 
       if (!this.isManualClose && event.code !== 1000) {
         this.callbacks.onError?.({
           code: 'CONNECTION_CLOSED',
           message: `WebSocket closed unexpectedly: ${event.code} - ${event.reason || 'No reason provided'}`,
-          provider: this.config.provider,
+          provider: this.providerType,
         });
       }
 
@@ -244,7 +249,7 @@ export class DeepgramProvider implements ISTTProvider {
     this.callbacks.onStatusChange?.({
       connected: true,
       recording: true,
-      provider: this.config.provider,
+      provider: this.providerType,
     });
   }
 
@@ -260,7 +265,7 @@ export class DeepgramProvider implements ISTTProvider {
     this.callbacks.onStatusChange?.({
       connected: this.connected,
       recording: false,
-      provider: this.config.provider,
+      provider: this.providerType,
     });
   }
 
@@ -287,7 +292,7 @@ export class DeepgramProvider implements ISTTProvider {
   }
 
   getProvider(): STTProvider {
-    return this.config.provider;
+    return this.providerType;
   }
 
   private cleanupAudio(): void {

@@ -37,6 +37,7 @@ export class GeminiProvider implements ISTTProvider {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
   private chunkingStrategy: 'simple' | 'vad';
+  private providerType: STTProvider;
 
   // For VAD-based chunking
   private vad: any = null;
@@ -49,7 +50,11 @@ export class GeminiProvider implements ISTTProvider {
   private isProcessing = false;
 
   constructor(config: GeminiSTTConfig) {
+    if (!config.provider) {
+      throw new Error('Provider must be specified in config');
+    }
     this.config = config;
+    this.providerType = config.provider;
     this.chunkingStrategy = config.chunkingStrategy || 'simple';
   }
 
@@ -60,7 +65,7 @@ export class GeminiProvider implements ISTTProvider {
     this.callbacks.onStatusChange?.({
       connected: true,
       recording: false,
-      provider: this.config.provider,
+      provider: this.providerType,
     });
   }
 
@@ -70,7 +75,7 @@ export class GeminiProvider implements ISTTProvider {
     this.callbacks.onStatusChange?.({
       connected: false,
       recording: false,
-      provider: this.config.provider,
+      provider: this.providerType,
     });
   }
 
@@ -97,7 +102,7 @@ export class GeminiProvider implements ISTTProvider {
     this.callbacks.onStatusChange?.({
       connected: true,
       recording: true,
-      provider: this.config.provider,
+      provider: this.providerType,
     });
   }
 
@@ -119,7 +124,7 @@ export class GeminiProvider implements ISTTProvider {
     this.callbacks.onStatusChange?.({
       connected: this.connected,
       recording: false,
-      provider: this.config.provider,
+      provider: this.providerType,
     });
   }
 
@@ -136,7 +141,7 @@ export class GeminiProvider implements ISTTProvider {
   }
 
   getProvider(): STTProvider {
-    return this.config.provider;
+    return this.providerType;
   }
 
   // ========================================================================
@@ -347,7 +352,7 @@ export class GeminiProvider implements ISTTProvider {
       this.callbacks.onError?.({
         code: 'TRANSCRIPTION_ERROR',
         message: err instanceof Error ? err.message : 'Failed to transcribe audio',
-        provider: this.config.provider,
+        provider: this.providerType,
       });
     }
   }

@@ -181,7 +181,7 @@ export class ContradictionObserver extends BaseObserver {
 
     try {
       const response = await callLLM({
-        provider: 'groq', // Fast provider for real-time checks
+        tier: 'small', // Fast tier for real-time checks
         prompt,
         options: {
           temperature: 0.1,

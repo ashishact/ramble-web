@@ -33,7 +33,7 @@ class MemoryReferenceExtractor extends BaseExtractor {
       // Nostalgia
       { id: 'nostalgia', type: 'keyword', pattern: 'miss|wish I could|those days|back then', weight: 0.6 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: { temperature: 0.2, max_tokens: 1500 },
     min_confidence: 0.5,
     priority: 60,

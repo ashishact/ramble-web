@@ -51,7 +51,7 @@ class GoalExtractor extends BaseExtractor {
       { id: 'someday', type: 'keyword', pattern: 'someday', weight: 0.4 },
       { id: 'eventually', type: 'keyword', pattern: 'eventually', weight: 0.4 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: {
       temperature: 0.3,
       max_tokens: 1000,

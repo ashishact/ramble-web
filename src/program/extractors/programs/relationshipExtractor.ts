@@ -46,7 +46,7 @@ class RelationshipExtractor extends BaseExtractor {
       { id: 'got_together', type: 'regex', pattern: 'got\\s+together', weight: 0.8 },
       { id: 'met', type: 'regex', pattern: '(?:met|meeting)\\s+(?:with)?', weight: 0.5 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: {
       temperature: 0.3,
       max_tokens: 1000,

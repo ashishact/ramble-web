@@ -38,7 +38,7 @@ class BeliefExtractor extends BaseExtractor {
       { id: 'always', type: 'regex', pattern: '(?:people|things|it)\\s+always', weight: 0.7 },
       { id: 'never', type: 'regex', pattern: '(?:people|things|it)\\s+never', weight: 0.7 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: {
       temperature: 0.3,
       max_tokens: 800,

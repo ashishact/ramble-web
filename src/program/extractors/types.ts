@@ -6,6 +6,7 @@
  */
 
 import type { ClaimType, Temporality, Abstraction, SourceType, Stakes } from '../types';
+import type { LLMTier } from '../types/llmTiers';
 
 // ============================================================================
 // Pattern Matching Types
@@ -60,7 +61,8 @@ export interface PatternDef {
 // ============================================================================
 
 /**
- * LLM provider for extraction
+ * LLM provider for extraction (deprecated - use LLMTier instead)
+ * @deprecated Use LLMTier from '../types/llmTiers' instead
  */
 export type LLMProvider = 'groq' | 'gemini';
 
@@ -142,8 +144,8 @@ export interface ExtractorConfig {
   claim_types: ClaimType[];
   /** Patterns to match in text */
   patterns: PatternDef[];
-  /** LLM provider to use (groq for fast, gemini for intelligent) */
-  llm_provider: LLMProvider;
+  /** LLM tier to use (small/medium/large) - Settings determine actual provider */
+  llm_tier: LLMTier;
   /** Model-specific options */
   llm_options?: {
     temperature?: number;
@@ -269,19 +271,25 @@ export interface TokenBudget {
 }
 
 /**
- * Default token budgets by provider
+ * Default token budgets by LLM tier
  */
-export const DEFAULT_TOKEN_BUDGETS: Record<LLMProvider, TokenBudget> = {
-  groq: {
+export const DEFAULT_TOKEN_BUDGETS: Record<LLMTier, TokenBudget> = {
+  small: {
     context_tokens: 4000,
     response_tokens: 1000,
     claim_tokens: 50,
     max_claims: 10,
   },
-  gemini: {
+  medium: {
     context_tokens: 8000,
     response_tokens: 2000,
     claim_tokens: 50,
     max_claims: 20,
+  },
+  large: {
+    context_tokens: 16000,
+    response_tokens: 4000,
+    claim_tokens: 100,
+    max_claims: 50,
   },
 };

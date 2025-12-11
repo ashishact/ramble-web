@@ -33,7 +33,7 @@ class SelfPerceptionExtractor extends BaseExtractor {
       // Role identity
       { id: 'role', type: 'keyword', pattern: 'as a|my role|my job|my responsibility', weight: 0.6 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: { temperature: 0.2, max_tokens: 1500 },
     min_confidence: 0.5,
     priority: 72,

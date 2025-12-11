@@ -34,7 +34,7 @@ class HypotheticalExtractor extends BaseExtractor {
       // Future conditional
       { id: 'future_if', type: 'keyword', pattern: 'if this happens|when this happens|in case', weight: 0.7 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: { temperature: 0.2, max_tokens: 1500 },
     min_confidence: 0.5,
     priority: 45,

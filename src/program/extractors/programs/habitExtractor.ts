@@ -30,7 +30,7 @@ class HabitExtractor extends BaseExtractor {
       // Scheduled
       { id: 'scheduled', type: 'keyword', pattern: 'on mondays|in the morning|after work|before bed', weight: 0.7 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: { temperature: 0.2, max_tokens: 1200 },
     min_confidence: 0.5,
     priority: 50,

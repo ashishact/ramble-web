@@ -35,7 +35,7 @@ class DecisionExtractor extends BaseExtractor {
       // Rejection
       { id: 'rejection', type: 'keyword', pattern: "not going to|won't|rejected|ruled out|dismissed", weight: 0.7 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: { temperature: 0.2, max_tokens: 1500 },
     min_confidence: 0.6,
     priority: 68,

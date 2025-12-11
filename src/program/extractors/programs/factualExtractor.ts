@@ -40,7 +40,7 @@ class FactualExtractor extends BaseExtractor {
       // Existence statements
       { id: 'there_is', type: 'regex', pattern: '\\bthere\\s+(?:is|are|was|were)\\b', weight: 0.3 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: {
       temperature: 0.2,
       max_tokens: 800,

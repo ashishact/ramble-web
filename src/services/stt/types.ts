@@ -4,10 +4,15 @@
  * Core type definitions for the STT module
  */
 
+import type { STTTier } from '../../program/types/llmTiers';
+
 export type STTProvider = 'groq-whisper' | 'deepgram-nova' | 'deepgram-flux' | 'gemini';
 
 export interface STTConfig {
-  provider: STTProvider;
+  /** Use tier abstraction (small/medium/large/live) - preferred */
+  tier?: STTTier;
+  /** Legacy: direct provider selection - will be resolved from tier if tier is set */
+  provider?: STTProvider;
   apiKey: string;
   // Optional configuration
   language?: string;

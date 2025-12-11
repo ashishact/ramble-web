@@ -32,7 +32,7 @@ class EntityExtractor extends BaseExtractor {
       // Named references
       { id: 'named', type: 'keyword', pattern: 'called|named|known as', weight: 0.9 },
     ],
-    llm_provider: 'groq',
+    llm_tier: 'small',
     llm_options: { temperature: 0.1, max_tokens: 1500 },
     min_confidence: 0.5,
     priority: 100, // Highest priority - runs first
