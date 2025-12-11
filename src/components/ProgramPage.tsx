@@ -254,16 +254,16 @@ function GoalCard({ goal }: { goal: Goal }) {
           goal.status === 'blocked' ? 'progress-error' :
           'progress-primary'
         }`}
-        value={goal.progress_value}
+        value={goal.progressValue}
         max="100"
       />
       <div className="flex justify-between items-center mt-1 text-xs opacity-60">
-        <span>{goal.progress_value}% complete</span>
+        <span>{goal.progressValue}% complete</span>
         <span className="badge badge-xs badge-ghost">{goal.timeframe}</span>
       </div>
-      {goal.goal_type && (
+      {goal.goalType && (
         <div className="mt-2 text-xs opacity-50">
-          Type: {goal.goal_type} | Priority: {goal.priority}
+          Type: {goal.goalType} | Priority: {goal.priority}
         </div>
       )}
     </div>
@@ -275,8 +275,8 @@ function PatternCard({ pattern }: { pattern: Pattern }) {
     <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
       <div className="text-sm font-medium">{pattern.description}</div>
       <div className="flex flex-wrap gap-2 mt-2">
-        <span className="badge badge-xs badge-primary">{pattern.pattern_type}</span>
-        <span className="badge badge-xs badge-outline">{pattern.occurrence_count} occurrences</span>
+        <span className="badge badge-xs badge-primary">{pattern.patternType}</span>
+        <span className="badge badge-xs badge-outline">{pattern.occurrenceCount} occurrences</span>
         <span className="badge badge-xs">{Math.round(pattern.confidence * 100)}% confidence</span>
       </div>
     </div>

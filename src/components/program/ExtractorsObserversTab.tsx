@@ -147,8 +147,8 @@ interface ExtractorCardProps {
 }
 
 function ExtractorCard({ extractor, onToggle }: ExtractorCardProps) {
-  const successRate = extractor.run_count > 0
-    ? Math.round(extractor.success_rate * 100)
+  const successRate = extractor.runCount > 0
+    ? Math.round(extractor.successRate * 100)
     : 0;
 
   return (
@@ -158,7 +158,7 @@ function ExtractorCard({ extractor, onToggle }: ExtractorCardProps) {
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <h4 className="font-semibold">{extractor.name}</h4>
-              {extractor.is_core && (
+              {extractor.isCore && (
                 <span className="badge badge-sm badge-primary">core</span>
               )}
               <span className="badge badge-sm badge-ghost">{extractor.type}</span>
@@ -168,7 +168,7 @@ function ExtractorCard({ extractor, onToggle }: ExtractorCardProps) {
             {/* Stats */}
             <div className="flex gap-4 mt-2 text-xs">
               <div>
-                <span className="opacity-50">Runs:</span> {extractor.run_count}
+                <span className="opacity-50">Runs:</span> {extractor.runCount}
               </div>
               <div>
                 <span className="opacity-50">Success:</span>{' '}
