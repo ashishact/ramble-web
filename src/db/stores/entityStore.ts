@@ -38,7 +38,7 @@ export function createEntityStore(db: Database): IEntityStore {
           entity.aliases = data.aliases
           entity.createdAt = Date.now()
           entity.lastReferenced = Date.now()
-          entity.mentionCount = data.mentionCount ?? 0
+          entity.mentionCount = data.mentionCount ?? 1  // Default to 1 - entity is mentioned when created
         })
       )
       return modelToEntity(model)
