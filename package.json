@@ -25,6 +25,7 @@
     "@ai-sdk/groq": "^2.0.31",
     "@ai-sdk/openai": "^2.0.73",
     "@iconify/react": "^6.0.2",
+    "@nozbe/watermelondb": "^0.28.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/d3": "^7.4.3",
     "ai": "^5.0.102",
