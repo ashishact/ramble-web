@@ -91,8 +91,8 @@ Focus on:
       // Infer valence from common emotion words if not set
       const statement = claim.statement.toLowerCase();
 
-      let valence = claim.emotional_valence;
-      let intensity = claim.emotional_intensity;
+      let valence = claim.emotionalValence;
+      let intensity = claim.emotionalIntensity;
 
       // Positive emotions
       if (/happy|excited|grateful|hopeful|joy|love|pleased/.test(statement)) {

@@ -220,12 +220,12 @@ function EntityCard({ entity }: { entity: Entity }) {
   return (
     <div className="p-2 bg-base-200 rounded-lg hover:bg-base-300 transition-colors">
       <div className="flex items-center gap-2">
-        <span className="text-lg">{ENTITY_TYPE_ICONS[entity.entity_type] || '❓'}</span>
+        <span className="text-lg">{ENTITY_TYPE_ICONS[entity.entityType] || '❓'}</span>
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm truncate">{entity.canonical_name}</div>
-          <div className="text-xs opacity-50">{entity.entity_type}</div>
+          <div className="font-medium text-sm truncate">{entity.canonicalName}</div>
+          <div className="text-xs opacity-50">{entity.entityType}</div>
         </div>
-        <div className="badge badge-sm badge-primary">{entity.mention_count}x</div>
+        <div className="badge badge-sm badge-primary">{entity.mentionCount}x</div>
       </div>
     </div>
   );
@@ -307,7 +307,7 @@ function ContradictionCard({
         <div className="flex items-center gap-2">
           <span className="text-lg">{contradiction.resolved ? '✓' : '⚠️'}</span>
           <span className="text-sm font-medium capitalize">
-            {contradiction.contradiction_type.replace('_', ' ')} contradiction
+            {contradiction.contradictionType.replace('_', ' ')} contradiction
           </span>
         </div>
         <span className={`badge badge-xs ${contradiction.resolved ? 'badge-success' : 'badge-error'}`}>
@@ -643,7 +643,7 @@ export function ProgramPage() {
     achievedGoals: goals.filter(g => g.status === 'achieved').length,
     unresolvedContradictions: contradictions.filter(c => !c.resolved).length,
     highStakesClaims: claims.filter(c => c.stakes === 'high' || c.stakes === 'existential').length,
-    emotionalClaims: claims.filter(c => Math.abs(c.emotional_valence) > 0.5).length,
+    emotionalClaims: claims.filter(c => Math.abs(c.emotionalValence) > 0.5).length,
   }), [claims, goals, contradictions]);
 
   // Loading state
@@ -818,12 +818,12 @@ export function ProgramPage() {
                   )}
 
                   {conversations.slice().reverse().slice(0, conversationsDisplayLimit).map((conv, index, arr) => {
-                    const displayText = showRawText ? conv.raw_text : conv.sanitized_text;
-                    const hasChanges = conv.raw_text !== conv.sanitized_text;
+                    const displayText = showRawText ? conv.rawText : conv.sanitizedText;
+                    const hasChanges = conv.rawText !== conv.sanitizedText;
 
                     // Check if this is the start of a new session
                     const prevConv = arr[index + 1]; // reversed array, so next item is previous chronologically
-                    const isSessionStart = !prevConv || prevConv.session_id !== conv.session_id;
+                    const isSessionStart = !prevConv || prevConv.sessionId !== conv.sessionId;
 
                     return (
                       <div key={conv.id}>
@@ -1069,7 +1069,7 @@ export function ProgramPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                     {entities
                       .slice()
-                      .sort((a, b) => b.mention_count - a.mention_count)
+                      .sort((a, b) => b.mentionCount - a.mentionCount)
                       .map((entity) => (
                         <EntityCard key={entity.id} entity={entity} />
                       ))}
@@ -1128,8 +1128,8 @@ export function ProgramPage() {
                     ) : (
                       <div className="space-y-2">
                         {contradictions.map((c) => {
-                          const claimA = claims.find(cl => cl.id === c.claim_a_id) || null;
-                          const claimB = claims.find(cl => cl.id === c.claim_b_id) || null;
+                          const claimA = claims.find(cl => cl.id === c.claimAId) || null;
+                          const claimB = claims.find(cl => cl.id === c.claimBId) || null;
                           return (
                             <ContradictionCard
                               key={c.id}
@@ -1335,7 +1335,7 @@ export function ProgramPage() {
                     </h3>
                     {corrections
                       .slice()
-                      .sort((a, b) => b.usage_count - a.usage_count)
+                      .sort((a, b) => b.usageCount - a.usageCount)
                       .map((correction) => (
                         <CorrectionCard
                           key={correction.id}

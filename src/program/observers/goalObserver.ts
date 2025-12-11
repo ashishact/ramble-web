@@ -199,7 +199,7 @@ export class GoalObserver extends BaseObserver {
     const oneWeekAgo = now() - 7 * 24 * 60 * 60 * 1000;
 
     for (const goal of goals) {
-      if (goal.last_referenced < oneWeekAgo) {
+      if (goal.lastReferenced < oneWeekAgo) {
         const output = this.createOutput(
           context,
           'goal_stalled',
@@ -207,7 +207,7 @@ export class GoalObserver extends BaseObserver {
             goalId: goal.id,
             statement: goal.statement,
             daysSinceReference: Math.floor(
-              (now() - goal.last_referenced) / (24 * 60 * 60 * 1000)
+              (now() - goal.lastReferenced) / (24 * 60 * 60 * 1000)
             ),
             currentProgress: goal.progress_value,
           },

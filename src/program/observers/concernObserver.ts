@@ -53,7 +53,7 @@ export class ConcernObserver extends BaseObserver {
               existingPatternId: existingConcern.id,
               newClaimId: claim.id,
               subject: claim.subject,
-              intensity: claim.emotional_intensity,
+              intensity: claim.emotionalIntensity,
             },
             [claim.id, existingConcern.id]
           );
@@ -67,7 +67,7 @@ export class ConcernObserver extends BaseObserver {
               claimId: claim.id,
               subject: claim.subject,
               statement: claim.statement,
-              intensity: claim.emotional_intensity,
+              intensity: claim.emotionalIntensity,
               stakes: claim.stakes,
             },
             [claim.id]
@@ -110,7 +110,7 @@ export class ConcernObserver extends BaseObserver {
     return allClaims.filter(
       (claim) =>
         claim.claim_type === 'concern' ||
-        (claim.emotional_valence < -0.3 && claim.emotional_intensity > 0.5)
+        (claim.emotionalValence < -0.3 && claim.emotionalIntensity > 0.5)
     );
   }
 
@@ -160,7 +160,7 @@ export class ConcernObserver extends BaseObserver {
       // Check for resolution indicators
       const resolutionIndicators = recentRelated.filter(
         (c) =>
-          c.emotional_valence > 0.3 ||
+          c.emotionalValence > 0.3 ||
           c.statement.toLowerCase().includes('resolved') ||
           c.statement.toLowerCase().includes('better') ||
           c.statement.toLowerCase().includes('figured out') ||

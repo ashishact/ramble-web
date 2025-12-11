@@ -81,10 +81,10 @@ export async function runExtractionPipeline(input: PipelineInput): Promise<Pipel
   const startTime = Date.now();
   let totalTokens = 0;
 
-  console.log('[Pipeline] Starting extraction for:', input.unit.sanitized_text.slice(0, 100));
+  console.log('[Pipeline] Starting extraction for:', input.unit.sanitizedText.slice(0, 100));
   logger.info('Starting extraction pipeline', {
     unitId: input.unit.id,
-    textLength: input.unit.sanitized_text.length,
+    textLength: input.unit.sanitizedText.length,
   });
 
   // Step 1: Determine which extractors to run
@@ -202,7 +202,7 @@ function selectExtractors(input: PipelineInput): Array<{
 
   // Pattern-based extractors
   if (patternBased.length > 0) {
-    const matchResults = findPatternMatches(input.unit.sanitized_text, patternBased);
+    const matchResults = findPatternMatches(input.unit.sanitizedText, patternBased);
 
     for (const matchResult of matchResults) {
       const extractor = patternBased.find((e) => e.config.id === matchResult.extractor_id);
@@ -242,8 +242,8 @@ async function runSingleExtractor(
     const context: ExtractorContext = {
       unit: {
         id: input.unit.id,
-        raw_text: input.unit.raw_text,
-        sanitized_text: input.unit.sanitized_text,
+        raw_text: input.unit.rawText,
+        sanitized_text: input.unit.sanitizedText,
         source: input.unit.source,
         preceding_context_summary: input.precedingContext,
       },
@@ -291,7 +291,7 @@ async function runSingleExtractor(
         response: response.content,
         matches,
         unitId: input.unit.id,
-        unitText: input.unit.sanitized_text,
+        unitText: input.unit.sanitizedText,
       },
     };
   } catch (error) {
@@ -311,7 +311,7 @@ async function runSingleExtractor(
         response: '',
         matches: [],
         unitId: input.unit.id,
-        unitText: input.unit.sanitized_text,
+        unitText: input.unit.sanitizedText,
       },
     };
   }
@@ -339,7 +339,7 @@ function attachSourceTracking(
       text_excerpt: sourceInfo.unitText, // Full text for now, could be refined
       char_start: sourceInfo.matches[0]?.position?.start || null,
       char_end: sourceInfo.matches[0]?.position?.end || null,
-      pattern_id: sourceInfo.matches[0]?.pattern_id || null,
+      pattern_id: sourceInfo.matches[0]?.patternId || null,
       llm_prompt: sourceInfo.prompt,
       llm_response: sourceInfo.response,
     },
@@ -372,7 +372,7 @@ function deduplicateEntities(entities: ExtractedEntity[]): ExtractedEntity[] {
   const seen = new Map<string, ExtractedEntity>();
 
   for (const entity of entities) {
-    const key = entity.canonical_name.toLowerCase().trim();
+    const key = entity.canonicalName.toLowerCase().trim();
 
     const existing = seen.get(key);
     if (existing) {
@@ -406,7 +406,7 @@ export function buildBudgetedContext(
   let knownEntities = input.knownEntities;
 
   // Estimate base tokens
-  const baseTokens = estimateTokens(input.unit.sanitized_text);
+  const baseTokens = estimateTokens(input.unit.sanitizedText);
 
   // Budget remaining for context
   const remainingBudget = budget.context_tokens - baseTokens;

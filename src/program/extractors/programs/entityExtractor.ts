@@ -76,14 +76,14 @@ If no entities are found, respond with an empty array: []`;
 
     for (const item of parsed) {
       const obj = item as Record<string, unknown>;
-      if (obj.canonical_name && obj.entity_type) {
-        const rawType = obj.entity_type as string;
+      if (obj.canonicalName && obj.entityType) {
+        const rawType = obj.entityType as string;
         const entityType = validEntityTypes.includes(rawType as EntityType)
           ? (rawType as EntityType)
           : 'concept';
 
         entities.push({
-          canonical_name: obj.canonical_name as string,
+          canonical_name: obj.canonicalName as string,
           entity_type: entityType,
           aliases: Array.isArray(obj.aliases) ? (obj.aliases as string[]) : [],
         });

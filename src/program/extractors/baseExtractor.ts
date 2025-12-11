@@ -45,8 +45,8 @@ export abstract class BaseExtractor implements ExtractionProgram {
     const parts: string[] = [];
 
     // Preceding context
-    if (context.unit.preceding_context_summary) {
-      parts.push(`<preceding_context>\n${context.unit.preceding_context_summary}\n</preceding_context>`);
+    if (context.unit.precedingContextSummary) {
+      parts.push(`<preceding_context>\n${context.unit.precedingContextSummary}\n</preceding_context>`);
     }
 
     // Recent claims
@@ -66,7 +66,7 @@ export abstract class BaseExtractor implements ExtractionProgram {
 
     // Known entities
     if (context.known_entities.length > 0) {
-      const entitiesList = context.known_entities.slice(0, 10).map((e) => `- ${e.canonical_name} (${e.entity_type})`).join('\n');
+      const entitiesList = context.known_entities.slice(0, 10).map((e) => `- ${e.canonicalName} (${e.entityType})`).join('\n');
       parts.push(`<known_entities>\n${entitiesList}\n</known_entities>`);
     }
 
@@ -78,7 +78,7 @@ export abstract class BaseExtractor implements ExtractionProgram {
    */
   protected buildInputSection(context: ExtractorContext): string {
     const source = context.unit.source === 'speech' ? 'spoken' : 'written';
-    return `<input source="${source}">\n${context.unit.sanitized_text}\n</input>`;
+    return `<input source="${source}">\n${context.unit.sanitizedText}\n</input>`;
   }
 
   /**
@@ -255,8 +255,8 @@ function normalizeClaim(claim: Partial<ExtractedClaim>, config: ExtractorConfig)
 
   // Validate source type
   const validSourceTypes = ['direct', 'inferred', 'corrected'];
-  const sourceType = claim.source_type && validSourceTypes.includes(claim.source_type)
-    ? claim.source_type
+  const sourceType = claim.sourceType && validSourceTypes.includes(claim.sourceType)
+    ? claim.sourceType
     : 'direct';
 
   // Validate stakes
@@ -270,12 +270,12 @@ function normalizeClaim(claim: Partial<ExtractedClaim>, config: ExtractorConfig)
     ? Math.max(0, Math.min(1, claim.confidence))
     : 0.7;
 
-  const emotionalValence = typeof claim.emotional_valence === 'number'
-    ? Math.max(-1, Math.min(1, claim.emotional_valence))
+  const emotionalValence = typeof claim.emotionalValence === 'number'
+    ? Math.max(-1, Math.min(1, claim.emotionalValence))
     : 0;
 
-  const emotionalIntensity = typeof claim.emotional_intensity === 'number'
-    ? Math.max(0, Math.min(1, claim.emotional_intensity))
+  const emotionalIntensity = typeof claim.emotionalIntensity === 'number'
+    ? Math.max(0, Math.min(1, claim.emotionalIntensity))
     : 0.3;
 
   return {
@@ -289,8 +289,8 @@ function normalizeClaim(claim: Partial<ExtractedClaim>, config: ExtractorConfig)
     emotional_valence: emotionalValence,
     emotional_intensity: emotionalIntensity,
     stakes: stakes as ExtractedClaim['stakes'],
-    valid_from: claim.valid_from,
-    valid_until: claim.valid_until,
+    valid_from: claim.validFrom,
+    valid_until: claim.validUntil,
     elaborates: claim.elaborates,
   };
 }
@@ -299,15 +299,15 @@ function normalizeClaim(claim: Partial<ExtractedClaim>, config: ExtractorConfig)
  * Normalize and validate an entity from LLM output
  */
 function normalizeEntity(entity: Partial<ExtractedEntity>): ExtractedEntity | null {
-  if (!entity.canonical_name || typeof entity.canonical_name !== 'string') return null;
+  if (!entity.canonicalName || typeof entity.canonicalName !== 'string') return null;
 
   const validEntityTypes = ['person', 'organization', 'product', 'place', 'project', 'role', 'event', 'concept'];
-  const entityType = entity.entity_type && validEntityTypes.includes(entity.entity_type)
-    ? entity.entity_type
+  const entityType = entity.entityType && validEntityTypes.includes(entity.entityType)
+    ? entity.entityType
     : 'concept';
 
   return {
-    canonical_name: entity.canonical_name.trim(),
+    canonical_name: entity.canonicalName.trim(),
     entity_type: entityType as ExtractedEntity['entity_type'],
     aliases: Array.isArray(entity.aliases)
       ? entity.aliases.filter((a): a is string => typeof a === 'string').map((a) => a.trim())

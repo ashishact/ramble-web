@@ -127,7 +127,7 @@ export class ConsolidationObserver extends BaseObserver {
     let score = 0;
 
     // Emotional intensity (max 0.3)
-    score += claim.emotional_intensity * 0.3;
+    score += claim.emotionalIntensity * 0.3;
 
     // High stakes (max 0.3)
     if (claim.stakes === 'existential') {
@@ -171,7 +171,7 @@ export class ConsolidationObserver extends BaseObserver {
     const statement = claim.statement.toLowerCase();
 
     return {
-      emotionalIntensity: claim.emotional_intensity,
+      emotionalIntensity: claim.emotionalIntensity,
       highStakes: claim.stakes === 'high' || claim.stakes === 'existential',
       repetitionBonus: Math.min(claim.confirmation_count * 0.1, 0.2),
       explicitImportance:
@@ -229,13 +229,13 @@ export class ConsolidationObserver extends BaseObserver {
     claims: Claim[]
   ): Array<{ statement: string; valence: number; intensity: number }> {
     return claims
-      .filter((c) => c.emotional_intensity > 0.6)
-      .sort((a, b) => b.emotional_intensity - a.emotional_intensity)
+      .filter((c) => c.emotionalIntensity > 0.6)
+      .sort((a, b) => b.emotionalIntensity - a.emotionalIntensity)
       .slice(0, 5)
       .map((c) => ({
         statement: c.statement,
-        valence: c.emotional_valence,
-        intensity: c.emotional_intensity,
+        valence: c.emotionalValence,
+        intensity: c.emotionalIntensity,
       }));
   }
 }

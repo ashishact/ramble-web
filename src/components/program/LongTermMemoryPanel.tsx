@@ -84,9 +84,9 @@ export function LongTermMemoryPanel({ claims, onClaimClick }: LongTermMemoryPane
                   onClick={() => onClaimClick?.(claim)}
                   showSalience={true}
                 />
-                {claim.promoted_at && (
+                {claim.promotedAt && (
                   <div className="text-xs opacity-40 ml-3">
-                    Promoted {formatRelativeTime(claim.promoted_at)}
+                    Promoted {formatRelativeTime(claim.promotedAt)}
                   </div>
                 )}
               </div>

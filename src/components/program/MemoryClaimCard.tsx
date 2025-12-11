@@ -54,12 +54,12 @@ export function MemoryClaimCard({
 
           {/* Metadata badges */}
           <div className="flex flex-wrap gap-1 mt-2">
-            <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claim.claim_type] || 'badge-ghost'}`}>
-              {claim.claim_type}
+            <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claim.claimType] || 'badge-ghost'}`}>
+              {claim.claimType}
             </span>
             <span className="badge badge-xs badge-outline">{claim.subject}</span>
 
-            {claim.memory_tier === 'long_term' && (
+            {claim.memoryTier === 'long_term' && (
               <span className="badge badge-xs badge-success">LTM</span>
             )}
 
@@ -88,11 +88,11 @@ export function MemoryClaimCard({
           <div className="flex flex-col items-end gap-1">
             <SalienceIndicator salience={claim.salience} size="sm" />
             <div className="text-xs opacity-50">
-              {Math.round(claim.current_confidence * 100)}% conf
+              {Math.round(claim.currentConfidence * 100)}% conf
             </div>
-            {claim.last_confirmed && (
+            {claim.lastConfirmed && (
               <div className="text-xs opacity-40">
-                {formatRelativeTime(claim.last_confirmed)}
+                {formatRelativeTime(claim.lastConfirmed)}
               </div>
             )}
           </div>

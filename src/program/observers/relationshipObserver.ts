@@ -55,8 +55,8 @@ export class RelationshipObserver extends BaseObserver {
             claimId: claim.id,
             statement: claim.statement,
             subject: claim.subject,
-            valence: claim.emotional_valence,
-            intensity: claim.emotional_intensity,
+            valence: claim.emotionalValence,
+            intensity: claim.emotionalIntensity,
           },
           [claim.id]
         );
@@ -106,7 +106,7 @@ export class RelationshipObserver extends BaseObserver {
     // Get all person entities
     const entities = context.store.entities
       .getAll()
-      .filter((e) => e.entity_type === 'person');
+      .filter((e) => e.entityType === 'person');
 
     if (entities.length === 0) {
       return null;
@@ -124,24 +124,24 @@ export class RelationshipObserver extends BaseObserver {
     for (const entity of entities) {
       const relatedClaims = relationshipClaims.filter(
         (c) =>
-          c.subject.toLowerCase().includes(entity.canonical_name.toLowerCase()) ||
-          c.statement.toLowerCase().includes(entity.canonical_name.toLowerCase())
+          c.subject.toLowerCase().includes(entity.canonicalName.toLowerCase()) ||
+          c.statement.toLowerCase().includes(entity.canonicalName.toLowerCase())
       );
 
       if (relatedClaims.length === 0) continue;
 
       const avgValence =
-        relatedClaims.reduce((sum, c) => sum + c.emotional_valence, 0) /
+        relatedClaims.reduce((sum, c) => sum + c.emotionalValence, 0) /
         relatedClaims.length;
 
       const avgIntensity =
-        relatedClaims.reduce((sum, c) => sum + c.emotional_intensity, 0) /
+        relatedClaims.reduce((sum, c) => sum + c.emotionalIntensity, 0) /
         relatedClaims.length;
 
       relationships.push({
         entityId: entity.id,
-        name: entity.canonical_name,
-        mentionCount: entity.mention_count,
+        name: entity.canonicalName,
+        mentionCount: entity.mentionCount,
         avgValence,
         avgIntensity,
         recentClaims: relatedClaims.slice(-5),
@@ -191,12 +191,12 @@ export class RelationshipObserver extends BaseObserver {
       if (rel.recentClaims.length >= 3) {
         const earlyValence = rel.recentClaims
           .slice(0, Math.floor(rel.recentClaims.length / 2))
-          .reduce((sum, c) => sum + c.emotional_valence, 0) /
+          .reduce((sum, c) => sum + c.emotionalValence, 0) /
           Math.floor(rel.recentClaims.length / 2);
 
         const lateValence = rel.recentClaims
           .slice(Math.floor(rel.recentClaims.length / 2))
-          .reduce((sum, c) => sum + c.emotional_valence, 0) /
+          .reduce((sum, c) => sum + c.emotionalValence, 0) /
           (rel.recentClaims.length - Math.floor(rel.recentClaims.length / 2));
 
         const change = lateValence - earlyValence;

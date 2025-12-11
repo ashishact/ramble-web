@@ -362,7 +362,7 @@ export class ProgramKernel {
       if (correctionResult.learnedNewCorrections) {
         logger.info('Learned new corrections', {
           count: correctionResult.newCorrections.length,
-          corrections: correctionResult.newCorrections.map((c) => `${c.wrong_text} → ${c.correct_text}`),
+          corrections: correctionResult.newCorrections.map((c) => `${c.wrongText} → ${c.correctText}`),
         });
       }
 
@@ -525,13 +525,13 @@ export class ProgramKernel {
         claim_type: extractedClaim.claim_type,
         temporality: extractedClaim.temporality || 'slowly_decaying',
         abstraction: extractedClaim.abstraction || 'specific',
-        source_type: extractedClaim.source_type || 'direct',
+        source_type: extractedClaim.sourceType || 'direct',
         initial_confidence: extractedClaim.confidence,
-        emotional_valence: extractedClaim.emotional_valence || 0,
-        emotional_intensity: extractedClaim.emotional_intensity || 0,
+        emotional_valence: extractedClaim.emotionalValence || 0,
+        emotional_intensity: extractedClaim.emotionalIntensity || 0,
         stakes: extractedClaim.stakes || 'medium',
-        valid_from: extractedClaim.valid_from || now(),
-        valid_until: extractedClaim.valid_until || null,
+        valid_from: extractedClaim.validFrom || now(),
+        valid_until: extractedClaim.validUntil || null,
         extraction_program_id: extractorIds[0] || 'unknown',
         elaborates: extractedClaim.elaborates || null,
         // Default values for required fields
@@ -548,14 +548,14 @@ export class ProgramKernel {
       if (extractedClaim.source_tracking) {
         this.store!.sourceTracking.create({
           claim_id: claim.id,
-          unit_id: extractedClaim.source_tracking.unit_id,
-          unit_text: extractedClaim.source_tracking.unit_text,
-          text_excerpt: extractedClaim.source_tracking.text_excerpt,
-          char_start: extractedClaim.source_tracking.char_start,
-          char_end: extractedClaim.source_tracking.char_end,
-          pattern_id: extractedClaim.source_tracking.pattern_id,
-          llm_prompt: extractedClaim.source_tracking.llm_prompt || '',
-          llm_response: extractedClaim.source_tracking.llm_response || '',
+          unit_id: extractedClaim.source_tracking.unitId,
+          unit_text: extractedClaim.source_tracking.unitText,
+          text_excerpt: extractedClaim.source_tracking.textExcerpt,
+          char_start: extractedClaim.source_tracking.charStart,
+          char_end: extractedClaim.source_tracking.charEnd,
+          pattern_id: extractedClaim.source_tracking.patternId,
+          llm_prompt: extractedClaim.source_tracking.llmPrompt || '',
+          llm_response: extractedClaim.source_tracking.llmResponse || '',
         });
       }
 
@@ -570,7 +570,7 @@ export class ProgramKernel {
 
     // Save entities
     for (const extractedEntity of result.entities) {
-      const existing = this.store!.entities.getByName(extractedEntity.canonical_name);
+      const existing = this.store!.entities.getByName(extractedEntity.canonicalName);
 
       if (existing) {
         // Update existing entity
@@ -579,8 +579,8 @@ export class ProgramKernel {
       } else {
         // Create new entity
         this.store!.entities.create({
-          canonical_name: extractedEntity.canonical_name,
-          entity_type: extractedEntity.entity_type,
+          canonical_name: extractedEntity.canonicalName,
+          entity_type: extractedEntity.entityType,
           aliases: JSON.stringify(extractedEntity.aliases),
           mention_count: 1,
         });
@@ -612,7 +612,7 @@ export class ProgramKernel {
 
     if (recent.length === 0) return '';
 
-    return recent.map((u) => u.sanitized_text).join(' ');
+    return recent.map((u) => u.sanitizedText).join(' ');
   }
 
   /**
@@ -633,8 +633,8 @@ export class ProgramKernel {
   private getKnownEntityInfo(): PipelineInput['knownEntities'] {
     const entities = this.store!.entities.getAll().slice(0, 20);
     return entities.map((e) => ({
-      canonical_name: e.canonical_name,
-      entity_type: e.entity_type,
+      canonical_name: e.canonicalName,
+      entity_type: e.entityType,
     }));
   }
 
@@ -904,25 +904,25 @@ export class ProgramKernel {
     // Search conversations (raw_text and sanitized_text)
     const conversations = this.store!.conversations.getAll();
     for (const conv of conversations) {
-      const rawLower = options?.caseSensitive ? conv.raw_text : conv.raw_text.toLowerCase();
-      const sanitizedLower = options?.caseSensitive ? conv.sanitized_text : conv.sanitized_text.toLowerCase();
+      const rawLower = options?.caseSensitive ? conv.rawText : conv.rawText.toLowerCase();
+      const sanitizedLower = options?.caseSensitive ? conv.sanitizedText : conv.sanitizedText.toLowerCase();
 
       if (rawLower.includes(searchLower)) {
         results.push({
           type: 'conversation',
           id: conv.id,
           field: 'raw_text',
-          value: conv.raw_text,
-          context: this.getContext(conv.raw_text, query, options?.caseSensitive),
+          value: conv.rawText,
+          context: this.getContext(conv.rawText, query, options?.caseSensitive),
         });
       }
-      if (sanitizedLower.includes(searchLower) && conv.sanitized_text !== conv.raw_text) {
+      if (sanitizedLower.includes(searchLower) && conv.sanitizedText !== conv.rawText) {
         results.push({
           type: 'conversation',
           id: conv.id,
           field: 'sanitized_text',
-          value: conv.sanitized_text,
-          context: this.getContext(conv.sanitized_text, query, options?.caseSensitive),
+          value: conv.sanitizedText,
+          context: this.getContext(conv.sanitizedText, query, options?.caseSensitive),
         });
       }
     }
@@ -956,15 +956,15 @@ export class ProgramKernel {
     // Search entities (canonical_name and aliases)
     const entities = this.store!.entities.getAll();
     for (const entity of entities) {
-      const nameLower = options?.caseSensitive ? entity.canonical_name : entity.canonical_name.toLowerCase();
+      const nameLower = options?.caseSensitive ? entity.canonicalName : entity.canonicalName.toLowerCase();
 
       if (nameLower.includes(searchLower)) {
         results.push({
           type: 'entity',
           id: entity.id,
           field: 'canonical_name',
-          value: entity.canonical_name,
-          context: entity.canonical_name,
+          value: entity.canonicalName,
+          context: entity.canonicalName,
         });
       }
       // Check aliases
@@ -979,7 +979,7 @@ export class ProgramKernel {
                 id: entity.id,
                 field: 'aliases',
                 value: alias,
-                context: `Alias of ${entity.canonical_name}`,
+                context: `Alias of ${entity.canonicalName}`,
               });
             }
           }
@@ -1034,21 +1034,21 @@ export class ProgramKernel {
     const conversations = this.store!.conversations.getAll();
     for (const conv of conversations) {
       const regex = createRegex();
-      if (regex.test(conv.raw_text)) {
-        const newRaw = conv.raw_text.replace(createRegex(), replaceText);
+      if (regex.test(conv.rawText)) {
+        const newRaw = conv.rawText.replace(createRegex(), replaceText);
         this.store!.conversations.update(conv.id, { raw_text: newRaw });
         result.conversationsUpdated++;
-        result.totalReplacements += (conv.raw_text.match(createRegex()) || []).length;
+        result.totalReplacements += (conv.rawText.match(createRegex()) || []).length;
       }
 
       const regex2 = createRegex();
-      if (regex2.test(conv.sanitized_text)) {
-        const newSanitized = conv.sanitized_text.replace(createRegex(), replaceText);
+      if (regex2.test(conv.sanitizedText)) {
+        const newSanitized = conv.sanitizedText.replace(createRegex(), replaceText);
         this.store!.conversations.update(conv.id, { sanitized_text: newSanitized });
-        if (!createRegex().test(conv.raw_text)) {
+        if (!createRegex().test(conv.rawText)) {
           result.conversationsUpdated++;
         }
-        result.totalReplacements += (conv.sanitized_text.match(createRegex()) || []).length;
+        result.totalReplacements += (conv.sanitizedText.match(createRegex()) || []).length;
       }
     }
 
@@ -1085,9 +1085,9 @@ export class ProgramKernel {
       const updates: { canonical_name?: string; aliases?: string } = {};
 
       const regex1 = createRegex();
-      if (regex1.test(entity.canonical_name)) {
-        updates.canonical_name = entity.canonical_name.replace(createRegex(), replaceText);
-        result.totalReplacements += (entity.canonical_name.match(createRegex()) || []).length;
+      if (regex1.test(entity.canonicalName)) {
+        updates.canonicalName = entity.canonicalName.replace(createRegex(), replaceText);
+        result.totalReplacements += (entity.canonicalName.match(createRegex()) || []).length;
         updated = true;
       }
 

@@ -110,12 +110,12 @@ function rowToSession(id: string, row: Record<string, unknown>): Session {
 function rowToConversationUnit(id: string, row: Record<string, unknown>): ConversationUnit {
   return {
     id,
-    session_id: row.session_id as string,
+    session_id: row.sessionId as string,
     timestamp: row.timestamp as number,
-    raw_text: row.raw_text as string,
-    sanitized_text: row.sanitized_text as string,
+    raw_text: row.rawText as string,
+    sanitized_text: row.sanitizedText as string,
     source: row.source as 'speech' | 'text',
-    preceding_context_summary: row.preceding_context_summary as string,
+    preceding_context_summary: row.precedingContextSummary as string,
     created_at: row.created_at as number,
     processed: row.processed as boolean,
   };
@@ -129,20 +129,20 @@ function rowToClaim(id: string, row: Record<string, unknown>): Claim {
     claim_type: row.claim_type as ClaimType,
     temporality: row.temporality as Claim['temporality'],
     abstraction: row.abstraction as Claim['abstraction'],
-    source_type: row.source_type as Claim['source_type'],
+    source_type: row.sourceType as Claim['source_type'],
     initial_confidence: row.initial_confidence as number,
     current_confidence: row.current_confidence as number,
     state: row.state as ClaimState,
-    emotional_valence: row.emotional_valence as number,
-    emotional_intensity: row.emotional_intensity as number,
+    emotional_valence: row.emotionalValence as number,
+    emotional_intensity: row.emotionalIntensity as number,
     stakes: row.stakes as Claim['stakes'],
-    valid_from: row.valid_from as number,
-    valid_until: (row.valid_until as number) || null,
+    valid_from: row.validFrom as number,
+    valid_until: (row.validUntil as number) || null,
     created_at: row.created_at as number,
     last_confirmed: row.last_confirmed as number,
     confirmation_count: row.confirmation_count as number,
     extraction_program_id: row.extraction_program_id as string,
-    superseded_by: (row.superseded_by as string) || null,
+    superseded_by: (row.supersededBy as string) || null,
     elaborates: (row.elaborates as string) || null,
     // Memory system fields
     memory_tier: (row.memory_tier as MemoryTier) || 'working',
@@ -155,23 +155,23 @@ function rowToClaim(id: string, row: Record<string, unknown>): Claim {
 function rowToClaimSource(id: string, row: Record<string, unknown>): ClaimSource {
   return {
     id,
-    claim_id: row.claim_id as string,
-    unit_id: row.unit_id as string,
+    claim_id: row.claimId as string,
+    unit_id: row.unitId as string,
   };
 }
 
 function rowToSourceTracking(id: string, row: Record<string, unknown>): SourceTracking {
   return {
     id,
-    claim_id: row.claim_id as string,
-    unit_id: row.unit_id as string,
-    unit_text: row.unit_text as string,
-    text_excerpt: row.text_excerpt as string,
-    char_start: (row.char_start as number) || null,
-    char_end: (row.char_end as number) || null,
-    pattern_id: (row.pattern_id as string) || null,
-    llm_prompt: row.llm_prompt as string,
-    llm_response: row.llm_response as string,
+    claim_id: row.claimId as string,
+    unit_id: row.unitId as string,
+    unit_text: row.unitText as string,
+    text_excerpt: row.textExcerpt as string,
+    char_start: (row.charStart as number) || null,
+    char_end: (row.charEnd as number) || null,
+    pattern_id: (row.patternId as string) || null,
+    llm_prompt: row.llmPrompt as string,
+    llm_response: row.llmResponse as string,
     created_at: row.created_at as number,
   };
 }
@@ -179,12 +179,12 @@ function rowToSourceTracking(id: string, row: Record<string, unknown>): SourceTr
 function rowToEntity(id: string, row: Record<string, unknown>): Entity {
   return {
     id,
-    canonical_name: row.canonical_name as string,
-    entity_type: row.entity_type as Entity['entity_type'],
+    canonical_name: row.canonicalName as string,
+    entity_type: row.entityType as Entity['entity_type'],
     aliases: row.aliases as string,
     created_at: row.created_at as number,
-    last_referenced: row.last_referenced as number,
-    mention_count: row.mention_count as number,
+    last_referenced: row.lastReferenced as number,
+    mention_count: row.mentionCount as number,
   };
 }
 
@@ -197,7 +197,7 @@ function rowToGoal(id: string, row: Record<string, unknown>): Goal {
     status: row.status as GoalStatus,
     parent_goal_id: (row.parent_goal_id as string) || null,
     created_at: row.created_at as number,
-    last_referenced: row.last_referenced as number,
+    last_referenced: row.lastReferenced as number,
     priority: row.priority as number,
     progress_type: row.progress_type as Goal['progress_type'],
     progress_value: row.progress_value as number,
@@ -224,14 +224,14 @@ function rowToObserverOutput(id: string, row: Record<string, unknown>): Observer
 function rowToContradiction(id: string, row: Record<string, unknown>): Contradiction {
   return {
     id,
-    claim_a_id: row.claim_a_id as string,
-    claim_b_id: row.claim_b_id as string,
-    detected_at: row.detected_at as number,
-    contradiction_type: row.contradiction_type as Contradiction['contradiction_type'],
+    claim_a_id: row.claimAId as string,
+    claim_b_id: row.claimBId as string,
+    detected_at: row.detectedAt as number,
+    contradiction_type: row.contradictionType as Contradiction['contradiction_type'],
     resolved: row.resolved as boolean,
-    resolution_type: (row.resolution_type as string) || null,
-    resolution_notes: (row.resolution_notes as string) || null,
-    resolved_at: (row.resolved_at as number) || null,
+    resolution_type: (row.resolutionType as string) || null,
+    resolution_notes: (row.resolutionNotes as string) || null,
+    resolved_at: (row.resolvedAt as number) || null,
   };
 }
 
@@ -282,7 +282,7 @@ function rowToTask(id: string, row: Record<string, unknown>): Task {
     execute_at: row.execute_at as number,
     group_id: (row.group_id as string) || null,
     depends_on: (row.depends_on as string) || null,
-    session_id: (row.session_id as string) || null,
+    session_id: (row.sessionId as string) || null,
   };
 }
 
@@ -374,13 +374,13 @@ function rowToObserverProgram(id: string, row: Record<string, unknown>): Observe
 function rowToCorrection(id: string, row: Record<string, unknown>): Correction {
   return {
     id,
-    wrong_text: row.wrong_text as string,
-    correct_text: row.correct_text as string,
-    original_case: row.original_case as string,
-    usage_count: row.usage_count as number,
+    wrong_text: row.wrongText as string,
+    correct_text: row.correctText as string,
+    original_case: row.originalCase as string,
+    usage_count: row.usageCount as number,
     created_at: row.created_at as number,
-    last_used: row.last_used as number,
-    source_unit_id: (row.source_unit_id as string) || null,
+    last_used: row.lastUsed as number,
+    source_unit_id: (row.sourceUnitId as string) || null,
   };
 }
 
@@ -565,23 +565,23 @@ export function createProgramStore(): ProgramStoreInstance {
       const timestamp = now();
       const unit: ConversationUnit = {
         id,
-        session_id: data.session_id,
+        session_id: data.sessionId,
         timestamp: data.timestamp,
-        raw_text: data.raw_text,
-        sanitized_text: data.sanitized_text,
+        raw_text: data.rawText,
+        sanitized_text: data.sanitizedText,
         source: data.source,
-        preceding_context_summary: data.preceding_context_summary,
+        preceding_context_summary: data.precedingContextSummary,
         created_at: timestamp,
         processed: data.processed ?? false,
       };
 
       store.setRow('conversations', id, {
-        session_id: unit.session_id,
+        session_id: unit.sessionId,
         timestamp: unit.timestamp,
-        raw_text: unit.raw_text,
-        sanitized_text: unit.sanitized_text,
+        raw_text: unit.rawText,
+        sanitized_text: unit.sanitizedText,
         source: unit.source,
-        preceding_context_summary: unit.preceding_context_summary,
+        preceding_context_summary: unit.precedingContextSummary,
         created_at: unit.created_at,
         processed: unit.processed,
       });
@@ -607,7 +607,7 @@ export function createProgramStore(): ProgramStoreInstance {
     },
 
     getBySession(sessionId: string): ConversationUnit[] {
-      return conversations.getAll().filter((c) => c.session_id === sessionId);
+      return conversations.getAll().filter((c) => c.sessionId === sessionId);
     },
 
     getUnprocessed(): ConversationUnit[] {
@@ -664,20 +664,20 @@ export function createProgramStore(): ProgramStoreInstance {
         claim_type: data.claim_type,
         temporality: data.temporality,
         abstraction: data.abstraction,
-        source_type: data.source_type,
+        source_type: data.sourceType,
         initial_confidence: data.initial_confidence,
         current_confidence: data.initial_confidence,
         state: data.state ?? 'active',
-        emotional_valence: data.emotional_valence,
-        emotional_intensity: data.emotional_intensity,
+        emotional_valence: data.emotionalValence,
+        emotional_intensity: data.emotionalIntensity,
         stakes: data.stakes,
-        valid_from: data.valid_from,
-        valid_until: data.valid_until,
+        valid_from: data.validFrom,
+        valid_until: data.validUntil,
         created_at: timestamp,
         last_confirmed: timestamp,
         confirmation_count: data.confirmation_count ?? 1,
         extraction_program_id: data.extraction_program_id,
-        superseded_by: data.superseded_by ?? null,
+        superseded_by: data.supersededBy ?? null,
         elaborates: data.elaborates,
         // Memory system fields
         memory_tier: data.memory_tier ?? 'working',
@@ -692,20 +692,20 @@ export function createProgramStore(): ProgramStoreInstance {
         claim_type: claim.claim_type,
         temporality: claim.temporality,
         abstraction: claim.abstraction,
-        source_type: claim.source_type,
+        source_type: claim.sourceType,
         initial_confidence: claim.initial_confidence,
         current_confidence: claim.current_confidence,
         state: claim.state,
-        emotional_valence: claim.emotional_valence,
-        emotional_intensity: claim.emotional_intensity,
+        emotional_valence: claim.emotionalValence,
+        emotional_intensity: claim.emotionalIntensity,
         stakes: claim.stakes,
-        valid_from: claim.valid_from,
-        valid_until: claim.valid_until ?? 0,
+        valid_from: claim.validFrom,
+        valid_until: claim.validUntil ?? 0,
         created_at: claim.created_at,
         last_confirmed: claim.last_confirmed,
         confirmation_count: claim.confirmation_count,
         extraction_program_id: claim.extraction_program_id,
-        superseded_by: claim.superseded_by ?? '',
+        superseded_by: claim.supersededBy ?? '',
         elaborates: claim.elaborates ?? '',
         // Memory system fields
         memory_tier: claim.memory_tier,
@@ -756,8 +756,8 @@ export function createProgramStore(): ProgramStoreInstance {
       // Get all claim sources for units in this session
       const sessionUnits = conversations.getBySession(sessionId);
       const unitIds = new Set(sessionUnits.map((u) => u.id));
-      const sources = claims.getSourcesForUnit('').filter((s) => unitIds.has(s.unit_id));
-      const claimIds = new Set(sources.map((s) => s.claim_id));
+      const sources = claims.getSourcesForUnit('').filter((s) => unitIds.has(s.unitId));
+      const claimIds = new Set(sources.map((s) => s.claimId));
       return claims.getAll().filter((c) => claimIds.has(c.id));
     },
 
@@ -803,8 +803,8 @@ export function createProgramStore(): ProgramStoreInstance {
       const source: ClaimSource = { id, ...data };
 
       store.setRow('claim_sources', id, {
-        claim_id: source.claim_id,
-        unit_id: source.unit_id,
+        claim_id: source.claimId,
+        unit_id: source.unitId,
       });
 
       return source;
@@ -814,7 +814,7 @@ export function createProgramStore(): ProgramStoreInstance {
       const table = store.getTable('claim_sources');
       if (!table) return [];
       return Object.entries(table)
-        .filter(([, row]) => row.claim_id === claimId)
+        .filter(([, row]) => row.claimId === claimId)
         .map(([id, row]) => rowToClaimSource(id, row));
     },
 
@@ -826,7 +826,7 @@ export function createProgramStore(): ProgramStoreInstance {
         return Object.entries(table).map(([id, row]) => rowToClaimSource(id, row));
       }
       return Object.entries(table)
-        .filter(([, row]) => row.unit_id === unitId)
+        .filter(([, row]) => row.unitId === unitId)
         .map(([id, row]) => rowToClaimSource(id, row));
     },
 
@@ -913,19 +913,19 @@ export function createProgramStore(): ProgramStoreInstance {
       };
 
       store.setRow('source_tracking', id, {
-        claim_id: tracking.claim_id,
-        unit_id: tracking.unit_id,
-        unit_text: tracking.unit_text,
-        text_excerpt: tracking.text_excerpt,
-        char_start: tracking.char_start ?? 0,
-        char_end: tracking.char_end ?? 0,
-        pattern_id: tracking.pattern_id ?? '',
-        llm_prompt: tracking.llm_prompt,
-        llm_response: tracking.llm_response,
+        claim_id: tracking.claimId,
+        unit_id: tracking.unitId,
+        unit_text: tracking.unitText,
+        text_excerpt: tracking.textExcerpt,
+        char_start: tracking.charStart ?? 0,
+        char_end: tracking.charEnd ?? 0,
+        pattern_id: tracking.patternId ?? '',
+        llm_prompt: tracking.llmPrompt,
+        llm_response: tracking.llmResponse,
         created_at: tracking.created_at,
       });
 
-      logger.debug('Created source tracking', { id, claimId: tracking.claim_id });
+      logger.debug('Created source tracking', { id, claimId: tracking.claimId });
       return tracking;
     },
 
@@ -944,7 +944,7 @@ export function createProgramStore(): ProgramStoreInstance {
     getByClaimId(claimId: string): SourceTracking | null {
       const table = store.getTable('source_tracking');
       if (!table) return null;
-      const entry = Object.entries(table).find(([, row]) => row.claim_id === claimId);
+      const entry = Object.entries(table).find(([, row]) => row.claimId === claimId);
       return entry ? rowToSourceTracking(entry[0], entry[1]) : null;
     },
 
@@ -952,7 +952,7 @@ export function createProgramStore(): ProgramStoreInstance {
       const table = store.getTable('source_tracking');
       if (!table) return [];
       return Object.entries(table)
-        .filter(([, row]) => row.unit_id === unitId)
+        .filter(([, row]) => row.unitId === unitId)
         .map(([id, row]) => rowToSourceTracking(id, row));
     },
 
@@ -989,28 +989,28 @@ export function createProgramStore(): ProgramStoreInstance {
       const id = idGen.entity();
       const timestamp = now();
       // Normalize canonical name: trim whitespace and use proper casing
-      const canonicalName = data.canonical_name.trim();
+      const canonicalName = data.canonicalName.trim();
 
       const entity: Entity = {
         id,
         canonical_name: canonicalName,
-        entity_type: data.entity_type,
+        entity_type: data.entityType,
         aliases: data.aliases,
         created_at: timestamp,
         last_referenced: timestamp,
-        mention_count: data.mention_count ?? 1,
+        mention_count: data.mentionCount ?? 1,
       };
 
       store.setRow('entities', id, {
-        canonical_name: entity.canonical_name,
-        entity_type: entity.entity_type,
+        canonical_name: entity.canonicalName,
+        entity_type: entity.entityType,
         aliases: entity.aliases,
         created_at: entity.created_at,
-        last_referenced: entity.last_referenced,
-        mention_count: entity.mention_count,
+        last_referenced: entity.lastReferenced,
+        mention_count: entity.mentionCount,
       });
 
-      logger.debug('Created entity', { id, name: entity.canonical_name });
+      logger.debug('Created entity', { id, name: entity.canonicalName });
       return entity;
     },
 
@@ -1038,11 +1038,11 @@ export function createProgramStore(): ProgramStoreInstance {
 
     getByName(name: string): Entity | null {
       const normalizedName = name.trim().toLowerCase();
-      return entities.getAll().find((e) => e.canonical_name.trim().toLowerCase() === normalizedName) ?? null;
+      return entities.getAll().find((e) => e.canonicalName.trim().toLowerCase() === normalizedName) ?? null;
     },
 
     getByType(type: string): Entity[] {
-      return entities.getAll().filter((e) => e.entity_type === type);
+      return entities.getAll().filter((e) => e.entityType === type);
     },
 
     findByAlias(alias: string): Entity | null {
@@ -1050,7 +1050,7 @@ export function createProgramStore(): ProgramStoreInstance {
       return (
         entities.getAll().find((e) => {
           const aliases = parseAliases(e.aliases).map(a => a.trim().toLowerCase());
-          const canonicalName = e.canonical_name.trim().toLowerCase();
+          const canonicalName = e.canonicalName.trim().toLowerCase();
           return aliases.includes(normalizedAlias) || canonicalName === normalizedAlias;
         }) ?? null
       );
@@ -1059,7 +1059,7 @@ export function createProgramStore(): ProgramStoreInstance {
     incrementMentionCount(id: string): void {
       const entity = entities.getById(id);
       if (entity) {
-        entities.update(id, { mention_count: entity.mention_count + 1 });
+        entities.update(id, { mention_count: entity.mentionCount + 1 });
       }
     },
 
@@ -1079,22 +1079,22 @@ export function createProgramStore(): ProgramStoreInstance {
       // Merge aliases
       const keepAliases = parseAliases(keepEntity.aliases);
       const deleteAliases = parseAliases(deleteEntity.aliases);
-      const mergedAliases = [...new Set([...keepAliases, ...deleteAliases, deleteEntity.canonical_name])];
+      const mergedAliases = [...new Set([...keepAliases, ...deleteAliases, deleteEntity.canonicalName])];
 
       // Update the entity we're keeping
       entities.update(keepId, {
         aliases: JSON.stringify(mergedAliases),
-        mention_count: keepEntity.mention_count + deleteEntity.mention_count,
-        last_referenced: Math.max(keepEntity.last_referenced, deleteEntity.last_referenced),
+        mention_count: keepEntity.mentionCount + deleteEntity.mentionCount,
+        last_referenced: Math.max(keepEntity.lastReferenced, deleteEntity.lastReferenced),
       });
 
       // Delete the duplicate entity
       entities.delete(deleteId);
 
       logger.info('Merged entities', {
-        kept: { id: keepId, name: keepEntity.canonical_name },
-        deleted: { id: deleteId, name: deleteEntity.canonical_name },
-        newMentionCount: keepEntity.mention_count + deleteEntity.mention_count,
+        kept: { id: keepId, name: keepEntity.canonicalName },
+        deleted: { id: deleteId, name: deleteEntity.canonicalName },
+        newMentionCount: keepEntity.mentionCount + deleteEntity.mentionCount,
       });
 
       return entities.getById(keepId);
@@ -1157,7 +1157,7 @@ export function createProgramStore(): ProgramStoreInstance {
         status: goal.status,
         parent_goal_id: goal.parent_goal_id ?? '',
         created_at: goal.created_at,
-        last_referenced: goal.last_referenced,
+        last_referenced: goal.lastReferenced,
         priority: goal.priority,
         progress_type: goal.progress_type,
         progress_value: goal.progress_value,
@@ -1330,25 +1330,25 @@ export function createProgramStore(): ProgramStoreInstance {
       const timestamp = now();
       const contradiction: Contradiction = {
         id,
-        claim_a_id: data.claim_a_id,
-        claim_b_id: data.claim_b_id,
+        claim_a_id: data.claimAId,
+        claim_b_id: data.claimBId,
         detected_at: timestamp,
-        contradiction_type: data.contradiction_type,
+        contradiction_type: data.contradictionType,
         resolved: data.resolved ?? false,
-        resolution_type: data.resolution_type ?? null,
-        resolution_notes: data.resolution_notes ?? null,
-        resolved_at: data.resolved_at ?? null,
+        resolution_type: data.resolutionType ?? null,
+        resolution_notes: data.resolutionNotes ?? null,
+        resolved_at: data.resolvedAt ?? null,
       };
 
       store.setRow('contradictions', id, {
-        claim_a_id: contradiction.claim_a_id,
-        claim_b_id: contradiction.claim_b_id,
-        detected_at: contradiction.detected_at,
-        contradiction_type: contradiction.contradiction_type,
+        claim_a_id: contradiction.claimAId,
+        claim_b_id: contradiction.claimBId,
+        detected_at: contradiction.detectedAt,
+        contradiction_type: contradiction.contradictionType,
         resolved: contradiction.resolved,
-        resolution_type: contradiction.resolution_type ?? '',
-        resolution_notes: contradiction.resolution_notes ?? '',
-        resolved_at: contradiction.resolved_at ?? 0,
+        resolution_type: contradiction.resolutionType ?? '',
+        resolution_notes: contradiction.resolutionNotes ?? '',
+        resolved_at: contradiction.resolvedAt ?? 0,
       });
 
       return contradiction;
@@ -1504,7 +1504,7 @@ export function createProgramStore(): ProgramStoreInstance {
         execute_at: data.execute_at ?? timestamp,
         group_id: data.group_id ?? null,
         depends_on: data.depends_on ?? null,
-        session_id: data.session_id ?? null,
+        session_id: data.sessionId ?? null,
       };
 
       store.setRow('tasks', id, {
@@ -1526,7 +1526,7 @@ export function createProgramStore(): ProgramStoreInstance {
         execute_at: task.execute_at,
         group_id: task.group_id ?? '',
         depends_on: task.depends_on ?? '',
-        session_id: task.session_id ?? '',
+        session_id: task.sessionId ?? '',
       });
 
       logger.debug('Created task', { id, type: task.task_type });
@@ -1578,7 +1578,7 @@ export function createProgramStore(): ProgramStoreInstance {
     },
 
     getBySession(sessionId: string): Task[] {
-      return tasks.getAll().filter((t) => t.session_id === sessionId);
+      return tasks.getAll().filter((t) => t.sessionId === sessionId);
     },
 
     subscribe(callback: SubscriptionCallback<Task>): Unsubscribe {
@@ -2150,26 +2150,26 @@ export function createProgramStore(): ProgramStoreInstance {
       const timestamp = now();
       const correction: Correction = {
         id,
-        wrong_text: data.wrong_text.toLowerCase(), // Normalize to lowercase
-        correct_text: data.correct_text,
-        original_case: data.original_case,
-        usage_count: data.usage_count ?? 0,
+        wrong_text: data.wrongText.toLowerCase(), // Normalize to lowercase
+        correct_text: data.correctText,
+        original_case: data.originalCase,
+        usage_count: data.usageCount ?? 0,
         created_at: timestamp,
         last_used: timestamp,
-        source_unit_id: data.source_unit_id ?? null,
+        source_unit_id: data.sourceUnitId ?? null,
       };
 
       store.setRow('corrections', id, {
-        wrong_text: correction.wrong_text,
-        correct_text: correction.correct_text,
-        original_case: correction.original_case,
-        usage_count: correction.usage_count,
+        wrong_text: correction.wrongText,
+        correct_text: correction.correctText,
+        original_case: correction.originalCase,
+        usage_count: correction.usageCount,
         created_at: correction.created_at,
-        last_used: correction.last_used,
-        source_unit_id: correction.source_unit_id ?? '',
+        last_used: correction.lastUsed,
+        source_unit_id: correction.sourceUnitId ?? '',
       });
 
-      logger.debug('Created correction', { id, wrong: correction.wrong_text, correct: correction.correct_text });
+      logger.debug('Created correction', { id, wrong: correction.wrongText, correct: correction.correctText });
       return correction;
     },
 
@@ -2197,20 +2197,20 @@ export function createProgramStore(): ProgramStoreInstance {
 
     getByWrongText(wrongText: string): Correction | null {
       const normalized = wrongText.toLowerCase();
-      return corrections.getAll().find((c) => c.wrong_text === normalized) ?? null;
+      return corrections.getAll().find((c) => c.wrongText === normalized) ?? null;
     },
 
     getFrequentlyUsed(limit: number): Correction[] {
       return corrections
         .getAll()
-        .sort((a, b) => b.usage_count - a.usage_count)
+        .sort((a, b) => b.usageCount - a.usageCount)
         .slice(0, limit);
     },
 
     incrementUsageCount(id: string): void {
       const correction = corrections.getById(id);
       if (correction) {
-        corrections.update(id, { usage_count: correction.usage_count + 1, last_used: now() });
+        corrections.update(id, { usage_count: correction.usageCount + 1, last_used: now() });
       }
     },
 

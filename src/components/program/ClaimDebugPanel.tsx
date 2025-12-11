@@ -71,13 +71,13 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
 
   // Highlight the relevant portion of text if positions are available
   const highlightedText = () => {
-    if (!sourceTracking.char_start || !sourceTracking.char_end) {
-      return sourceTracking.unit_text;
+    if (!sourceTracking.charStart || !sourceTracking.charEnd) {
+      return sourceTracking.unitText;
     }
 
-    const before = sourceTracking.unit_text.slice(0, sourceTracking.char_start);
-    const highlighted = sourceTracking.unit_text.slice(sourceTracking.char_start, sourceTracking.char_end);
-    const after = sourceTracking.unit_text.slice(sourceTracking.char_end);
+    const before = sourceTracking.unitText.slice(0, sourceTracking.charStart);
+    const highlighted = sourceTracking.unitText.slice(sourceTracking.charStart, sourceTracking.charEnd);
+    const after = sourceTracking.unitText.slice(sourceTracking.charEnd);
 
     return (
       <>
@@ -153,9 +153,9 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
               <h3 className="card-title text-lg flex items-center gap-2">
                 <Icon icon="mdi:message-text" className="w-5 h-5" />
                 Original Transcript
-                {sourceTracking.char_start !== null && sourceTracking.char_end !== null && (
+                {sourceTracking.charStart !== null && sourceTracking.charEnd !== null && (
                   <span className="badge badge-sm">
-                    chars {sourceTracking.char_start}-{sourceTracking.char_end}
+                    chars {sourceTracking.charStart}-{sourceTracking.charEnd}
                   </span>
                 )}
               </h3>
@@ -164,16 +164,16 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
                   {highlightedText()}
                 </p>
               </div>
-              {sourceTracking.unit_id && (
+              {sourceTracking.unitId && (
                 <div className="text-xs text-base-content/50 mt-2">
-                  Unit ID: <code className="bg-base-200 px-1 py-0.5 rounded">{sourceTracking.unit_id}</code>
+                  Unit ID: <code className="bg-base-200 px-1 py-0.5 rounded">{sourceTracking.unitId}</code>
                 </div>
               )}
             </div>
           </div>
 
           {/* LLM Prompt */}
-          {sourceTracking.llm_prompt && (
+          {sourceTracking.llmPrompt && (
             <div className="card bg-base-100">
               <div className="card-body">
                 <h3 className="card-title text-lg flex items-center gap-2">
@@ -185,7 +185,7 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
                   <div className="collapse-title font-medium">Click to expand prompt</div>
                   <div className="collapse-content">
                     <pre className="text-xs whitespace-pre-wrap bg-base-300 p-4 rounded mt-2 max-h-96 overflow-auto">
-                      {sourceTracking.llm_prompt}
+                      {sourceTracking.llmPrompt}
                     </pre>
                   </div>
                 </div>
@@ -194,7 +194,7 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
           )}
 
           {/* LLM Response */}
-          {sourceTracking.llm_response && (
+          {sourceTracking.llmResponse && (
             <div className="card bg-base-100">
               <div className="card-body">
                 <h3 className="card-title text-lg flex items-center gap-2">
@@ -206,7 +206,7 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
                   <div className="collapse-title font-medium">Click to collapse response</div>
                   <div className="collapse-content">
                     <pre className="text-xs whitespace-pre-wrap bg-base-300 p-4 rounded mt-2 max-h-96 overflow-auto">
-                      {sourceTracking.llm_response}
+                      {sourceTracking.llmResponse}
                     </pre>
                   </div>
                 </div>

@@ -93,7 +93,7 @@ export class MemoryService {
   getSalienceFactors(claim: Claim): SalienceFactors {
     return {
       recencyFactor: this.calculateRecencyFactor(claim),
-      emotionalFactor: claim.emotional_intensity,
+      emotionalFactor: claim.emotionalIntensity,
       stakesFactor: this.stakesToFactor(claim.stakes),
       confirmationFactor: this.calculateConfirmationFactor(claim),
       accessFactor: this.calculateAccessFactor(claim),
@@ -216,15 +216,15 @@ export class MemoryService {
   private getTopEntities(entities: Entity[], limit: number): SalientEntity[] {
     // Calculate entity salience based on mention count and recency
     const entitiesWithSalience = entities.map((e) => {
-      const recencyFactor = exponentialDecay(e.last_referenced, SALIENCE_HALFLIFE);
-      const mentionFactor = Math.min(Math.log2(e.mention_count + 1) / 4, 1.0);
+      const recencyFactor = exponentialDecay(e.lastReferenced, SALIENCE_HALFLIFE);
+      const mentionFactor = Math.min(Math.log2(e.mentionCount + 1) / 4, 1.0);
       const salience = 0.5 * recencyFactor + 0.5 * mentionFactor;
       return {
         entityId: e.id,
-        entity: e.canonical_name,
-        entityType: e.entity_type,
+        entity: e.canonicalName,
+        entityType: e.entityType,
         salience,
-        mentionCount: e.mention_count,
+        mentionCount: e.mentionCount,
       };
     });
 
@@ -238,7 +238,7 @@ export class MemoryService {
   ): SalientGoal[] {
     // Calculate goal salience based on recency and related claims
     const goalsWithSalience = goals.map((g) => {
-      const recencyFactor = exponentialDecay(g.last_referenced, SALIENCE_HALFLIFE);
+      const recencyFactor = exponentialDecay(g.lastReferenced, SALIENCE_HALFLIFE);
 
       // Find claims that might be related to this goal
       const relatedClaims = claims.filter(
@@ -278,7 +278,7 @@ export class MemoryService {
         concern: c.statement,
         salience: c.salience,
         stakes: c.stakes,
-        emotionalIntensity: c.emotional_intensity,
+        emotionalIntensity: c.emotionalIntensity,
       }));
   }
 
@@ -302,14 +302,14 @@ export class MemoryService {
     limit: number
   ): EmotionalHighlight[] {
     return claims
-      .filter((c) => c.emotional_intensity > 0.6)
-      .sort((a, b) => b.emotional_intensity - a.emotional_intensity)
+      .filter((c) => c.emotionalIntensity > 0.6)
+      .sort((a, b) => b.emotionalIntensity - a.emotionalIntensity)
       .slice(0, limit)
       .map((c) => ({
         claimId: c.id,
         statement: c.statement,
-        emotionalIntensity: c.emotional_intensity,
-        valence: c.emotional_valence,
+        emotionalIntensity: c.emotionalIntensity,
+        valence: c.emotionalValence,
       }));
   }
 
@@ -372,7 +372,7 @@ export class MemoryService {
     let score = 0;
 
     // Emotional intensity (max 0.3)
-    score += claim.emotional_intensity * 0.3;
+    score += claim.emotionalIntensity * 0.3;
 
     // High stakes (max 0.3)
     if (claim.stakes === 'existential') {

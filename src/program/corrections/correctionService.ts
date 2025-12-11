@@ -87,9 +87,9 @@ export class CorrectionService {
       for (const parsed of parseResult.corrections) {
         if (parsed.confidence >= this.config.minConfidence) {
           const correction = this.learnCorrection(
-            parsed.wrong_text,
-            parsed.correct_text,
-            parsed.original_case,
+            parsed.wrongText,
+            parsed.correctText,
+            parsed.originalCase,
             sourceUnitId
           );
           if (correction) {
@@ -148,10 +148,10 @@ export class CorrectionService {
     const existing = this.store.getByWrongText(normalizedWrong);
     if (existing) {
       // Update if the correct text is different
-      if (existing.correct_text.toLowerCase() !== normalizedCorrect) {
+      if (existing.correctText.toLowerCase() !== normalizedCorrect) {
         logger.info('Updating existing correction', {
           id: existing.id,
-          oldCorrect: existing.correct_text,
+          oldCorrect: existing.correctText,
           newCorrect: correctText,
         });
         this.store.update(existing.id, {
@@ -192,7 +192,7 @@ export class CorrectionService {
   removeCorrection(id: string): boolean {
     const correction = this.store.getById(id);
     if (correction) {
-      logger.info('Removing correction', { id, wrong: correction.wrong_text, correct: correction.correct_text });
+      logger.info('Removing correction', { id, wrong: correction.wrongText, correct: correction.correctText });
       return this.store.delete(id);
     }
     return false;

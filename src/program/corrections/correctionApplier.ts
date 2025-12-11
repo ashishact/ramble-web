@@ -30,11 +30,11 @@ export function applyCorrections(text: string, store: ICorrectionStore): ApplyRe
   let correctedText = text;
 
   // Sort corrections by wrong_text length (longest first) to handle overlapping corrections
-  const sortedCorrections = [...corrections].sort((a, b) => b.wrong_text.length - a.wrong_text.length);
+  const sortedCorrections = [...corrections].sort((a, b) => b.wrongText.length - a.wrongText.length);
 
   for (const correction of sortedCorrections) {
     // Create a case-insensitive word boundary regex
-    const escapedWrong = escapeRegex(correction.wrong_text);
+    const escapedWrong = escapeRegex(correction.wrongText);
     const regex = new RegExp(`\\b${escapedWrong}\\b`, 'gi');
 
     let match: RegExpExecArray | null;
@@ -48,7 +48,7 @@ export function applyCorrections(text: string, store: ICorrectionStore): ApplyRe
     // Apply corrections (reverse order to preserve indices)
     for (let i = matches.length - 1; i >= 0; i--) {
       const { index, matchedText } = matches[i];
-      const replacement = preserveCase(matchedText, correction.original_case);
+      const replacement = preserveCase(matchedText, correction.originalCase);
 
       correctedText = correctedText.slice(0, index) + replacement + correctedText.slice(index + matchedText.length);
 
@@ -123,7 +123,7 @@ export function getSuggestions(partialWord: string, store: ICorrectionStore, lim
   const lowerPartial = partialWord.toLowerCase();
 
   return corrections
-    .filter((c) => c.wrong_text.startsWith(lowerPartial) || c.correct_text.toLowerCase().startsWith(lowerPartial))
-    .sort((a, b) => b.usage_count - a.usage_count)
+    .filter((c) => c.wrongText.startsWith(lowerPartial) || c.correctText.toLowerCase().startsWith(lowerPartial))
+    .sort((a, b) => b.usageCount - a.usageCount)
     .slice(0, limit);
 }
