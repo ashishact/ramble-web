@@ -112,6 +112,17 @@ export interface ExtractedClaim {
   valid_until?: number | null;
   /** Optional: elaborates on another claim */
   elaborates?: string | null;
+  /** Source tracking for debugging (attached by pipeline) */
+  source_tracking?: {
+    unit_id: string;
+    unit_text: string;
+    text_excerpt: string;
+    char_start: number | null;
+    char_end: number | null;
+    pattern_id: string | null;
+    llm_prompt: string | null;
+    llm_response: string | null;
+  } | null;
 }
 
 /**

@@ -538,6 +538,8 @@ export class ProgramKernel {
         memory_tier: 'working',
         salience: 0,
         promoted_at: null,
+        // Source tracking from pipeline
+        source_tracking: extractedClaim.source_tracking || null,
       });
 
       // Link claim to conversation unit

@@ -108,6 +108,18 @@ export const ClaimSchema = z.object({
   salience: z.number().min(0).max(1),   // Computed salience score
   promoted_at: z.number().nullable(),   // When promoted to LTM
   last_accessed: z.number(),            // When last viewed in UI (for salience boost)
+
+  // Source tracking (for debugging and verification)
+  source_tracking: z.object({
+    unit_id: z.string(),                          // Which conversation unit this came from
+    unit_text: z.string(),                        // Full text of the unit (for reference)
+    text_excerpt: z.string(),                     // The exact text the LLM focused on
+    char_start: z.number().int().nullable(),      // Character position in unit (start)
+    char_end: z.number().int().nullable(),        // Character position in unit (end)
+    pattern_id: z.string().nullable(),            // Which pattern matched (if any)
+    llm_prompt: z.string().nullable(),            // The prompt sent to LLM (for debugging)
+    llm_response: z.string().nullable(),          // Raw LLM response (for debugging)
+  }).nullable(),
 });
 
 /**
@@ -132,6 +144,16 @@ export const CreateClaimSchema = ClaimSchema.omit({
   memory_tier: MemoryTierSchema.default('working'),
   salience: z.number().min(0).max(1).default(0),
   promoted_at: z.number().nullable().default(null),
+  source_tracking: z.object({
+    unit_id: z.string(),
+    unit_text: z.string(),
+    text_excerpt: z.string(),
+    char_start: z.number().int().nullable(),
+    char_end: z.number().int().nullable(),
+    pattern_id: z.string().nullable(),
+    llm_prompt: z.string().nullable(),
+    llm_response: z.string().nullable(),
+  }).nullable().default(null),
 });
 
 /**

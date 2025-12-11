@@ -13,6 +13,8 @@ import type { STTConfig } from '../services/stt/types';
 import type { Claim, Entity, Goal, Pattern, Contradiction, Correction } from '../program';
 import { MemoryTab } from './program/MemoryTab';
 import { ExtractorsObserversTab } from './program/ExtractorsObserversTab';
+import { ClaimDebugPanel } from './program/ClaimDebugPanel';
+import { Icon } from '@iconify/react';
 
 // ============================================================================
 // Live Relative Time Component
@@ -96,36 +98,51 @@ const ENTITY_TYPE_ICONS: Record<string, string> = {
 
 function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
 
   return (
-    <div
-      className={`p-3 bg-base-200 rounded-lg hover:bg-base-300 transition-all cursor-pointer ${
-        isLatest ? 'ring-2 ring-primary/30' : ''
-      }`}
-      onClick={() => setExpanded(!expanded)}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1">
-          <p className="text-sm font-medium leading-relaxed">{claim.statement}</p>
-          <div className="flex flex-wrap gap-1 mt-2">
-            <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claim.claim_type] || 'badge-ghost'}`}>
-              {claim.claim_type.replace('_', ' ')}
-            </span>
-            <span className={`badge badge-xs ${STAKES_COLORS[claim.stakes] || 'badge-ghost'}`}>
-              {claim.stakes}
-            </span>
-            <span className="badge badge-xs badge-outline">{claim.subject}</span>
+    <>
+      <div
+        className={`p-3 bg-base-200 rounded-lg hover:bg-base-300 transition-all cursor-pointer ${
+          isLatest ? 'ring-2 ring-primary/30' : ''
+        }`}
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1">
+            <p className="text-sm font-medium leading-relaxed">{claim.statement}</p>
+            <div className="flex flex-wrap gap-1 mt-2">
+              <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claim.claim_type] || 'badge-ghost'}`}>
+                {claim.claim_type.replace('_', ' ')}
+              </span>
+              <span className={`badge badge-xs ${STAKES_COLORS[claim.stakes] || 'badge-ghost'}`}>
+                {claim.stakes}
+              </span>
+              <span className="badge badge-xs badge-outline">{claim.subject}</span>
+              {claim.source_tracking && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowDebug(true);
+                  }}
+                  className="badge badge-xs badge-warning gap-1 hover:badge-error cursor-pointer"
+                  title="View source tracking (debug)"
+                >
+                  <Icon icon="mdi:bug" className="w-3 h-3" />
+                  debug
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="text-right flex flex-col items-end gap-1">
+            {isLatest ? (
+              <LiveRelativeTime timestamp={claim.created_at} />
+            ) : (
+              <span className="text-xs opacity-50">{formatRelativeTime(claim.created_at)}</span>
+            )}
+            <span className="text-xs opacity-50">{Math.round(claim.current_confidence * 100)}%</span>
           </div>
         </div>
-        <div className="text-right flex flex-col items-end gap-1">
-          {isLatest ? (
-            <LiveRelativeTime timestamp={claim.created_at} />
-          ) : (
-            <span className="text-xs opacity-50">{formatRelativeTime(claim.created_at)}</span>
-          )}
-          <span className="text-xs opacity-50">{Math.round(claim.current_confidence * 100)}%</span>
-        </div>
-      </div>
 
       {expanded && (
         <div className="mt-3 pt-3 border-t border-base-300 text-xs space-y-2">
@@ -172,6 +189,12 @@ function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
         </div>
       )}
     </div>
+
+      {/* Debug Panel Modal */}
+      {showDebug && (
+        <ClaimDebugPanel claim={claim} onClose={() => setShowDebug(false)} />
+      )}
+    </>
   );
 }
 

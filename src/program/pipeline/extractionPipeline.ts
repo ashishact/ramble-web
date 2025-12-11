@@ -124,7 +124,9 @@ export async function runExtractionPipeline(input: PipelineInput): Promise<Pipel
     );
 
     for (const result of results) {
-      allClaims.push(...result.claims);
+      // Attach source tracking to each claim
+      const claimsWithTracking = attachSourceTracking(result.claims, result.sourceInfo, result.extractorId);
+      allClaims.push(...claimsWithTracking);
       allEntities.push(...result.entities);
       extractorsRun.push(result.extractorId);
       totalTokens += result.tokens;
@@ -134,7 +136,9 @@ export async function runExtractionPipeline(input: PipelineInput): Promise<Pipel
   // Run medium/large tier extractors sequentially (potentially expensive/rate limited)
   for (const e of otherTierExtractors) {
     const result = await runSingleExtractor(e.extractor, e.matches, input);
-    allClaims.push(...result.claims);
+    // Attach source tracking to each claim
+    const claimsWithTracking = attachSourceTracking(result.claims, result.sourceInfo, result.extractorId);
+    allClaims.push(...claimsWithTracking);
     allEntities.push(...result.entities);
     extractorsRun.push(result.extractorId);
     totalTokens += result.tokens;
@@ -223,6 +227,13 @@ async function runSingleExtractor(
   claims: ExtractedClaim[];
   entities: ExtractedEntity[];
   tokens: number;
+  sourceInfo: {
+    prompt: string;
+    response: string;
+    matches: PatternMatch[];
+    unitId: string;
+    unitText: string;
+  };
 }> {
   const config = extractor.config;
 
@@ -275,6 +286,13 @@ async function runSingleExtractor(
       claims: result.claims,
       entities: result.entities,
       tokens: response.tokens_used.total,
+      sourceInfo: {
+        prompt,
+        response: response.content,
+        matches,
+        unitId: input.unit.id,
+        unitText: input.unit.sanitized_text,
+      },
     };
   } catch (error) {
     logger.error('Extractor failed', {
@@ -288,8 +306,44 @@ async function runSingleExtractor(
       claims: [],
       entities: [],
       tokens: 0,
+      sourceInfo: {
+        prompt: '',
+        response: '',
+        matches: [],
+        unitId: input.unit.id,
+        unitText: input.unit.sanitized_text,
+      },
     };
   }
+}
+
+/**
+ * Attach source tracking metadata to extracted claims
+ */
+function attachSourceTracking(
+  claims: ExtractedClaim[],
+  sourceInfo: {
+    prompt: string;
+    response: string;
+    matches: PatternMatch[];
+    unitId: string;
+    unitText: string;
+  },
+  _extractorId: string
+): ExtractedClaim[] {
+  return claims.map((claim) => ({
+    ...claim,
+    source_tracking: {
+      unit_id: sourceInfo.unitId,
+      unit_text: sourceInfo.unitText,
+      text_excerpt: sourceInfo.unitText, // Full text for now, could be refined
+      char_start: sourceInfo.matches[0]?.position?.start || null,
+      char_end: sourceInfo.matches[0]?.position?.end || null,
+      pattern_id: sourceInfo.matches[0]?.pattern_id || null,
+      llm_prompt: sourceInfo.prompt,
+      llm_response: sourceInfo.response,
+    },
+  }));
 }
 
 /**
