@@ -84,30 +84,30 @@ export const ClaimSchema = z.object({
   id: z.string(),
   statement: z.string(),
   subject: z.string(),
-  claim_type: ClaimTypeSchema,
+  claimType: ClaimTypeSchema,
   temporality: TemporalitySchema,
   abstraction: AbstractionSchema,
-  source_type: SourceTypeSchema,
-  initial_confidence: z.number().min(0).max(1),
-  current_confidence: z.number().min(0).max(1),
+  sourceType: SourceTypeSchema,
+  initialConfidence: z.number().min(0).max(1),
+  currentConfidence: z.number().min(0).max(1),
   state: ClaimStateSchema,
-  emotional_valence: z.number().min(-1).max(1), // -1 negative, 0 neutral, 1 positive
-  emotional_intensity: z.number().min(0).max(1),
+  emotionalValence: z.number().min(-1).max(1), // -1 negative, 0 neutral, 1 positive
+  emotionalIntensity: z.number().min(0).max(1),
   stakes: StakesSchema,
-  valid_from: z.number(), // Unix timestamp ms
-  valid_until: z.number().nullable(),
-  created_at: z.number(),
-  last_confirmed: z.number(),
-  confirmation_count: z.number().int().nonnegative(),
-  extraction_program_id: z.string(),
-  superseded_by: z.string().nullable(),
+  validFrom: z.number(), // Unix timestamp ms
+  validUntil: z.number().nullable(),
+  createdAt: z.number(),
+  lastConfirmed: z.number(),
+  confirmationCount: z.number().int().nonnegative(),
+  extractionProgramId: z.string(),
+  supersededBy: z.string().nullable(),
   elaborates: z.string().nullable(), // Links to another claim this elaborates
 
   // Memory system fields
-  memory_tier: MemoryTierSchema,        // 'working' | 'long_term'
+  memoryTier: MemoryTierSchema,        // 'working' | 'long_term'
   salience: z.number().min(0).max(1),   // Computed salience score
-  promoted_at: z.number().nullable(),   // When promoted to LTM
-  last_accessed: z.number(),            // When last viewed in UI (for salience boost)
+  promotedAt: z.number().nullable(),   // When promoted to LTM
+  lastAccessed: z.number(),            // When last viewed in UI (for salience boost)
 });
 
 /**
@@ -115,37 +115,37 @@ export const ClaimSchema = z.object({
  */
 export const CreateClaimSchema = ClaimSchema.omit({
   id: true,
-  created_at: true,
-  last_confirmed: true,
-  confirmation_count: true,
+  createdAt: true,
+  lastConfirmed: true,
+  confirmationCount: true,
   state: true,
-  current_confidence: true,
-  superseded_by: true,
-  memory_tier: true,
+  currentConfidence: true,
+  supersededBy: true,
+  memoryTier: true,
   salience: true,
-  promoted_at: true,
-  last_accessed: true,
+  promotedAt: true,
+  lastAccessed: true,
 }).extend({
   state: ClaimStateSchema.default('active'),
-  confirmation_count: z.number().int().nonnegative().default(1),
-  superseded_by: z.string().nullable().default(null),
-  memory_tier: MemoryTierSchema.default('working'),
+  confirmationCount: z.number().int().nonnegative().default(1),
+  supersededBy: z.string().nullable().default(null),
+  memoryTier: MemoryTierSchema.default('working'),
   salience: z.number().min(0).max(1).default(0),
-  promoted_at: z.number().nullable().default(null),
+  promotedAt: z.number().nullable().default(null),
 });
 
 /**
  * Schema for updating a claim
  */
-export const UpdateClaimSchema = ClaimSchema.partial().omit({ id: true, created_at: true });
+export const UpdateClaimSchema = ClaimSchema.partial().omit({ id: true, createdAt: true });
 
 /**
  * Claim to source unit relationship (many-to-many)
  */
 export const ClaimSourceSchema = z.object({
   id: z.string(),
-  claim_id: z.string(),
-  unit_id: z.string(),
+  claimId: z.string(),
+  unitId: z.string(),
 });
 
 /**

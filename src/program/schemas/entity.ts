@@ -25,12 +25,12 @@ export const EntityTypeSchema = z.enum([
  */
 export const EntitySchema = z.object({
   id: z.string(),
-  canonical_name: z.string(),
-  entity_type: EntityTypeSchema,
-  aliases: z.string(), // JSON array as string for TinyBase compatibility
-  created_at: z.number(),
-  last_referenced: z.number(),
-  mention_count: z.number().int().nonnegative(),
+  canonicalName: z.string(),
+  entityType: EntityTypeSchema,
+  aliases: z.string(), // JSON array as string for compatibility
+  createdAt: z.number(),
+  lastReferenced: z.number(),
+  mentionCount: z.number().int().nonnegative(),
 });
 
 /**
@@ -38,17 +38,17 @@ export const EntitySchema = z.object({
  */
 export const CreateEntitySchema = EntitySchema.omit({
   id: true,
-  created_at: true,
-  last_referenced: true,
-  mention_count: true,
+  createdAt: true,
+  lastReferenced: true,
+  mentionCount: true,
 }).extend({
-  mention_count: z.number().int().nonnegative().default(1),
+  mentionCount: z.number().int().nonnegative().default(1),
 });
 
 /**
  * Schema for updating an entity
  */
-export const UpdateEntitySchema = EntitySchema.partial().omit({ id: true, created_at: true });
+export const UpdateEntitySchema = EntitySchema.partial().omit({ id: true, createdAt: true });
 
 /**
  * Helper to parse aliases from JSON string

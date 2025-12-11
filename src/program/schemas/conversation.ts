@@ -16,13 +16,13 @@ export const ConversationSourceSchema = z.enum(['speech', 'text']);
  */
 export const ConversationUnitSchema = z.object({
   id: z.string(),
-  session_id: z.string(),
+  sessionId: z.string(),
   timestamp: z.number(), // Unix timestamp ms
-  raw_text: z.string(),
-  sanitized_text: z.string(),
+  rawText: z.string(),
+  sanitizedText: z.string(),
   source: ConversationSourceSchema,
-  preceding_context_summary: z.string(),
-  created_at: z.number(), // Unix timestamp ms
+  precedingContextSummary: z.string(),
+  createdAt: z.number(), // Unix timestamp ms
   processed: z.boolean(), // Has extraction run?
 });
 
@@ -31,7 +31,7 @@ export const ConversationUnitSchema = z.object({
  */
 export const CreateConversationUnitSchema = ConversationUnitSchema.omit({
   id: true,
-  created_at: true,
+  createdAt: true,
   processed: true,
 }).extend({
   processed: z.boolean().default(false),
@@ -39,10 +39,10 @@ export const CreateConversationUnitSchema = ConversationUnitSchema.omit({
 
 /**
  * Schema for updating a conversation unit
- * Note: raw_text and sanitized_text can be updated for corrections
+ * Note: rawText and sanitizedText can be updated for corrections
  */
 export const UpdateConversationUnitSchema = z.object({
   processed: z.boolean().optional(),
-  raw_text: z.string().optional(),
-  sanitized_text: z.string().optional(),
+  rawText: z.string().optional(),
+  sanitizedText: z.string().optional(),
 });
