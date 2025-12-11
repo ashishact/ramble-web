@@ -50,24 +50,24 @@ export abstract class BaseExtractor implements ExtractionProgram {
     }
 
     // Recent claims
-    if (context.recent_claims.length > 0) {
-      const claimsList = context.recent_claims
+    if (context.recentClaims.length > 0) {
+      const claimsList = context.recentClaims
         .slice(0, 5)
         .map((c) => `- [${c.claimType}] ${c.statement}`)
         .join('\n');
-      parts.push(`<recent_claims>\n${claimsList}\n</recent_claims>`);
+      parts.push(`<recentClaims>\n${claimsList}\n</recentClaims>`);
     }
 
     // Active chains
-    if (context.active_chains.length > 0) {
-      const chainsList = context.active_chains.map((c) => `- ${c.topic}`).join('\n');
+    if (context.activeChains.length > 0) {
+      const chainsList = context.activeChains.map((c) => `- ${c.topic}`).join('\n');
       parts.push(`<active_topics>\n${chainsList}\n</active_topics>`);
     }
 
     // Known entities
-    if (context.known_entities.length > 0) {
-      const entitiesList = context.known_entities.slice(0, 10).map((e) => `- ${e.canonicalName} (${e.entityType})`).join('\n');
-      parts.push(`<known_entities>\n${entitiesList}\n</known_entities>`);
+    if (context.knownEntities.length > 0) {
+      const entitiesList = context.knownEntities.slice(0, 10).map((e) => `- ${e.canonicalName} (${e.entityType})`).join('\n');
+      parts.push(`<knownEntities>\n${entitiesList}\n</knownEntities>`);
     }
 
     return parts.join('\n\n');
@@ -202,8 +202,8 @@ export function parseJSONResponse(
       entities,
       metadata: {
         model: config.llmTier, // Tier name as model identifier
-        tokens_used: 0, // Will be filled by LLM caller
-        processing_time_ms: 0, // Will be filled by LLM caller
+        tokensUsed: 0, // Will be filled by LLM caller
+        processingTimeMs: 0, // Will be filled by LLM caller
       },
     };
   } catch (error) {
@@ -215,8 +215,8 @@ export function parseJSONResponse(
       entities: [],
       metadata: {
         model: config.llmTier, // Tier name as model identifier
-        tokens_used: 0,
-        processing_time_ms: 0,
+        tokensUsed: 0,
+        processingTimeMs: 0,
       },
     };
   }
@@ -281,16 +281,16 @@ function normalizeClaim(claim: Partial<ExtractedClaim>, config: ExtractorConfig)
   return {
     statement: claim.statement.trim(),
     subject: claim.subject.trim(),
-    claim_type: claimType as ExtractedClaim['claim_type'],
+    claimType: claimType as ExtractedClaim['claim_type'],
     temporality: temporality as ExtractedClaim['temporality'],
     abstraction: abstraction as ExtractedClaim['abstraction'],
-    source_type: sourceType as ExtractedClaim['source_type'],
+    sourceType: sourceType as ExtractedClaim['source_type'],
     confidence,
-    emotional_valence: emotionalValence,
-    emotional_intensity: emotionalIntensity,
+    emotionalValence: emotionalValence,
+    emotionalIntensity: emotionalIntensity,
     stakes: stakes as ExtractedClaim['stakes'],
-    valid_from: claim.validFrom,
-    valid_until: claim.validUntil,
+    validFrom: claim.validFrom,
+    validUntil: claim.validUntil,
     elaborates: claim.elaborates,
   };
 }
@@ -307,8 +307,8 @@ function normalizeEntity(entity: Partial<ExtractedEntity>): ExtractedEntity | nu
     : 'concept';
 
   return {
-    canonical_name: entity.canonicalName.trim(),
-    entity_type: entityType as ExtractedEntity['entity_type'],
+    canonicalName: entity.canonicalName.trim(),
+    entityType: entityType as ExtractedEntity['entity_type'],
     aliases: Array.isArray(entity.aliases)
       ? entity.aliases.filter((a): a is string => typeof a === 'string').map((a) => a.trim())
       : [],

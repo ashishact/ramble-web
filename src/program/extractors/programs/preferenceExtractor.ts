@@ -18,7 +18,7 @@ class PreferenceExtractor extends BaseExtractor {
     id: 'core_preference',
     name: 'Preference Extraction',
     description: 'Extracts likes, dislikes, and preferences',
-    claim_types: ['preference'],
+    claimTypes: ['preference'],
     patterns: [
       // Likes
       { id: 'like', type: 'keyword', pattern: 'I like|I love|I enjoy|I prefer|I favor', weight: 0.9 },
@@ -85,7 +85,7 @@ If no preferences found, respond: []`;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || (obj.domain as string) || 'preference',
-          claim_type: 'preference',
+          claimType: 'preference',
           temporality: 'slowly_decaying',
           abstraction: 'specific',
           source_type: 'direct',
@@ -100,7 +100,7 @@ If no preferences found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokens_used: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
     };
   }
 }

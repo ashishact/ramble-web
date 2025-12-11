@@ -19,7 +19,7 @@ class MemoryReferenceExtractor extends BaseExtractor {
     id: 'core_memory_reference',
     name: 'Memory Reference Extraction',
     description: 'Extracts references to past events and experiences',
-    claim_types: ['memory_reference'],
+    claimTypes: ['memory_reference'],
     patterns: [
       // Past tense markers
       { id: 'remember', type: 'keyword', pattern: 'I remember|I recall|I think back|reminds me of', weight: 0.95 },
@@ -90,7 +90,7 @@ If no memory references found, respond: []`;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || 'memory',
-          claim_type: 'memory_reference',
+          claimType: 'memory_reference',
           temporality: 'point_in_time',
           abstraction: 'specific',
           source_type: 'direct',
@@ -105,7 +105,7 @@ If no memory references found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokens_used: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
     };
   }
 }

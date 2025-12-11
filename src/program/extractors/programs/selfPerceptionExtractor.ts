@@ -18,7 +18,7 @@ class SelfPerceptionExtractor extends BaseExtractor {
     id: 'core_self_perception',
     name: 'Self-Perception Extraction',
     description: 'Extracts how the person sees themselves',
-    claim_types: ['self_perception'],
+    claimTypes: ['self_perception'],
     patterns: [
       // Identity statements
       { id: 'i_am', type: 'keyword', pattern: "I am|I'm a|I'm the kind of|I'm someone who", weight: 0.9 },
@@ -86,7 +86,7 @@ If no self-perceptions found, respond: []`;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || 'self',
-          claim_type: 'self_perception',
+          claimType: 'self_perception',
           temporality: 'slowly_decaying',
           abstraction: 'specific',
           source_type: 'direct',
@@ -101,7 +101,7 @@ If no self-perceptions found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokens_used: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
     };
   }
 }

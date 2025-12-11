@@ -14,7 +14,7 @@ class RelationshipExtractor extends BaseExtractor {
     id: 'relationship_extractor',
     name: 'Relationship Extractor',
     description: 'Extracts relationship information between people',
-    claim_types: ['relationship'],
+    claimTypes: ['relationship'],
     patterns: [
       // Family relationships
       { id: 'my_family', type: 'regex', pattern: 'my\\s+(?:wife|husband|partner|mom|dad|mother|father|brother|sister|son|daughter|child|children|parents?|family)', weight: 1.0 },

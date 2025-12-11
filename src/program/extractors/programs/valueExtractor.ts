@@ -19,7 +19,7 @@ class ValueExtractor extends BaseExtractor {
     id: 'core_value',
     name: 'Value & Principle Extraction',
     description: 'Extracts core values, principles, and what matters most',
-    claim_types: ['value'],
+    claimTypes: ['value'],
     patterns: [
       // Importance
       { id: 'important', type: 'keyword', pattern: 'important to me|matters to me|care about|value', weight: 0.9 },
@@ -82,7 +82,7 @@ If no values found, respond: []`;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || (obj.domain as string) || 'values',
-          claim_type: 'value',
+          claimType: 'value',
           temporality: 'slowly_decaying',
           abstraction: 'general',
           source_type: obj.is_explicit ? 'direct' : 'inferred',
@@ -97,7 +97,7 @@ If no values found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokens_used: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
     };
   }
 }

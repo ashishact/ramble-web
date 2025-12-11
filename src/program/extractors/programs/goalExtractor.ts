@@ -14,7 +14,7 @@ class GoalExtractor extends BaseExtractor {
     id: 'goal_extractor',
     name: 'Goal Extractor',
     description: 'Extracts goals, objectives, and aspirations',
-    claim_types: ['goal'],
+    claimTypes: ['goal'],
     patterns: [
       // Goal keywords
       { id: 'goal', type: 'keyword', pattern: 'goal', weight: 1.0 },

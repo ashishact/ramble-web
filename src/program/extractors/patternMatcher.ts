@@ -34,8 +34,8 @@ function matchKeyword(text: string, pattern: PatternDef): PatternMatch[] {
       text: text.slice(index, index + keyword.length),
       position: { start: index, end: index + keyword.length },
       context,
-      relevance_score: pattern.weight ?? 1.0,
-      pattern_id: pattern.id,
+      relevanceScore: pattern.weight ?? 1.0,
+      patternId: pattern.id,
     });
 
     pos = index + 1;
@@ -73,8 +73,8 @@ function matchRegex(text: string, pattern: PatternDef): PatternMatch[] {
       text: matchedText,
       position: { start: index, end: index + matchedText.length },
       context,
-      relevance_score: pattern.weight ?? 1.0,
-      pattern_id: pattern.id,
+      relevanceScore: pattern.weight ?? 1.0,
+      patternId: pattern.id,
     });
   }
 
@@ -124,8 +124,8 @@ export interface PatternMatcherOptions {
 }
 
 const DEFAULT_OPTIONS: Required<PatternMatcherOptions> = {
-  min_relevance: 0.3,
-  max_matches_per_pattern: 10,
+  minRelevance: 0.3,
+  maxMatchesPerPattern: 10,
 };
 
 /**
@@ -162,7 +162,7 @@ export function findPatternMatches(
 
     // Calculate total relevance (sum of unique match relevances)
     const uniqueMatches = deduplicateMatches(allMatches);
-    const totalRelevance = uniqueMatches.reduce((sum, m) => sum + m.relevance_score, 0);
+    const totalRelevance = uniqueMatches.reduce((sum, m) => sum + m.relevanceScore, 0);
 
     if (totalRelevance >= opts.min_relevance) {
       results.push({
@@ -174,7 +174,7 @@ export function findPatternMatches(
   }
 
   // Sort by total relevance (highest first)
-  return results.sort((a, b) => b.total_relevance - a.total_relevance);
+  return results.sort((a, b) => b.totalRelevance - a.totalRelevance);
 }
 
 /**
@@ -194,7 +194,7 @@ function deduplicateMatches(matches: PatternMatch[]): PatternMatch[] {
     // Check for overlap
     if (current.position.start < previous.position.end) {
       // Overlapping - keep the one with higher relevance
-      if (current.relevance_score > previous.relevance_score) {
+      if (current.relevanceScore > previous.relevanceScore) {
         result[result.length - 1] = current;
       }
     } else {
@@ -209,7 +209,7 @@ function deduplicateMatches(matches: PatternMatch[]): PatternMatch[] {
  * Get the most relevant text segments from matches
  */
 export function getRelevantSegments(matches: PatternMatch[], maxSegments: number = 5): string[] {
-  const sorted = [...matches].sort((a, b) => b.relevance_score - a.relevance_score);
+  const sorted = [...matches].sort((a, b) => b.relevanceScore - a.relevanceScore);
   return sorted.slice(0, maxSegments).map((m) => m.context);
 }
 
@@ -220,21 +220,21 @@ export function shouldExtractorRun(
   text: string,
   extractor: ExtractionProgram,
   options?: PatternMatcherOptions
-): { should_run: boolean; matches: PatternMatch[]; relevance: number } {
+): { shouldRun: boolean; matches: PatternMatch[]; relevance: number } {
   if (extractor.config.alwaysRun) {
-    return { should_run: true, matches: [], relevance: 1.0 };
+    return { shouldRun: true, matches: [], relevance: 1.0 };
   }
 
   const results = findPatternMatches(text, [extractor], options);
 
   if (results.length === 0) {
-    return { should_run: false, matches: [], relevance: 0 };
+    return { shouldRun: false, matches: [], relevance: 0 };
   }
 
   return {
-    should_run: true,
+    shouldRun: true,
     matches: results[0].matches,
-    relevance: results[0].total_relevance,
+    relevance: results[0].totalRelevance,
   };
 }
 
@@ -256,7 +256,7 @@ export function mergeAdjacentMatches(matches: PatternMatch[], maxGap: number = 5
     if (next.position.start - current.position.end <= maxGap) {
       // Extend current match
       current.position.end = Math.max(current.position.end, next.position.end);
-      current.relevance_score = Math.max(current.relevance_score, next.relevance_score);
+      current.relevanceScore = Math.max(current.relevanceScore, next.relevanceScore);
       // Extend context by appending the tail of the next context
       current.context = current.context + next.context.slice(Math.max(0, next.context.length - 50));
     } else {

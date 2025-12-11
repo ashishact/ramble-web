@@ -14,7 +14,7 @@ class EmotionExtractor extends BaseExtractor {
     id: 'emotion_extractor',
     name: 'Emotion Extractor',
     description: 'Extracts emotional states and feelings',
-    claim_types: ['emotion'],
+    claimTypes: ['emotion'],
     patterns: [
       // Direct emotion words
       { id: 'happy', type: 'keyword', pattern: 'happy', weight: 1.0 },

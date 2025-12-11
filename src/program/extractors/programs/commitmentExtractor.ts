@@ -19,7 +19,7 @@ class CommitmentExtractor extends BaseExtractor {
     id: 'core_commitment',
     name: 'Commitment Extraction',
     description: 'Extracts commitments, promises, and obligations',
-    claim_types: ['commitment'],
+    claimTypes: ['commitment'],
     patterns: [
       // Promises
       { id: 'promise', type: 'keyword', pattern: 'I promise|I commit|I pledge|I vow', weight: 0.95 },
@@ -98,7 +98,7 @@ If no commitments found, respond: []`;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || 'commitment',
-          claim_type: 'commitment',
+          claimType: 'commitment',
           temporality: 'slowly_decaying',
           abstraction: 'specific',
           source_type: 'direct',
@@ -113,7 +113,7 @@ If no commitments found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokens_used: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
     };
   }
 }

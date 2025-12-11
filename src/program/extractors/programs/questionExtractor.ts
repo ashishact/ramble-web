@@ -19,7 +19,7 @@ class QuestionExtractor extends BaseExtractor {
     id: 'core_question',
     name: 'Question & Uncertainty Extraction',
     description: 'Extracts questions, uncertainties, and knowledge gaps',
-    claim_types: ['question'],
+    claimTypes: ['question'],
     patterns: [
       // Direct questions
       { id: 'question_mark', type: 'regex', pattern: /\?$/, weight: 0.9 },
@@ -85,7 +85,7 @@ If no questions/uncertainties found, respond: []`;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || 'unknown',
-          claim_type: 'question',
+          claimType: 'question',
           temporality: 'point_in_time',
           abstraction: 'specific',
           source_type: 'direct',
@@ -100,7 +100,7 @@ If no questions/uncertainties found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokens_used: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
     };
   }
 }

@@ -107,9 +107,9 @@ export interface ExtractedClaim {
   /** Importance level */
   stakes: Stakes;
   /** Optional: when claim becomes valid */
-  valid_from?: number;
+  validFrom?: number;
   /** Optional: when claim expires */
-  valid_until?: number | null;
+  validUntil?: number | null;
   /** Optional: elaborates on another claim */
   elaborates?: string | null;
   /** Source tracking for debugging (attached by pipeline) */
@@ -167,7 +167,7 @@ export interface ExtractorConfig {
   /** Priority (higher = run first) */
   priority: number;
   /** Whether to run on every unit or only matching ones */
-  always_run?: boolean;
+  alwaysRun?: boolean;
 }
 
 /**

@@ -14,7 +14,7 @@ class FactualExtractor extends BaseExtractor {
     id: 'factual_extractor',
     name: 'Factual Extractor',
     description: 'Extracts factual claims and information',
-    claim_types: ['factual'],
+    claimTypes: ['factual'],
     patterns: [
       // Definite statements
       { id: 'is_a', type: 'regex', pattern: '\\b(?:is|are|was|were)\\s+(?:a|an|the)\\b', weight: 0.4 },

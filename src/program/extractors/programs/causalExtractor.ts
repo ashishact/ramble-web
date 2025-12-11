@@ -19,7 +19,7 @@ class CausalExtractor extends BaseExtractor {
     id: 'core_causal',
     name: 'Causal Belief Extraction',
     description: 'Extracts causal beliefs about cause-effect relationships',
-    claim_types: ['causal'],
+    claimTypes: ['causal'],
     patterns: [
       // Explicit causation
       { id: 'because', type: 'keyword', pattern: 'because|since|therefore|thus|hence', weight: 0.9 },
@@ -83,7 +83,7 @@ If no causal beliefs found, respond: []`;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || (obj.cause as string),
-          claim_type: 'causal',
+          claimType: 'causal',
           temporality: 'slowly_decaying',
           abstraction: obj.is_personal ? 'specific' : 'general',
           source_type: 'direct',
@@ -98,7 +98,7 @@ If no causal beliefs found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokens_used: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
     };
   }
 }

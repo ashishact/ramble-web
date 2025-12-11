@@ -170,8 +170,8 @@ export class CorrectionService {
       wrongText: normalizedWrong,
       correctText: correctText,
       originalCase: originalCase,
-      source_unit_id: sourceUnitId ?? null,
-      usage_count: 0,
+      sourceUnitId: sourceUnitId ?? null,
+      usageCount: 0,
     };
 
     const correction = await this.store.create(createData);

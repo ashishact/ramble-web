@@ -21,7 +21,7 @@ class DecisionExtractor extends BaseExtractor {
     id: 'core_decision',
     name: 'Decision Extraction',
     description: 'Extracts decisions and choices made',
-    claim_types: ['decision'],
+    claimTypes: ['decision'],
     patterns: [
       // Made decisions
       { id: 'decided', type: 'keyword', pattern: "I decided|I've decided|decision is|my decision", weight: 0.95 },
@@ -101,7 +101,7 @@ If no decisions found, respond: []`;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || (obj.decision as string),
-          claim_type: 'decision',
+          claimType: 'decision',
           temporality: 'point_in_time',
           abstraction: 'specific',
           source_type: 'direct',
@@ -116,7 +116,7 @@ If no decisions found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokens_used: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
     };
   }
 }

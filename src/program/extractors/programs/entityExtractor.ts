@@ -19,7 +19,7 @@ class EntityExtractor extends BaseExtractor {
     id: 'core_entity',
     name: 'Entity Extraction',
     description: 'Extracts named entities from conversation',
-    claim_types: [], // Primarily produces entities, not claims
+    claimTypes: [], // Primarily produces entities, not claims
     patterns: [
       // Proper nouns
       { id: 'proper_noun', type: 'regex', pattern: /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/, weight: 0.8 },
@@ -95,7 +95,7 @@ If no entities are found, respond with an empty array: []`;
       entities,
       metadata: {
         model: '',
-        tokens_used: 0,
+        tokensUsed: 0,
         processing_time_ms: 0,
       },
     };

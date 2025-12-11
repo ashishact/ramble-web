@@ -19,7 +19,7 @@ class ChangeMarkerExtractor extends BaseExtractor {
     id: 'core_change_marker',
     name: 'Change Marker Extraction',
     description: 'Extracts statements about change and transitions',
-    claim_types: ['change_marker'],
+    claimTypes: ['change_marker'],
     patterns: [
       // Change language
       { id: 'changed', type: 'keyword', pattern: 'changed|different now|not the same|transformed', weight: 0.9 },
@@ -105,7 +105,7 @@ If no change markers found, respond: []`;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || (obj.domain as string) || 'change',
-          claim_type: 'change_marker',
+          claimType: 'change_marker',
           temporality: temporalityMap[changeType] || 'point_in_time',
           abstraction: 'specific',
           source_type: 'direct',
@@ -120,7 +120,7 @@ If no change markers found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokens_used: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
     };
   }
 }

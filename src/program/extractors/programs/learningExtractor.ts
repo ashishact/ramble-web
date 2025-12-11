@@ -19,7 +19,7 @@ class LearningExtractor extends BaseExtractor {
     id: 'core_learning',
     name: 'Learning Extraction',
     description: 'Extracts lessons learned and insights gained',
-    claim_types: ['learning'],
+    claimTypes: ['learning'],
     patterns: [
       // Learning statements
       { id: 'learned', type: 'keyword', pattern: 'I learned|I realized|I discovered|I found out', weight: 0.95 },
@@ -84,7 +84,7 @@ If no learnings found, respond: []`;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || 'learning',
-          claim_type: 'learning',
+          claimType: 'learning',
           temporality: 'slowly_decaying',
           abstraction: learningType === 'wisdom' ? 'general' : 'specific',
           source_type: 'direct',
@@ -99,7 +99,7 @@ If no learnings found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokens_used: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
     };
   }
 }

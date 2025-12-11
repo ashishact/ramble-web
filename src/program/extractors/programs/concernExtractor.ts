@@ -14,7 +14,7 @@ class ConcernExtractor extends BaseExtractor {
     id: 'concern_extractor',
     name: 'Concern Extractor',
     description: 'Extracts worries, fears, and concerns',
-    claim_types: ['concern'],
+    claimTypes: ['concern'],
     patterns: [
       // Direct concern expressions
       { id: 'worried', type: 'keyword', pattern: 'worried', weight: 1.0 },

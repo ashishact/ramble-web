@@ -14,7 +14,7 @@ class IntentionExtractor extends BaseExtractor {
     id: 'intention_extractor',
     name: 'Intention Extractor',
     description: 'Extracts intentions, plans, and commitments',
-    claim_types: ['intention', 'commitment', 'decision'],
+    claimTypes: ['intention', 'commitment', 'decision'],
     patterns: [
       // Direct intentions
       { id: 'going_to', type: 'regex', pattern: "(?:I'm|I am|we're|we are)\\s+going\\s+to", weight: 1.0 },
@@ -75,7 +75,7 @@ ${inputSection}
 
 ${outputInstructions}
 
-For intentions, use these claim_types:
+For intentions, use these claimTypes:
 - "intention" for plans and wants
 - "commitment" for promises and strong commitments
 - "decision" for choices that have been made

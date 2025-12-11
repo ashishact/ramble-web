@@ -14,7 +14,7 @@ class BeliefExtractor extends BaseExtractor {
     id: 'belief_extractor',
     name: 'Belief Extractor',
     description: 'Extracts beliefs, opinions, and worldview statements',
-    claim_types: ['belief', 'value', 'assessment'],
+    claimTypes: ['belief', 'value', 'assessment'],
     patterns: [
       // Opinion indicators
       { id: 'think', type: 'keyword', pattern: 'think', weight: 0.8 },
@@ -71,7 +71,7 @@ ${inputSection}
 
 ${outputInstructions}
 
-For beliefs, use these claim_types:
+For beliefs, use these claimTypes:
 - "belief" for general opinions and views
 - "value" for statements about what is important or right
 - "assessment" for evaluative judgments of situations`;

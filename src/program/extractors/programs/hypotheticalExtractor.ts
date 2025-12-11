@@ -19,7 +19,7 @@ class HypotheticalExtractor extends BaseExtractor {
     id: 'core_hypothetical',
     name: 'Hypothetical Extraction',
     description: 'Extracts hypothetical scenarios and counterfactuals',
-    claim_types: ['hypothetical'],
+    claimTypes: ['hypothetical'],
     patterns: [
       // Conditional
       { id: 'if_then', type: 'keyword', pattern: 'if I|if we|if they|what if|suppose', weight: 0.9 },
@@ -102,7 +102,7 @@ If no hypotheticals found, respond: []`;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || 'hypothetical',
-          claim_type: 'hypothetical',
+          claimType: 'hypothetical',
           temporality: hypotheticalType === 'counterfactual' ? 'point_in_time' : 'fast_decaying',
           abstraction: 'specific',
           source_type: 'direct',
@@ -117,7 +117,7 @@ If no hypotheticals found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokens_used: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
     };
   }
 }

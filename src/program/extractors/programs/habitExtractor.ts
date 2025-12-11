@@ -18,7 +18,7 @@ class HabitExtractor extends BaseExtractor {
     id: 'core_habit',
     name: 'Habit Extraction',
     description: 'Extracts recurring behaviors and routines',
-    claim_types: ['habit'],
+    claimTypes: ['habit'],
     patterns: [
       // Frequency
       { id: 'always', type: 'keyword', pattern: 'always|usually|typically|normally|regularly', weight: 0.8 },
@@ -74,7 +74,7 @@ If no habits found, respond: []`;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || (obj.domain as string) || 'habit',
-          claim_type: 'habit',
+          claimType: 'habit',
           temporality: 'slowly_decaying',
           abstraction: 'specific',
           source_type: 'direct',
@@ -89,7 +89,7 @@ If no habits found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokens_used: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
     };
   }
 }
