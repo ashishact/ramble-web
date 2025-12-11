@@ -105,6 +105,11 @@ import {
   CreateExtractionProgramSchema,
   UpdateExtractionProgramSchema,
 
+  // Observer Programs
+  ObserverProgramSchema,
+  CreateObserverProgramSchema,
+  UpdateObserverProgramSchema,
+
   // Corrections
   CorrectionSchema,
   CreateCorrectionSchema,
@@ -259,6 +264,17 @@ export type UpdateExtractionProgram = z.infer<typeof UpdateExtractionProgramSche
 
 // Alias for database record type to avoid confusion with extractor interface
 export type ExtractionProgramRecord = ExtractionProgram;
+
+// ============================================================================
+// Observer Program Types
+// ============================================================================
+
+export type ObserverProgram = z.infer<typeof ObserverProgramSchema>;
+export type CreateObserverProgram = z.infer<typeof CreateObserverProgramSchema>;
+export type UpdateObserverProgram = z.infer<typeof UpdateObserverProgramSchema>;
+
+// Alias for database record type
+export type ObserverProgramRecord = ObserverProgram;
 
 // ============================================================================
 // Correction Types

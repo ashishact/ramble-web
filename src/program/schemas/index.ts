@@ -34,6 +34,9 @@ export * from './synthesis';
 // Extraction Programs
 export * from './extractionProgram';
 
+// Observer Programs
+export * from './observerProgram';
+
 // Corrections
 export * from './correction';
 

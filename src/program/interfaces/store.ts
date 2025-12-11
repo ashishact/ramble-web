@@ -46,6 +46,10 @@ import type {
   ExtractionProgram,
   CreateExtractionProgram,
   UpdateExtractionProgram,
+  ObserverProgram,
+  CreateObserverProgram,
+  UpdateObserverProgram,
+  ObserverType,
   Correction,
   CreateCorrection,
   UpdateCorrection,
@@ -231,7 +235,23 @@ export interface IExtractionProgramStore
   getCore(): ExtractionProgram[];
   incrementRunCount(id: string): void;
   updateSuccessRate(id: string, success: boolean): void;
+  updateProcessingTime(id: string, timeMs: number): void;
   subscribe(callback: SubscriptionCallback<ExtractionProgram>): Unsubscribe;
+}
+
+// ============================================================================
+// Observer Program Store
+// ============================================================================
+
+export interface IObserverProgramStore
+  extends IBaseStore<ObserverProgram, CreateObserverProgram, UpdateObserverProgram> {
+  getActive(): ObserverProgram[];
+  getByType(type: ObserverType): ObserverProgram | null;
+  getCore(): ObserverProgram[];
+  incrementRunCount(id: string): void;
+  updateSuccessRate(id: string, success: boolean): void;
+  updateProcessingTime(id: string, timeMs: number): void;
+  subscribe(callback: SubscriptionCallback<ObserverProgram>): Unsubscribe;
 }
 
 // ============================================================================
@@ -264,6 +284,7 @@ export interface IProgramStore {
   extensions: IExtensionStore;
   synthesisCache: ISynthesisCacheStore;
   extractionPrograms: IExtractionProgramStore;
+  observerPrograms: IObserverProgramStore;
   corrections: ICorrectionStore;
 
   /**

@@ -19,6 +19,7 @@ import type {
   IExtensionStore,
   ISynthesisCacheStore,
   IExtractionProgramStore,
+  IObserverProgramStore,
   ICorrectionStore,
   SubscriptionCallback,
   Unsubscribe,
@@ -70,6 +71,10 @@ import type {
   ExtractionProgram,
   CreateExtractionProgram,
   UpdateExtractionProgram,
+  ObserverProgram,
+  CreateObserverProgram,
+  UpdateObserverProgram,
+  ObserverType,
   Correction,
   CreateCorrection,
   UpdateCorrection,
@@ -296,17 +301,56 @@ function rowToExtractionProgram(id: string, row: Record<string, unknown>): Extra
   return {
     id,
     name: row.name as string,
+    description: row.description as string,
     type: row.type as string,
     version: row.version as number,
     patterns_json: row.patterns_json as string,
-    extraction_prompt: row.extraction_prompt as string,
+    always_run: row.always_run as boolean,
+    llm_provider: row.llm_provider as 'groq' | 'gemini',
+    llm_model: (row.llm_model as string) || null,
+    llm_temperature: (row.llm_temperature as number) === 0 ? null : (row.llm_temperature as number),
+    llm_max_tokens: (row.llm_max_tokens as number) === 0 ? null : (row.llm_max_tokens as number),
+    prompt_template: row.prompt_template as string,
     output_schema_json: row.output_schema_json as string,
     priority: row.priority as number,
     active: row.active as boolean,
+    min_confidence: row.min_confidence as number,
     is_core: row.is_core as boolean,
+    claim_types_json: row.claim_types_json as string,
     success_rate: row.success_rate as number,
     run_count: row.run_count as number,
+    avg_processing_time_ms: row.avg_processing_time_ms as number,
     created_at: row.created_at as number,
+    updated_at: row.updated_at as number,
+  };
+}
+
+function rowToObserverProgram(id: string, row: Record<string, unknown>): ObserverProgram {
+  return {
+    id,
+    name: row.name as string,
+    type: row.type as ObserverType,
+    description: row.description as string,
+    active: row.active as boolean,
+    priority: row.priority as number,
+    triggers: JSON.parse(row.triggers as string),
+    claim_type_filter: (row.claim_type_filter as string) || null,
+    uses_llm: row.uses_llm as boolean,
+    llm_provider: (row.llm_provider as 'groq' | 'gemini') || null,
+    llm_model: (row.llm_model as string) || null,
+    llm_temperature: (row.llm_temperature as number) === 0 ? null : (row.llm_temperature as number),
+    llm_max_tokens: (row.llm_max_tokens as number) === 0 ? null : (row.llm_max_tokens as number),
+    prompt_template: (row.prompt_template as string) || null,
+    output_schema_json: (row.output_schema_json as string) || null,
+    should_run_logic: (row.should_run_logic as string) || null,
+    process_logic: (row.process_logic as string) || null,
+    is_core: row.is_core as boolean,
+    version: row.version as number,
+    created_at: row.created_at as number,
+    updated_at: row.updated_at as number,
+    run_count: row.run_count as number,
+    success_rate: row.success_rate as number,
+    avg_processing_time_ms: row.avg_processing_time_ms as number,
   };
 }
 
@@ -1645,32 +1689,52 @@ export function createProgramStore(): ProgramStoreInstance {
       const program: ExtractionProgram = {
         id,
         name: data.name,
+        description: data.description,
         type: data.type,
         version: data.version ?? 1,
         patterns_json: data.patterns_json,
-        extraction_prompt: data.extraction_prompt,
+        always_run: data.always_run,
+        llm_provider: data.llm_provider,
+        llm_model: data.llm_model ?? null,
+        llm_temperature: data.llm_temperature ?? null,
+        llm_max_tokens: data.llm_max_tokens ?? null,
+        prompt_template: data.prompt_template,
         output_schema_json: data.output_schema_json,
         priority: data.priority,
         active: data.active ?? true,
+        min_confidence: data.min_confidence,
         is_core: data.is_core ?? false,
+        claim_types_json: data.claim_types_json,
         success_rate: data.success_rate ?? 0,
         run_count: data.run_count ?? 0,
+        avg_processing_time_ms: data.avg_processing_time_ms ?? 0,
         created_at: timestamp,
+        updated_at: timestamp,
       };
 
       store.setRow('extraction_programs', id, {
         name: program.name,
+        description: program.description,
         type: program.type,
         version: program.version,
         patterns_json: program.patterns_json,
-        extraction_prompt: program.extraction_prompt,
+        always_run: program.always_run,
+        llm_provider: program.llm_provider,
+        llm_model: program.llm_model || '',
+        llm_temperature: program.llm_temperature || 0,
+        llm_max_tokens: program.llm_max_tokens || 0,
+        prompt_template: program.prompt_template,
         output_schema_json: program.output_schema_json,
         priority: program.priority,
         active: program.active,
+        min_confidence: program.min_confidence,
         is_core: program.is_core,
+        claim_types_json: program.claim_types_json,
         success_rate: program.success_rate,
         run_count: program.run_count,
+        avg_processing_time_ms: program.avg_processing_time_ms,
         created_at: program.created_at,
+        updated_at: program.updated_at,
       });
 
       return program;
@@ -1687,6 +1751,9 @@ export function createProgramStore(): ProgramStoreInstance {
           store.setCell('extraction_programs', id, key, storeValue);
         }
       }
+
+      // Update timestamp
+      store.setCell('extraction_programs', id, 'updated_at', now());
 
       return extractionPrograms.getById(id);
     },
@@ -1726,10 +1793,173 @@ export function createProgramStore(): ProgramStoreInstance {
       }
     },
 
+    updateProcessingTime(id: string, timeMs: number): void {
+      const program = extractionPrograms.getById(id);
+      if (program) {
+        // Running average
+        const newAvg = (program.avg_processing_time_ms * program.run_count + timeMs) / (program.run_count + 1);
+        extractionPrograms.update(id, { avg_processing_time_ms: newAvg });
+      }
+    },
+
     subscribe(callback: SubscriptionCallback<ExtractionProgram>): Unsubscribe {
       extractionProgramListeners.add(callback);
       if (isInitialized) callback(extractionPrograms.getAll());
       return () => extractionProgramListeners.delete(callback);
+    },
+  };
+
+  // --------------------------------------------------------------------------
+  // Observer Programs Store
+  // --------------------------------------------------------------------------
+  const observerProgramListeners = new Set<SubscriptionCallback<ObserverProgram>>();
+  const notifyObserverProgramListeners = () => {
+    const items = observerPrograms.getAll();
+    observerProgramListeners.forEach((l) => l(items));
+  };
+
+  const observerPrograms: IObserverProgramStore = {
+    getById(id: string): ObserverProgram | null {
+      const row = store.getRow('observer_programs', id);
+      if (!row || Object.keys(row).length === 0) return null;
+      return rowToObserverProgram(id, row);
+    },
+
+    getAll(): ObserverProgram[] {
+      const table = store.getTable('observer_programs');
+      if (!table) return [];
+      return Object.entries(table).map(([id, row]) => rowToObserverProgram(id, row));
+    },
+
+    create(data: CreateObserverProgram): ObserverProgram {
+      const id = idGen.observerProgram();
+      const timestamp = now();
+      const program: ObserverProgram = {
+        id,
+        name: data.name,
+        type: data.type,
+        description: data.description,
+        active: data.active ?? true,
+        priority: data.priority,
+        triggers: data.triggers,
+        claim_type_filter: data.claim_type_filter ?? null,
+        uses_llm: data.uses_llm,
+        llm_provider: data.llm_provider ?? null,
+        llm_model: data.llm_model ?? null,
+        llm_temperature: data.llm_temperature ?? null,
+        llm_max_tokens: data.llm_max_tokens ?? null,
+        prompt_template: data.prompt_template ?? null,
+        output_schema_json: data.output_schema_json ?? null,
+        should_run_logic: data.should_run_logic ?? null,
+        process_logic: data.process_logic ?? null,
+        is_core: data.is_core ?? false,
+        version: data.version ?? 1,
+        created_at: timestamp,
+        updated_at: timestamp,
+        run_count: data.run_count ?? 0,
+        success_rate: data.success_rate ?? 0,
+        avg_processing_time_ms: data.avg_processing_time_ms ?? 0,
+      };
+
+      store.setRow('observer_programs', id, {
+        name: program.name,
+        type: program.type,
+        description: program.description,
+        active: program.active,
+        priority: program.priority,
+        triggers: JSON.stringify(program.triggers),
+        claim_type_filter: program.claim_type_filter || '',
+        uses_llm: program.uses_llm,
+        llm_provider: program.llm_provider || '',
+        llm_model: program.llm_model || '',
+        llm_temperature: program.llm_temperature || 0,
+        llm_max_tokens: program.llm_max_tokens || 0,
+        prompt_template: program.prompt_template || '',
+        output_schema_json: program.output_schema_json || '',
+        should_run_logic: program.should_run_logic || '',
+        process_logic: program.process_logic || '',
+        is_core: program.is_core,
+        version: program.version,
+        created_at: program.created_at,
+        updated_at: program.updated_at,
+        run_count: program.run_count,
+        success_rate: program.success_rate,
+        avg_processing_time_ms: program.avg_processing_time_ms,
+      });
+
+      return program;
+    },
+
+    update(id: string, data: UpdateObserverProgram): ObserverProgram | null {
+      const existing = observerPrograms.getById(id);
+      if (!existing) return null;
+
+      const row = store.getRow('observer_programs', id);
+      for (const [key, value] of Object.entries(data)) {
+        if (value !== undefined) {
+          if (key === 'triggers') {
+            store.setCell('observer_programs', id, key, JSON.stringify(value));
+          } else {
+            const storeValue = value === null ? (typeof row[key] === 'number' ? 0 : '') : value;
+            store.setCell('observer_programs', id, key, storeValue as string | number | boolean);
+          }
+        }
+      }
+
+      // Update timestamp
+      store.setCell('observer_programs', id, 'updated_at', now());
+
+      return observerPrograms.getById(id);
+    },
+
+    delete(id: string): boolean {
+      const existing = observerPrograms.getById(id);
+      if (!existing) return false;
+      store.delRow('observer_programs', id);
+      return true;
+    },
+
+    getActive(): ObserverProgram[] {
+      return observerPrograms.getAll().filter((p) => p.active);
+    },
+
+    getByType(type: ObserverType): ObserverProgram | null {
+      return observerPrograms.getAll().find((p) => p.type === type) || null;
+    },
+
+    getCore(): ObserverProgram[] {
+      return observerPrograms.getAll().filter((p) => p.is_core);
+    },
+
+    incrementRunCount(id: string): void {
+      const program = observerPrograms.getById(id);
+      if (program) {
+        observerPrograms.update(id, { run_count: program.run_count + 1 });
+      }
+    },
+
+    updateSuccessRate(id: string, success: boolean): void {
+      const program = observerPrograms.getById(id);
+      if (program) {
+        // Running average
+        const newRate = (program.success_rate * program.run_count + (success ? 1 : 0)) / (program.run_count + 1);
+        observerPrograms.update(id, { success_rate: newRate });
+      }
+    },
+
+    updateProcessingTime(id: string, timeMs: number): void {
+      const program = observerPrograms.getById(id);
+      if (program) {
+        // Running average
+        const newAvg = (program.avg_processing_time_ms * program.run_count + timeMs) / (program.run_count + 1);
+        observerPrograms.update(id, { avg_processing_time_ms: newAvg });
+      }
+    },
+
+    subscribe(callback: SubscriptionCallback<ObserverProgram>): Unsubscribe {
+      observerProgramListeners.add(callback);
+      if (isInitialized) callback(observerPrograms.getAll());
+      return () => observerProgramListeners.delete(callback);
     },
   };
 
@@ -1854,6 +2084,7 @@ export function createProgramStore(): ProgramStoreInstance {
     extensions,
     synthesisCache,
     extractionPrograms,
+    observerPrograms,
     corrections,
     patterns,
 
@@ -1891,6 +2122,7 @@ export function createProgramStore(): ProgramStoreInstance {
         store.addTableListener('extensions', notifyExtensionListeners);
         store.addTableListener('synthesis_cache', notifySynthesisCacheListeners);
         store.addTableListener('extraction_programs', notifyExtractionProgramListeners);
+        store.addTableListener('observer_programs', notifyObserverProgramListeners);
         store.addTableListener('corrections', notifyCorrectionListeners);
 
         isInitialized = true;

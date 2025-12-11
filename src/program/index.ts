@@ -106,6 +106,13 @@ export type {
 
   // Extraction Programs (database records)
   ExtractionProgramRecord,
+  CreateExtractionProgram,
+  UpdateExtractionProgram,
+
+  // Observer Programs (database records)
+  ObserverProgramRecord,
+  CreateObserverProgram,
+  UpdateObserverProgram,
 
   // Memory System
   MemoryTier,

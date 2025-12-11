@@ -19,6 +19,7 @@ import { ObserverDispatcher, createStandardDispatcher, type DispatcherStats } fr
 import { CorrectionService, createCorrectionService, type ProcessTextResult } from '../corrections';
 import { MemoryService, createMemoryService } from '../memory';
 import { MigrationManager, createMigrationManager, ALL_MIGRATIONS, type MigrationStatus, type MigrationResult } from '../migrations';
+// import { extractorRegistry } from '../extractors/registry'; // Will be used for sync
 import { createLogger } from '../utils/logger';
 import { now } from '../utils/time';
 
