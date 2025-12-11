@@ -180,7 +180,7 @@ export function parseJSONResponse(
     if (Array.isArray(parsed.claims)) {
       for (const claim of parsed.claims) {
         const normalized = normalizeClaim(claim, config);
-        if (normalized && normalized.confidence >= config.min_confidence) {
+        if (normalized && normalized.confidence >= config.minConfidence) {
           claims.push(normalized);
         }
       }
@@ -201,7 +201,7 @@ export function parseJSONResponse(
       claims,
       entities,
       metadata: {
-        model: config.llm_tier, // Tier name as model identifier
+        model: config.llmTier, // Tier name as model identifier
         tokens_used: 0, // Will be filled by LLM caller
         processing_time_ms: 0, // Will be filled by LLM caller
       },
@@ -214,7 +214,7 @@ export function parseJSONResponse(
       claims: [],
       entities: [],
       metadata: {
-        model: config.llm_tier, // Tier name as model identifier
+        model: config.llmTier, // Tier name as model identifier
         tokens_used: 0,
         processing_time_ms: 0,
       },

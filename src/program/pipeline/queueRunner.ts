@@ -189,8 +189,8 @@ export class QueueRunner {
       });
 
       // Parse payload and checkpoint
-      const payload = JSON.parse(task.payload_json);
-      const checkpoint = parseCheckpoint(task.checkpoint_json);
+      const payload = JSON.parse(task.payloadJson);
+      const checkpoint = parseCheckpoint(task.checkpointJson);
 
       // Execute handler
       await handler.execute(payload, checkpoint);
@@ -224,12 +224,12 @@ export class QueueRunner {
     });
 
     // Calculate next retry time with exponential backoff
-    const backoffConfig = parseBackoffConfig(task.backoff_config_json);
+    const backoffConfig = parseBackoffConfig(task.backoffConfigJson);
     const nextRetryAt = calculateNextRetryTime(task.attempts + 1, backoffConfig);
 
     // Check if we've exceeded max attempts
     const newAttempts = task.attempts + 1;
-    const isFailed = newAttempts >= task.max_attempts;
+    const isFailed = newAttempts >= task.maxAttempts;
 
     this.store.tasks.update(task.id, {
       status: isFailed ? 'failed' : 'pending', // Return to pending for retry
@@ -259,16 +259,16 @@ export class QueueRunner {
     console.log('[Queue] Checking for stale tasks. Processing tasks:', processingTasks.length);
 
     for (const task of processingTasks) {
-      const age = task.started_at ? timestamp - task.started_at : 0;
+      const age = task.startedAt ? timestamp - task.startedAt : 0;
       console.log('[Queue] Task', task.id.slice(0, 8), 'age:', age, 'ms, threshold:', this.config.staleThreshold);
 
       // Recover any task that's been processing (browser was closed mid-task)
       // Use a shorter threshold on startup - if it's processing and we just loaded, it's stale
-      const isStale = task.started_at && age > 5000; // 5 seconds is enough to know it's stuck
+      const isStale = task.startedAt && age > 5000; // 5 seconds is enough to know it's stuck
 
       if (isStale) {
         // Reset to pending for retry
-        const backoffConfig = parseBackoffConfig(task.backoff_config_json);
+        const backoffConfig = parseBackoffConfig(task.backoffConfigJson);
         const nextRetryAt = calculateNextRetryTime(task.attempts, backoffConfig);
 
         this.store.tasks.update(task.id, {

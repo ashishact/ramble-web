@@ -71,14 +71,14 @@ class ExtractorRegistryImpl implements ExtractorRegistry {
    * Get extractors that should always run
    */
   getAlwaysRun(): ExtractionProgram[] {
-    return this.getAll().filter((e) => e.config.always_run);
+    return this.getAll().filter((e) => e.config.alwaysRun);
   }
 
   /**
    * Get extractors that require pattern matching
    */
   getPatternBased(): ExtractionProgram[] {
-    return this.getAll().filter((e) => !e.config.always_run);
+    return this.getAll().filter((e) => !e.config.alwaysRun);
   }
 }
 

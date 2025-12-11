@@ -17,19 +17,19 @@ interface LongTermMemoryPanelProps {
 export function LongTermMemoryPanel({ claims, onClaimClick }: LongTermMemoryPanelProps) {
   // Filter long-term memory claims and sort by promoted date (most recent first)
   const ltmClaims = claims
-    .filter((c) => c.memory_tier === 'long_term' && c.state === 'active')
-    .sort((a, b) => (b.promoted_at || 0) - (a.promoted_at || 0));
+    .filter((c) => c.memoryTier === 'long_term' && c.state === 'active')
+    .sort((a, b) => (b.promotedAt || 0) - (a.promotedAt || 0));
 
   // Group by recency
   const recentlyPromoted = ltmClaims.filter((c) => {
-    if (!c.promoted_at) return false;
-    const daysSincePromotion = (Date.now() - c.promoted_at) / (24 * 60 * 60 * 1000);
+    if (!c.promotedAt) return false;
+    const daysSincePromotion = (Date.now() - c.promotedAt) / (24 * 60 * 60 * 1000);
     return daysSincePromotion < 7;
   });
 
   const established = ltmClaims.filter((c) => {
-    if (!c.promoted_at) return true;
-    const daysSincePromotion = (Date.now() - c.promoted_at) / (24 * 60 * 60 * 1000);
+    if (!c.promotedAt) return true;
+    const daysSincePromotion = (Date.now() - c.promotedAt) / (24 * 60 * 60 * 1000);
     return daysSincePromotion >= 7;
   });
 

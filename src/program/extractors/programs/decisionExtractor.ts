@@ -89,7 +89,7 @@ If no decisions found, respond: []`;
           'certain': 0.95,
         };
 
-        const confidenceLevel = obj.confidence_level as string;
+        const confidenceLevel = obj.confidenceLevel as string;
         const rawStakes = obj.stakes as string;
         let stakes: Stakes = 'medium';
         if (validStakes.includes(rawStakes as Stakes)) {

@@ -16,11 +16,11 @@ interface WorkingMemoryPanelProps {
 export function WorkingMemoryPanel({ claims, onClaimClick }: WorkingMemoryPanelProps) {
   // Filter and sort by salience
   const workingMemoryClaims = claims
-    .filter((c) => c.memory_tier === 'working' && c.state === 'active')
+    .filter((c) => c.memoryTier === 'working' && c.state === 'active')
     .sort((a, b) => b.salience - a.salience);
 
   const staleClaims = claims
-    .filter((c) => c.memory_tier === 'working' && c.state === 'stale')
+    .filter((c) => c.memoryTier === 'working' && c.state === 'stale')
     .sort((a, b) => b.salience - a.salience);
 
   if (workingMemoryClaims.length === 0 && staleClaims.length === 0) {

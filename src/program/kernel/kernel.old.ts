@@ -545,17 +545,17 @@ export class ProgramKernel {
       });
 
       // Save source tracking separately if available
-      if (extractedClaim.source_tracking) {
+      if (extractedClaim.sourceTracking) {
         this.store!.sourceTracking.create({
           claim_id: claim.id,
-          unit_id: extractedClaim.source_tracking.unitId,
-          unit_text: extractedClaim.source_tracking.unitText,
-          text_excerpt: extractedClaim.source_tracking.textExcerpt,
-          char_start: extractedClaim.source_tracking.charStart,
-          char_end: extractedClaim.source_tracking.charEnd,
-          pattern_id: extractedClaim.source_tracking.patternId,
-          llm_prompt: extractedClaim.source_tracking.llmPrompt || '',
-          llm_response: extractedClaim.source_tracking.llmResponse || '',
+          unit_id: extractedClaim.sourceTracking.unitId,
+          unit_text: extractedClaim.sourceTracking.unitText,
+          text_excerpt: extractedClaim.sourceTracking.textExcerpt,
+          char_start: extractedClaim.sourceTracking.charStart,
+          char_end: extractedClaim.sourceTracking.charEnd,
+          pattern_id: extractedClaim.sourceTracking.patternId,
+          llm_prompt: extractedClaim.sourceTracking.llmPrompt || '',
+          llm_response: extractedClaim.sourceTracking.llmResponse || '',
         });
       }
 

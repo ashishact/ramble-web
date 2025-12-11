@@ -1450,7 +1450,7 @@ export function ProgramPage() {
                   <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
                   Session {state.activeSession.id.slice(0, 8)}
                 </span>
-                <span>Started {new Date(state.activeSession.started_at).toLocaleTimeString()}</span>
+                <span>Started {new Date(state.activeSession.startedAt).toLocaleTimeString()}</span>
               </>
             ) : (
               <span>No active session</span>

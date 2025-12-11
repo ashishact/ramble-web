@@ -141,7 +141,7 @@ export function findPatternMatches(
 
   for (const extractor of extractors) {
     // Skip if extractor always runs (no pattern matching needed)
-    if (extractor.config.always_run) {
+    if (extractor.config.alwaysRun) {
       results.push({
         extractor_id: extractor.config.id,
         matches: [],
@@ -221,7 +221,7 @@ export function shouldExtractorRun(
   extractor: ExtractionProgram,
   options?: PatternMatcherOptions
 ): { should_run: boolean; matches: PatternMatch[]; relevance: number } {
-  if (extractor.config.always_run) {
+  if (extractor.config.alwaysRun) {
     return { should_run: true, matches: [], relevance: 1.0 };
   }
 

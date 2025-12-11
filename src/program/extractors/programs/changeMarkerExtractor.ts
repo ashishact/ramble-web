@@ -98,7 +98,7 @@ If no change markers found, respond: []`;
           'wished': 'slowly_decaying',
         };
 
-        const changeType = obj.change_type as string;
+        const changeType = obj.changeType as string;
         const direction = obj.direction as string;
         const magnitude = obj.magnitude as string;
 

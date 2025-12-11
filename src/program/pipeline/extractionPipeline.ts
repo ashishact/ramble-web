@@ -114,8 +114,8 @@ export async function runExtractionPipeline(input: PipelineInput): Promise<Pipel
   const extractorsRun: string[] = [];
 
   // Run extractors by tier priority - run small tier in parallel, others sequentially
-  const smallTierExtractors = extractorsToRun.filter((e) => e.extractor.config.llm_tier === 'small');
-  const otherTierExtractors = extractorsToRun.filter((e) => e.extractor.config.llm_tier !== 'small');
+  const smallTierExtractors = extractorsToRun.filter((e) => e.extractor.config.llmTier === 'small');
+  const otherTierExtractors = extractorsToRun.filter((e) => e.extractor.config.llmTier !== 'small');
 
   // Run small tier extractors in parallel (fast and cheap)
   if (smallTierExtractors.length > 0) {
@@ -190,8 +190,8 @@ function selectExtractors(input: PipelineInput): Array<{
   }
 
   // Split into always-run and pattern-based
-  const alwaysRun = candidates.filter((e) => e.config.always_run);
-  const patternBased = candidates.filter((e) => !e.config.always_run);
+  const alwaysRun = candidates.filter((e) => e.config.alwaysRun);
+  const patternBased = candidates.filter((e) => !e.config.alwaysRun);
 
   const result: Array<{ extractor: ExtractionProgram; matches: PatternMatch[] }> = [];
 
@@ -205,7 +205,7 @@ function selectExtractors(input: PipelineInput): Array<{
     const matchResults = findPatternMatches(input.unit.sanitizedText, patternBased);
 
     for (const matchResult of matchResults) {
-      const extractor = patternBased.find((e) => e.config.id === matchResult.extractor_id);
+      const extractor = patternBased.find((e) => e.config.id === matchResult.extractorId);
       if (extractor) {
         result.push({ extractor, matches: matchResult.matches });
       }
@@ -258,7 +258,7 @@ async function runSingleExtractor(
 
     // Call LLM using tier abstraction
     const response = await callLLM({
-      tier: config.llm_tier,
+      tier: config.llmTier,
       prompt,
       options: config.llm_options,
     });
@@ -409,7 +409,7 @@ export function buildBudgetedContext(
   const baseTokens = estimateTokens(input.unit.sanitizedText);
 
   // Budget remaining for context
-  const remainingBudget = budget.context_tokens - baseTokens;
+  const remainingBudget = budget.contextTokens - baseTokens;
 
   if (remainingBudget <= 0) {
     // No room for context

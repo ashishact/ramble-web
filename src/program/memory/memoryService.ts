@@ -80,7 +80,7 @@ export class MemoryService {
       weights.access * factors.accessFactor;
 
     // LTM claims get stability floor - they don't drop below 0.3
-    if (claim.memory_tier === 'long_term') {
+    if (claim.memoryTier === 'long_term') {
       salience = Math.max(salience, 0.3);
     }
 
@@ -101,7 +101,7 @@ export class MemoryService {
   }
 
   private calculateRecencyFactor(claim: Claim): number {
-    return exponentialDecay(claim.last_confirmed, SALIENCE_HALFLIFE);
+    return exponentialDecay(claim.lastConfirmed, SALIENCE_HALFLIFE);
   }
 
   private stakesToFactor(stakes: Stakes): number {
@@ -116,11 +116,11 @@ export class MemoryService {
 
   private calculateConfirmationFactor(claim: Claim): number {
     // Log scale, capped at 1.0 (log2(16) = 4)
-    return Math.min(Math.log2(claim.confirmation_count + 1) / 4, 1.0);
+    return Math.min(Math.log2(claim.confirmationCount + 1) / 4, 1.0);
   }
 
   private calculateAccessFactor(claim: Claim): number {
-    const timeSinceAccess = now() - claim.last_accessed;
+    const timeSinceAccess = now() - claim.lastAccessed;
     if (timeSinceAccess > ACCESS_BOOST_DURATION) return 0;
     return 1 - timeSinceAccess / ACCESS_BOOST_DURATION;
   }
@@ -201,7 +201,7 @@ export class MemoryService {
     const topics: SalientTopic[] = [];
     for (const [topic, data] of topicMap) {
       const avgSalience = data.claims.reduce((sum, c) => sum + c.salience, 0) / data.claims.length;
-      const lastMentioned = Math.max(...data.claims.map((c) => c.last_confirmed));
+      const lastMentioned = Math.max(...data.claims.map((c) => c.lastConfirmed));
       topics.push({
         topic,
         salience: avgSalience,
@@ -347,7 +347,7 @@ export class MemoryService {
    */
   promoteToLongTerm(claimId: string, reason?: string): boolean {
     const claim = this.store.claims.getById(claimId);
-    if (!claim || claim.memory_tier === 'long_term') {
+    if (!claim || claim.memoryTier === 'long_term') {
       return false;
     }
 
@@ -384,7 +384,7 @@ export class MemoryService {
     }
 
     // Repeated mentions (max 0.2)
-    score += Math.min(claim.confirmation_count * 0.1, 0.2);
+    score += Math.min(claim.confirmationCount * 0.1, 0.2);
 
     // Explicit importance markers (max 0.2)
     const statement = claim.statement.toLowerCase();
@@ -467,7 +467,7 @@ export class MemoryService {
     if (!config.halfLifeMs) {
       return 1; // No decay for eternal claims
     }
-    return exponentialDecay(claim.last_confirmed, config.halfLifeMs);
+    return exponentialDecay(claim.lastConfirmed, config.halfLifeMs);
   }
 
   // ============================================================================

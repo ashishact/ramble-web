@@ -97,7 +97,7 @@ If no hypotheticals found, respond: []`;
       const obj = item as Record<string, unknown>;
       if (obj.statement) {
         const hypotheticalType = obj.hypothetical_type as string;
-        const emotionalCharge = obj.emotional_charge as string;
+        const emotionalCharge = obj.emotionalCharge as string;
 
         claims.push({
           statement: obj.statement as string,

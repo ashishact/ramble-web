@@ -23,16 +23,16 @@ export async function importJSONToWatermelon(
   const { tables } = jsonData
 
   // Import in dependency order to respect foreign keys
-  await importTable(db, 'extraction_programs', tables.extraction_programs)
-  await importTable(db, 'observer_programs', tables.observer_programs)
+  await importTable(db, 'extraction_programs', tables.extractionPrograms)
+  await importTable(db, 'observer_programs', tables.observerPrograms)
   await importTable(db, 'extensions', tables.extensions)
 
   await importTable(db, 'sessions', tables.sessions)
   await importTable(db, 'conversations', tables.conversations)
 
   await importTable(db, 'claims', tables.claims)
-  await importTable(db, 'source_tracking', tables.source_tracking)
-  await importTable(db, 'claim_sources', tables.claim_sources)
+  await importTable(db, 'source_tracking', tables.sourceTracking)
+  await importTable(db, 'claim_sources', tables.claimSources)
 
   await importTable(db, 'entities', tables.entities)
   await importTable(db, 'goals', tables.goals)
@@ -43,7 +43,7 @@ export async function importJSONToWatermelon(
 
   await importTable(db, 'corrections', tables.corrections)
   await importTable(db, 'tasks', tables.tasks)
-  await importTable(db, 'synthesis_cache', tables.synthesis_cache)
+  await importTable(db, 'synthesis_cache', tables.synthesisCache)
 
   logger.info('Import complete')
 }

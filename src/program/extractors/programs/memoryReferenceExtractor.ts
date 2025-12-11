@@ -85,7 +85,7 @@ If no memory references found, respond: []`;
     for (const item of parsed) {
       const obj = item as Record<string, unknown>;
       if (obj.statement) {
-        const emotionalTone = obj.emotional_tone as string;
+        const emotionalTone = obj.emotionalTone as string;
 
         claims.push({
           statement: obj.statement as string,

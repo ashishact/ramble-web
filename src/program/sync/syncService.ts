@@ -62,15 +62,15 @@ export function syncExtractors(store: ProgramStoreInstance): SyncResult {
         type: config.claim_types[0] || 'general', // Use first claim type as type
         version: 1,
         patterns_json: JSON.stringify(config.patterns),
-        always_run: config.always_run || false,
-        llm_tier: config.llm_tier, // Tier abstraction (small/medium/large)
+        always_run: config.alwaysRun || false,
+        llm_tier: config.llmTier, // Tier abstraction (small/medium/large)
         llm_temperature: config.llm_options?.temperature ?? 0,
         llm_max_tokens: config.llm_options?.max_tokens ?? 0,
         prompt_template: '', // Code-based extractors use buildPrompt() method
         output_schema_json: JSON.stringify({}),
         priority: config.priority,
         active: true, // New extractors start active
-        min_confidence: config.min_confidence,
+        min_confidence: config.minConfidence,
         is_core: true, // Code-based extractors are core
         claim_types_json: JSON.stringify(config.claim_types),
         success_rate: 0,

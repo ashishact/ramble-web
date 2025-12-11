@@ -139,7 +139,7 @@ export class ConsolidationObserver extends BaseObserver {
     }
 
     // Repeated mentions (max 0.2)
-    score += Math.min(claim.confirmation_count * 0.1, 0.2);
+    score += Math.min(claim.confirmationCount * 0.1, 0.2);
 
     // Explicit importance markers (max 0.2)
     const statement = claim.statement.toLowerCase();
@@ -173,7 +173,7 @@ export class ConsolidationObserver extends BaseObserver {
     return {
       emotionalIntensity: claim.emotionalIntensity,
       highStakes: claim.stakes === 'high' || claim.stakes === 'existential',
-      repetitionBonus: Math.min(claim.confirmation_count * 0.1, 0.2),
+      repetitionBonus: Math.min(claim.confirmationCount * 0.1, 0.2),
       explicitImportance:
         statement.includes('important') ||
         statement.includes('remember') ||

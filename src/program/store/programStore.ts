@@ -99,11 +99,11 @@ const logger = createLogger('Store');
 function rowToSession(id: string, row: Record<string, unknown>): Session {
   return {
     id,
-    started_at: row.started_at as number,
-    ended_at: (row.ended_at as number) || null,
-    unit_count: (row.unit_count as number) || 0,
+    started_at: row.startedAt as number,
+    ended_at: (row.endedAt as number) || null,
+    unit_count: (row.unitCount as number) || 0,
     summary: (row.summary as string) || null,
-    mood_trajectory_json: (row.mood_trajectory_json as string) || null,
+    mood_trajectory_json: (row.moodTrajectoryJson as string) || null,
   };
 }
 
@@ -130,7 +130,7 @@ function rowToClaim(id: string, row: Record<string, unknown>): Claim {
     temporality: row.temporality as Claim['temporality'],
     abstraction: row.abstraction as Claim['abstraction'],
     source_type: row.sourceType as Claim['source_type'],
-    initial_confidence: row.initial_confidence as number,
+    initial_confidence: row.initialConfidence as number,
     current_confidence: row.current_confidence as number,
     state: row.state as ClaimState,
     emotional_valence: row.emotionalValence as number,
@@ -139,16 +139,16 @@ function rowToClaim(id: string, row: Record<string, unknown>): Claim {
     valid_from: row.validFrom as number,
     valid_until: (row.validUntil as number) || null,
     created_at: row.created_at as number,
-    last_confirmed: row.last_confirmed as number,
-    confirmation_count: row.confirmation_count as number,
-    extraction_program_id: row.extraction_program_id as string,
+    last_confirmed: row.lastConfirmed as number,
+    confirmation_count: row.confirmationCount as number,
+    extraction_program_id: row.extractionProgramId as string,
     superseded_by: (row.supersededBy as string) || null,
     elaborates: (row.elaborates as string) || null,
     // Memory system fields
-    memory_tier: (row.memory_tier as MemoryTier) || 'working',
+    memory_tier: (row.memoryTier as MemoryTier) || 'working',
     salience: (row.salience as number) || 0,
-    promoted_at: (row.promoted_at as number) || null,
-    last_accessed: (row.last_accessed as number) || row.created_at as number,
+    promoted_at: (row.promotedAt as number) || null,
+    last_accessed: (row.lastAccessed as number) || row.created_at as number,
   };
 }
 
@@ -195,15 +195,15 @@ function rowToGoal(id: string, row: Record<string, unknown>): Goal {
     goal_type: row.goal_type as Goal['goal_type'],
     timeframe: row.timeframe as Goal['timeframe'],
     status: row.status as GoalStatus,
-    parent_goal_id: (row.parent_goal_id as string) || null,
+    parent_goal_id: (row.parentGoalId as string) || null,
     created_at: row.created_at as number,
     last_referenced: row.lastReferenced as number,
     priority: row.priority as number,
-    progress_type: row.progress_type as Goal['progress_type'],
+    progress_type: row.progressType as Goal['progress_type'],
     progress_value: row.progress_value as number,
-    progress_indicators_json: row.progress_indicators_json as string,
-    blockers_json: row.blockers_json as string,
-    source_claim_id: row.source_claim_id as string,
+    progress_indicators_json: row.progressIndicatorsJson as string,
+    blockers_json: row.blockersJson as string,
+    source_claim_id: row.sourceClaimId as string,
     motivation: (row.motivation as string) || null,
     deadline: (row.deadline as number) || null,
   };
@@ -214,7 +214,7 @@ function rowToObserverOutput(id: string, row: Record<string, unknown>): Observer
     id,
     observer_type: row.observer_type as ObserverOutput['observer_type'],
     output_type: row.output_type as string,
-    content_json: row.content_json as string,
+    content_json: row.contentJson as string,
     source_claims_json: row.source_claims_json as string,
     created_at: row.created_at as number,
     stale: row.stale as boolean,
@@ -240,10 +240,10 @@ function rowToPattern(id: string, row: Record<string, unknown>): Pattern {
     id,
     pattern_type: row.pattern_type as string,
     description: row.description as string,
-    evidence_claims_json: row.evidence_claims_json as string,
-    first_detected: row.first_detected as number,
-    last_detected: row.last_detected as number,
-    occurrence_count: row.occurrence_count as number,
+    evidence_claims_json: row.evidenceClaimsJson as string,
+    first_detected: row.firstDetected as number,
+    last_detected: row.lastDetected as number,
+    occurrence_count: row.occurrenceCount as number,
     confidence: row.confidence as number,
   };
 }
@@ -254,10 +254,10 @@ function rowToValue(id: string, row: Record<string, unknown>): Value {
     statement: row.statement as string,
     domain: row.domain as string,
     importance: row.importance as number,
-    source_claim_id: row.source_claim_id as string,
-    first_expressed: row.first_expressed as number,
-    last_confirmed: row.last_confirmed as number,
-    confirmation_count: row.confirmation_count as number,
+    source_claim_id: row.sourceClaimId as string,
+    first_expressed: row.firstExpressed as number,
+    last_confirmed: row.lastConfirmed as number,
+    confirmation_count: row.confirmationCount as number,
   };
 }
 
@@ -265,23 +265,23 @@ function rowToTask(id: string, row: Record<string, unknown>): Task {
   return {
     id,
     task_type: row.task_type as Task['task_type'],
-    payload_json: row.payload_json as string,
+    payload_json: row.payloadJson as string,
     status: row.status as TaskStatus,
     priority: row.priority as TaskPriority,
     priority_value: row.priority_value as number,
     attempts: row.attempts as number,
-    max_attempts: row.max_attempts as number,
-    last_error: (row.last_error as string) || null,
-    last_error_at: (row.last_error_at as number) || null,
+    max_attempts: row.maxAttempts as number,
+    last_error: (row.lastError as string) || null,
+    last_error_at: (row.lastErrorAt as number) || null,
     next_retry_at: (row.next_retry_at as number) || null,
-    backoff_config_json: row.backoff_config_json as string,
-    checkpoint_json: (row.checkpoint_json as string) || null,
+    backoff_config_json: row.backoffConfigJson as string,
+    checkpoint_json: (row.checkpointJson as string) || null,
     created_at: row.created_at as number,
-    started_at: (row.started_at as number) || null,
-    completed_at: (row.completed_at as number) || null,
-    execute_at: row.execute_at as number,
-    group_id: (row.group_id as string) || null,
-    depends_on: (row.depends_on as string) || null,
+    started_at: (row.startedAt as number) || null,
+    completed_at: (row.completedAt as number) || null,
+    execute_at: row.executeAt as number,
+    group_id: (row.groupId as string) || null,
+    depends_on: (row.dependsOn as string) || null,
     session_id: (row.sessionId as string) || null,
   };
 }
@@ -289,17 +289,17 @@ function rowToTask(id: string, row: Record<string, unknown>): Task {
 function rowToExtension(id: string, row: Record<string, unknown>): Extension {
   return {
     id,
-    extension_type: row.extension_type as ExtensionType,
+    extension_type: row.extensionType as ExtensionType,
     name: row.name as string,
     description: row.description as string,
-    config_json: row.config_json as string,
-    system_prompt: row.system_prompt as string,
-    user_prompt_template: row.user_prompt_template as string,
-    variables_schema_json: row.variables_schema_json as string,
+    config_json: row.configJson as string,
+    system_prompt: row.systemPrompt as string,
+    user_prompt_template: row.userPromptTemplate as string,
+    variables_schema_json: row.variablesSchemaJson as string,
     status: row.status as ExtensionStatus,
     version: row.version as number,
     created_at: row.created_at as number,
-    verified_at: (row.verified_at as number) || null,
+    verified_at: (row.verifiedAt as number) || null,
   };
 }
 
@@ -307,10 +307,10 @@ function rowToSynthesisCache(id: string, row: Record<string, unknown>): Synthesi
   return {
     id,
     synthesis_type: row.synthesis_type as string,
-    cache_key: row.cache_key as string,
-    content_json: row.content_json as string,
+    cache_key: row.cacheKey as string,
+    content_json: row.contentJson as string,
     source_claims_json: row.source_claims_json as string,
-    generated_at: row.generated_at as number,
+    generated_at: row.generatedAt as number,
     stale: row.stale as boolean,
     ttl_seconds: row.ttl_seconds as number,
   };
@@ -323,23 +323,23 @@ function rowToExtractionProgram(id: string, row: Record<string, unknown>): Extra
     description: row.description as string,
     type: row.type as string,
     version: row.version as number,
-    patterns_json: row.patterns_json as string,
-    always_run: row.always_run as boolean,
-    llm_tier: row.llm_tier as 'small' | 'medium' | 'large',
-    llm_temperature: (row.llm_temperature as number) === 0 ? null : (row.llm_temperature as number),
-    llm_max_tokens: (row.llm_max_tokens as number) === 0 ? null : (row.llm_max_tokens as number),
-    prompt_template: row.prompt_template as string,
-    output_schema_json: row.output_schema_json as string,
+    patterns_json: row.patternsJson as string,
+    always_run: row.alwaysRun as boolean,
+    llm_tier: row.llmTier as 'small' | 'medium' | 'large',
+    llm_temperature: (row.llmTemperature as number) === 0 ? null : (row.llmTemperature as number),
+    llm_max_tokens: (row.llmMaxTokens as number) === 0 ? null : (row.llmMaxTokens as number),
+    prompt_template: row.promptTemplate as string,
+    output_schema_json: row.outputSchemaJson as string,
     priority: row.priority as number,
     active: row.active as boolean,
-    min_confidence: row.min_confidence as number,
-    is_core: row.is_core as boolean,
-    claim_types_json: row.claim_types_json as string,
-    success_rate: row.success_rate as number,
-    run_count: row.run_count as number,
-    avg_processing_time_ms: row.avg_processing_time_ms as number,
+    min_confidence: row.minConfidence as number,
+    is_core: row.isCore as boolean,
+    claim_types_json: row.claimTypesJson as string,
+    success_rate: row.successRate as number,
+    run_count: row.runCount as number,
+    avg_processing_time_ms: row.avgProcessingTimeMs as number,
     created_at: row.created_at as number,
-    updated_at: row.updated_at as number,
+    updated_at: row.updatedAt as number,
   };
 }
 
@@ -352,22 +352,22 @@ function rowToObserverProgram(id: string, row: Record<string, unknown>): Observe
     active: row.active as boolean,
     priority: row.priority as number,
     triggers: JSON.parse(row.triggers as string),
-    claim_type_filter: (row.claim_type_filter as string) || null,
-    uses_llm: row.uses_llm as boolean,
-    llm_tier: (row.llm_tier as 'small' | 'medium' | 'large') || null,
-    llm_temperature: (row.llm_temperature as number) === 0 ? null : (row.llm_temperature as number),
-    llm_max_tokens: (row.llm_max_tokens as number) === 0 ? null : (row.llm_max_tokens as number),
-    prompt_template: (row.prompt_template as string) || null,
-    output_schema_json: (row.output_schema_json as string) || null,
-    should_run_logic: (row.should_run_logic as string) || null,
+    claim_type_filter: (row.claimTypeFilter as string) || null,
+    uses_llm: row.usesLlm as boolean,
+    llm_tier: (row.llmTier as 'small' | 'medium' | 'large') || null,
+    llm_temperature: (row.llmTemperature as number) === 0 ? null : (row.llmTemperature as number),
+    llm_max_tokens: (row.llmMaxTokens as number) === 0 ? null : (row.llmMaxTokens as number),
+    prompt_template: (row.promptTemplate as string) || null,
+    output_schema_json: (row.outputSchemaJson as string) || null,
+    should_run_logic: (row.shouldRunLogic as string) || null,
     process_logic: (row.process_logic as string) || null,
-    is_core: row.is_core as boolean,
+    is_core: row.isCore as boolean,
     version: row.version as number,
     created_at: row.created_at as number,
-    updated_at: row.updated_at as number,
-    run_count: row.run_count as number,
-    success_rate: row.success_rate as number,
-    avg_processing_time_ms: row.avg_processing_time_ms as number,
+    updated_at: row.updatedAt as number,
+    run_count: row.runCount as number,
+    success_rate: row.successRate as number,
+    avg_processing_time_ms: row.avgProcessingTimeMs as number,
   };
 }
 
@@ -473,19 +473,19 @@ export function createProgramStore(): ProgramStoreInstance {
       const timestamp = now();
       const session: Session = {
         id,
-        started_at: data.started_at ?? timestamp,
-        ended_at: data.ended_at ?? null,
-        unit_count: data.unit_count ?? 0,
+        started_at: data.startedAt ?? timestamp,
+        ended_at: data.endedAt ?? null,
+        unit_count: data.unitCount ?? 0,
         summary: data.summary ?? null,
-        mood_trajectory_json: data.mood_trajectory_json ?? null,
+        mood_trajectory_json: data.moodTrajectoryJson ?? null,
       };
 
       store.setRow('sessions', id, {
-        started_at: session.started_at,
-        ended_at: session.ended_at ?? 0,
-        unit_count: session.unit_count,
+        started_at: session.startedAt,
+        ended_at: session.endedAt ?? 0,
+        unit_count: session.unitCount,
         summary: session.summary ?? '',
-        mood_trajectory_json: session.mood_trajectory_json ?? '',
+        mood_trajectory_json: session.moodTrajectoryJson ?? '',
       });
 
       logger.debug('Created session', { id });
@@ -496,12 +496,12 @@ export function createProgramStore(): ProgramStoreInstance {
       const existing = sessions.getById(id);
       if (!existing) return null;
 
-      if (data.started_at !== undefined) store.setCell('sessions', id, 'started_at', data.started_at);
-      if (data.ended_at !== undefined) store.setCell('sessions', id, 'ended_at', data.ended_at ?? 0);
-      if (data.unit_count !== undefined) store.setCell('sessions', id, 'unit_count', data.unit_count);
+      if (data.startedAt !== undefined) store.setCell('sessions', id, 'started_at', data.startedAt);
+      if (data.endedAt !== undefined) store.setCell('sessions', id, 'ended_at', data.endedAt ?? 0);
+      if (data.unitCount !== undefined) store.setCell('sessions', id, 'unit_count', data.unitCount);
       if (data.summary !== undefined) store.setCell('sessions', id, 'summary', data.summary ?? '');
-      if (data.mood_trajectory_json !== undefined)
-        store.setCell('sessions', id, 'mood_trajectory_json', data.mood_trajectory_json ?? '');
+      if (data.moodTrajectoryJson !== undefined)
+        store.setCell('sessions', id, 'mood_trajectory_json', data.moodTrajectoryJson ?? '');
 
       return sessions.getById(id);
     },
@@ -515,7 +515,7 @@ export function createProgramStore(): ProgramStoreInstance {
 
     getActive(): Session | null {
       const all = sessions.getAll();
-      return all.find((s) => s.ended_at === null) ?? null;
+      return all.find((s) => s.endedAt === null) ?? null;
     },
 
     endSession(id: string): Session | null {
@@ -525,7 +525,7 @@ export function createProgramStore(): ProgramStoreInstance {
     incrementUnitCount(id: string): void {
       const session = sessions.getById(id);
       if (session) {
-        sessions.update(id, { unit_count: session.unit_count + 1 });
+        sessions.update(id, { unit_count: session.unitCount + 1 });
       }
     },
 
@@ -665,8 +665,8 @@ export function createProgramStore(): ProgramStoreInstance {
         temporality: data.temporality,
         abstraction: data.abstraction,
         source_type: data.sourceType,
-        initial_confidence: data.initial_confidence,
-        current_confidence: data.initial_confidence,
+        initial_confidence: data.initialConfidence,
+        current_confidence: data.initialConfidence,
         state: data.state ?? 'active',
         emotional_valence: data.emotionalValence,
         emotional_intensity: data.emotionalIntensity,
@@ -675,14 +675,14 @@ export function createProgramStore(): ProgramStoreInstance {
         valid_until: data.validUntil,
         created_at: timestamp,
         last_confirmed: timestamp,
-        confirmation_count: data.confirmation_count ?? 1,
-        extraction_program_id: data.extraction_program_id,
+        confirmation_count: data.confirmationCount ?? 1,
+        extraction_program_id: data.extractionProgramId,
         superseded_by: data.supersededBy ?? null,
         elaborates: data.elaborates,
         // Memory system fields
-        memory_tier: data.memory_tier ?? 'working',
+        memory_tier: data.memoryTier ?? 'working',
         salience: data.salience ?? 0,
-        promoted_at: data.promoted_at ?? null,
+        promoted_at: data.promotedAt ?? null,
         last_accessed: timestamp,
       };
 
@@ -693,7 +693,7 @@ export function createProgramStore(): ProgramStoreInstance {
         temporality: claim.temporality,
         abstraction: claim.abstraction,
         source_type: claim.sourceType,
-        initial_confidence: claim.initial_confidence,
+        initial_confidence: claim.initialConfidence,
         current_confidence: claim.current_confidence,
         state: claim.state,
         emotional_valence: claim.emotionalValence,
@@ -702,16 +702,16 @@ export function createProgramStore(): ProgramStoreInstance {
         valid_from: claim.validFrom,
         valid_until: claim.validUntil ?? 0,
         created_at: claim.created_at,
-        last_confirmed: claim.last_confirmed,
-        confirmation_count: claim.confirmation_count,
-        extraction_program_id: claim.extraction_program_id,
+        last_confirmed: claim.lastConfirmed,
+        confirmation_count: claim.confirmationCount,
+        extraction_program_id: claim.extractionProgramId,
         superseded_by: claim.supersededBy ?? '',
         elaborates: claim.elaborates ?? '',
         // Memory system fields
-        memory_tier: claim.memory_tier,
+        memory_tier: claim.memoryTier,
         salience: claim.salience,
-        promoted_at: claim.promoted_at ?? 0,
-        last_accessed: claim.last_accessed,
+        promoted_at: claim.promotedAt ?? 0,
+        last_accessed: claim.lastAccessed,
       });
 
       logger.debug('Created claim', { id, type: claim.claim_type });
@@ -773,7 +773,7 @@ export function createProgramStore(): ProgramStoreInstance {
       if (claim) {
         claims.update(id, {
           last_confirmed: now(),
-          confirmation_count: claim.confirmation_count + 1,
+          confirmation_count: claim.confirmationCount + 1,
         });
       }
     },
@@ -832,7 +832,7 @@ export function createProgramStore(): ProgramStoreInstance {
 
     // Memory system methods
     getByMemoryTier(tier: MemoryTier): Claim[] {
-      return claims.getAll().filter((c) => c.memory_tier === tier);
+      return claims.getAll().filter((c) => c.memoryTier === tier);
     },
 
     getDecayable(): Claim[] {
@@ -855,7 +855,7 @@ export function createProgramStore(): ProgramStoreInstance {
 
     promoteToLongTerm(id: string): void {
       const claim = claims.getById(id);
-      if (claim && claim.memory_tier === 'working') {
+      if (claim && claim.memoryTier === 'working') {
         claims.update(id, {
           memory_tier: 'long_term',
           promoted_at: now(),
@@ -1137,15 +1137,15 @@ export function createProgramStore(): ProgramStoreInstance {
         goal_type: data.goal_type,
         timeframe: data.timeframe,
         status: data.status ?? 'active',
-        parent_goal_id: data.parent_goal_id,
+        parent_goal_id: data.parentGoalId,
         created_at: timestamp,
         last_referenced: timestamp,
         priority: data.priority,
-        progress_type: data.progress_type,
+        progress_type: data.progressType,
         progress_value: data.progress_value ?? 0,
-        progress_indicators_json: data.progress_indicators_json ?? '[]',
-        blockers_json: data.blockers_json ?? '[]',
-        source_claim_id: data.source_claim_id,
+        progress_indicators_json: data.progressIndicatorsJson ?? '[]',
+        blockers_json: data.blockersJson ?? '[]',
+        source_claim_id: data.sourceClaimId,
         motivation: data.motivation,
         deadline: data.deadline,
       };
@@ -1155,15 +1155,15 @@ export function createProgramStore(): ProgramStoreInstance {
         goal_type: goal.goal_type,
         timeframe: goal.timeframe,
         status: goal.status,
-        parent_goal_id: goal.parent_goal_id ?? '',
+        parent_goal_id: goal.parentGoalId ?? '',
         created_at: goal.created_at,
         last_referenced: goal.lastReferenced,
         priority: goal.priority,
-        progress_type: goal.progress_type,
+        progress_type: goal.progressType,
         progress_value: goal.progress_value,
-        progress_indicators_json: goal.progress_indicators_json,
-        blockers_json: goal.blockers_json,
-        source_claim_id: goal.source_claim_id,
+        progress_indicators_json: goal.progressIndicatorsJson,
+        blockers_json: goal.blockersJson,
+        source_claim_id: goal.sourceClaimId,
         motivation: goal.motivation ?? '',
         deadline: goal.deadline ?? 0,
       });
@@ -1204,9 +1204,9 @@ export function createProgramStore(): ProgramStoreInstance {
 
     getByParent(parentId: string | null): Goal[] {
       if (parentId === null) {
-        return goals.getAll().filter((g) => !g.parent_goal_id);
+        return goals.getAll().filter((g) => !g.parentGoalId);
       }
-      return goals.getAll().filter((g) => g.parent_goal_id === parentId);
+      return goals.getAll().filter((g) => g.parentGoalId === parentId);
     },
 
     getRoots(): Goal[] {
@@ -1264,7 +1264,7 @@ export function createProgramStore(): ProgramStoreInstance {
         id,
         observer_type: data.observer_type,
         output_type: data.output_type,
-        content_json: data.content_json,
+        content_json: data.contentJson,
         source_claims_json: data.source_claims_json,
         created_at: timestamp,
         stale: data.stale ?? false,
@@ -1273,7 +1273,7 @@ export function createProgramStore(): ProgramStoreInstance {
       store.setRow('observer_outputs', id, {
         observer_type: output.observer_type,
         output_type: output.output_type,
-        content_json: output.content_json,
+        content_json: output.contentJson,
         source_claims_json: output.source_claims_json,
         created_at: output.created_at,
         stale: output.stale,
@@ -1289,7 +1289,7 @@ export function createProgramStore(): ProgramStoreInstance {
 
       if (data.observer_type !== undefined) store.setCell('observer_outputs', id, 'observer_type', data.observer_type);
       if (data.output_type !== undefined) store.setCell('observer_outputs', id, 'output_type', data.output_type);
-      if (data.content_json !== undefined) store.setCell('observer_outputs', id, 'content_json', data.content_json);
+      if (data.contentJson !== undefined) store.setCell('observer_outputs', id, 'content_json', data.contentJson);
       if (data.source_claims_json !== undefined)
         store.setCell('observer_outputs', id, 'source_claims_json', data.source_claims_json);
       if (data.stale !== undefined) store.setCell('observer_outputs', id, 'stale', data.stale);
@@ -1383,20 +1383,20 @@ export function createProgramStore(): ProgramStoreInstance {
         id,
         pattern_type: data.pattern_type,
         description: data.description,
-        evidence_claims_json: data.evidence_claims_json,
+        evidence_claims_json: data.evidenceClaimsJson,
         first_detected: timestamp,
         last_detected: timestamp,
-        occurrence_count: data.occurrence_count ?? 1,
+        occurrence_count: data.occurrenceCount ?? 1,
         confidence: data.confidence,
       };
 
       store.setRow('patterns', id, {
         pattern_type: pattern.pattern_type,
         description: pattern.description,
-        evidence_claims_json: pattern.evidence_claims_json,
-        first_detected: pattern.first_detected,
-        last_detected: pattern.last_detected,
-        occurrence_count: pattern.occurrence_count,
+        evidence_claims_json: pattern.evidenceClaimsJson,
+        first_detected: pattern.firstDetected,
+        last_detected: pattern.lastDetected,
+        occurrence_count: pattern.occurrenceCount,
         confidence: pattern.confidence,
       });
 
@@ -1413,7 +1413,7 @@ export function createProgramStore(): ProgramStoreInstance {
       const pattern = observerOutputs.getPatterns().find((p) => p.id === id);
       if (pattern) {
         store.setCell('patterns', id, 'last_detected', now());
-        store.setCell('patterns', id, 'occurrence_count', pattern.occurrence_count + 1);
+        store.setCell('patterns', id, 'occurrence_count', pattern.occurrenceCount + 1);
       }
     },
 
@@ -1425,20 +1425,20 @@ export function createProgramStore(): ProgramStoreInstance {
         statement: data.statement,
         domain: data.domain,
         importance: data.importance,
-        source_claim_id: data.source_claim_id,
+        source_claim_id: data.sourceClaimId,
         first_expressed: timestamp,
         last_confirmed: timestamp,
-        confirmation_count: data.confirmation_count ?? 1,
+        confirmation_count: data.confirmationCount ?? 1,
       };
 
       store.setRow('values', id, {
         statement: value.statement,
         domain: value.domain,
         importance: value.importance,
-        source_claim_id: value.source_claim_id,
-        first_expressed: value.first_expressed,
-        last_confirmed: value.last_confirmed,
-        confirmation_count: value.confirmation_count,
+        source_claim_id: value.sourceClaimId,
+        first_expressed: value.firstExpressed,
+        last_confirmed: value.lastConfirmed,
+        confirmation_count: value.confirmationCount,
       });
 
       return value;
@@ -1454,7 +1454,7 @@ export function createProgramStore(): ProgramStoreInstance {
       const value = observerOutputs.getValues().find((v) => v.id === id);
       if (value) {
         store.setCell('values', id, 'last_confirmed', now());
-        store.setCell('values', id, 'confirmation_count', value.confirmation_count + 1);
+        store.setCell('values', id, 'confirmation_count', value.confirmationCount + 1);
       }
     },
   };
@@ -1487,45 +1487,45 @@ export function createProgramStore(): ProgramStoreInstance {
       const task: Task = {
         id,
         task_type: data.task_type,
-        payload_json: data.payload_json,
+        payload_json: data.payloadJson,
         status: 'pending',
         priority,
         priority_value: PRIORITY_VALUES[priority],
         attempts: 0,
-        max_attempts: data.max_attempts ?? 5,
+        max_attempts: data.maxAttempts ?? 5,
         last_error: null,
         last_error_at: null,
         next_retry_at: null,
-        backoff_config_json: data.backoff_config_json ?? serializeBackoffConfig(DEFAULT_BACKOFF_CONFIG),
+        backoff_config_json: data.backoffConfigJson ?? serializeBackoffConfig(DEFAULT_BACKOFF_CONFIG),
         checkpoint_json: null,
         created_at: timestamp,
         started_at: null,
         completed_at: null,
-        execute_at: data.execute_at ?? timestamp,
-        group_id: data.group_id ?? null,
-        depends_on: data.depends_on ?? null,
+        execute_at: data.executeAt ?? timestamp,
+        group_id: data.groupId ?? null,
+        depends_on: data.dependsOn ?? null,
         session_id: data.sessionId ?? null,
       };
 
       store.setRow('tasks', id, {
         task_type: task.task_type,
-        payload_json: task.payload_json,
+        payload_json: task.payloadJson,
         status: task.status,
         priority: task.priority,
         priority_value: task.priority_value,
         attempts: task.attempts,
-        max_attempts: task.max_attempts,
+        max_attempts: task.maxAttempts,
         last_error: '',
         last_error_at: 0,
         next_retry_at: 0,
-        backoff_config_json: task.backoff_config_json,
+        backoff_config_json: task.backoffConfigJson,
         checkpoint_json: '',
         created_at: task.created_at,
         started_at: 0,
         completed_at: 0,
-        execute_at: task.execute_at,
-        group_id: task.group_id ?? '',
-        depends_on: task.depends_on ?? '',
+        execute_at: task.executeAt,
+        group_id: task.groupId ?? '',
+        depends_on: task.dependsOn ?? '',
         session_id: task.sessionId ?? '',
       });
 
@@ -1563,7 +1563,7 @@ export function createProgramStore(): ProgramStoreInstance {
       const timestamp = now();
       return tasks
         .getAll()
-        .filter((t) => t.status === 'pending' && t.execute_at <= timestamp)
+        .filter((t) => t.status === 'pending' && t.executeAt <= timestamp)
         .sort((a, b) => b.priority_value - a.priority_value || a.created_at - b.created_at);
     },
 
@@ -1571,7 +1571,7 @@ export function createProgramStore(): ProgramStoreInstance {
       const timestamp = now();
       return tasks.getAll().filter((t) => {
         if (t.status !== 'failed') return false;
-        if (t.attempts >= t.max_attempts) return false;
+        if (t.attempts >= t.maxAttempts) return false;
         if (t.next_retry_at && t.next_retry_at > timestamp) return false;
         return true;
       });
@@ -1620,31 +1620,31 @@ export function createProgramStore(): ProgramStoreInstance {
       const timestamp = now();
       const ext: Extension = {
         id,
-        extension_type: data.extension_type,
+        extension_type: data.extensionType,
         name: data.name,
         description: data.description,
-        config_json: data.config_json,
-        system_prompt: data.system_prompt,
-        user_prompt_template: data.user_prompt_template,
-        variables_schema_json: data.variables_schema_json,
+        config_json: data.configJson,
+        system_prompt: data.systemPrompt,
+        user_prompt_template: data.userPromptTemplate,
+        variables_schema_json: data.variablesSchemaJson,
         status: data.status ?? 'draft',
         version: data.version ?? 1,
         created_at: timestamp,
-        verified_at: data.verified_at ?? null,
+        verified_at: data.verifiedAt ?? null,
       };
 
       store.setRow('extensions', id, {
-        extension_type: ext.extension_type,
+        extension_type: ext.extensionType,
         name: ext.name,
         description: ext.description,
-        config_json: ext.config_json,
-        system_prompt: ext.system_prompt,
-        user_prompt_template: ext.user_prompt_template,
-        variables_schema_json: ext.variables_schema_json,
+        config_json: ext.configJson,
+        system_prompt: ext.systemPrompt,
+        user_prompt_template: ext.userPromptTemplate,
+        variables_schema_json: ext.variablesSchemaJson,
         status: ext.status,
         version: ext.version,
         created_at: ext.created_at,
-        verified_at: ext.verified_at ?? 0,
+        verified_at: ext.verifiedAt ?? 0,
       });
 
       return ext;
@@ -1673,7 +1673,7 @@ export function createProgramStore(): ProgramStoreInstance {
     },
 
     getByType(type: ExtensionType): Extension[] {
-      return extensions.getAll().filter((e) => e.extension_type === type);
+      return extensions.getAll().filter((e) => e.extensionType === type);
     },
 
     getByStatus(status: ExtensionStatus): Extension[] {
@@ -1728,8 +1728,8 @@ export function createProgramStore(): ProgramStoreInstance {
       const cache: SynthesisCache = {
         id,
         synthesis_type: data.synthesis_type,
-        cache_key: data.cache_key,
-        content_json: data.content_json,
+        cache_key: data.cacheKey,
+        content_json: data.contentJson,
         source_claims_json: data.source_claims_json,
         generated_at: timestamp,
         stale: data.stale ?? false,
@@ -1738,10 +1738,10 @@ export function createProgramStore(): ProgramStoreInstance {
 
       store.setRow('synthesis_cache', id, {
         synthesis_type: cache.synthesis_type,
-        cache_key: cache.cache_key,
-        content_json: cache.content_json,
+        cache_key: cache.cacheKey,
+        content_json: cache.contentJson,
         source_claims_json: cache.source_claims_json,
-        generated_at: cache.generated_at,
+        generated_at: cache.generatedAt,
         stale: cache.stale,
         ttl_seconds: cache.ttl_seconds,
       });
@@ -1776,7 +1776,7 @@ export function createProgramStore(): ProgramStoreInstance {
     },
 
     getByCacheKey(key: string): SynthesisCache | null {
-      return synthesisCache.getAll().find((c) => c.cache_key === key) ?? null;
+      return synthesisCache.getAll().find((c) => c.cacheKey === key) ?? null;
     },
 
     getValid(type: string): SynthesisCache[] {
@@ -1784,7 +1784,7 @@ export function createProgramStore(): ProgramStoreInstance {
       return synthesisCache.getAll().filter((c) =>
         c.synthesis_type === type &&
         !c.stale &&
-        c.generated_at + c.ttl_seconds * 1000 > timestamp
+        c.generatedAt + c.ttl_seconds * 1000 > timestamp
       );
     },
 
@@ -1795,7 +1795,7 @@ export function createProgramStore(): ProgramStoreInstance {
     cleanupExpired(): number {
       const timestamp = now();
       const expired = synthesisCache.getAll().filter(
-        (c) => c.generated_at + c.ttl_seconds * 1000 < timestamp
+        (c) => c.generatedAt + c.ttl_seconds * 1000 < timestamp
       );
       for (const cache of expired) {
         synthesisCache.delete(cache.id);
@@ -1846,21 +1846,21 @@ export function createProgramStore(): ProgramStoreInstance {
         description: data.description,
         type: data.type,
         version: data.version ?? 1,
-        patterns_json: data.patterns_json,
-        always_run: data.always_run,
-        llm_tier: data.llm_tier,
-        llm_temperature: data.llm_temperature ?? null,
-        llm_max_tokens: data.llm_max_tokens ?? null,
-        prompt_template: data.prompt_template,
-        output_schema_json: data.output_schema_json,
+        patterns_json: data.patternsJson,
+        always_run: data.alwaysRun,
+        llm_tier: data.llmTier,
+        llm_temperature: data.llmTemperature ?? null,
+        llm_max_tokens: data.llmMaxTokens ?? null,
+        prompt_template: data.promptTemplate,
+        output_schema_json: data.outputSchemaJson,
         priority: data.priority,
         active: data.active ?? true,
-        min_confidence: data.min_confidence,
-        is_core: data.is_core ?? false,
-        claim_types_json: data.claim_types_json,
-        success_rate: data.success_rate ?? 0,
-        run_count: data.run_count ?? 0,
-        avg_processing_time_ms: data.avg_processing_time_ms ?? 0,
+        min_confidence: data.minConfidence,
+        is_core: data.isCore ?? false,
+        claim_types_json: data.claimTypesJson,
+        success_rate: data.successRate ?? 0,
+        run_count: data.runCount ?? 0,
+        avg_processing_time_ms: data.avgProcessingTimeMs ?? 0,
         created_at: timestamp,
         updated_at: timestamp,
       };
@@ -1870,23 +1870,23 @@ export function createProgramStore(): ProgramStoreInstance {
         description: program.description,
         type: program.type,
         version: program.version,
-        patterns_json: program.patterns_json,
-        always_run: program.always_run,
-        llm_tier: program.llm_tier,
-        llm_temperature: program.llm_temperature || 0,
-        llm_max_tokens: program.llm_max_tokens || 0,
-        prompt_template: program.prompt_template,
-        output_schema_json: program.output_schema_json,
+        patterns_json: program.patternsJson,
+        always_run: program.alwaysRun,
+        llm_tier: program.llmTier,
+        llm_temperature: program.llmTemperature || 0,
+        llm_max_tokens: program.llmMaxTokens || 0,
+        prompt_template: program.promptTemplate,
+        output_schema_json: program.outputSchemaJson,
         priority: program.priority,
         active: program.active,
-        min_confidence: program.min_confidence,
-        is_core: program.is_core,
-        claim_types_json: program.claim_types_json,
-        success_rate: program.success_rate,
-        run_count: program.run_count,
-        avg_processing_time_ms: program.avg_processing_time_ms,
+        min_confidence: program.minConfidence,
+        is_core: program.isCore,
+        claim_types_json: program.claimTypesJson,
+        success_rate: program.successRate,
+        run_count: program.runCount,
+        avg_processing_time_ms: program.avgProcessingTimeMs,
         created_at: program.created_at,
-        updated_at: program.updated_at,
+        updated_at: program.updatedAt,
       });
 
       return program;
@@ -1926,13 +1926,13 @@ export function createProgramStore(): ProgramStoreInstance {
     },
 
     getCore(): ExtractionProgram[] {
-      return extractionPrograms.getAll().filter((p) => p.is_core);
+      return extractionPrograms.getAll().filter((p) => p.isCore);
     },
 
     incrementRunCount(id: string): void {
       const program = extractionPrograms.getById(id);
       if (program) {
-        extractionPrograms.update(id, { run_count: program.run_count + 1 });
+        extractionPrograms.update(id, { run_count: program.runCount + 1 });
       }
     },
 
@@ -1940,7 +1940,7 @@ export function createProgramStore(): ProgramStoreInstance {
       const program = extractionPrograms.getById(id);
       if (program) {
         // Running average: new_rate = (old_rate * count + new_value) / (count + 1)
-        const newRate = (program.success_rate * program.run_count + (success ? 1 : 0)) / (program.run_count + 1);
+        const newRate = (program.successRate * program.runCount + (success ? 1 : 0)) / (program.runCount + 1);
         extractionPrograms.update(id, { success_rate: newRate });
       }
     },
@@ -1949,7 +1949,7 @@ export function createProgramStore(): ProgramStoreInstance {
       const program = extractionPrograms.getById(id);
       if (program) {
         // Running average
-        const newAvg = (program.avg_processing_time_ms * program.run_count + timeMs) / (program.run_count + 1);
+        const newAvg = (program.avgProcessingTimeMs * program.runCount + timeMs) / (program.runCount + 1);
         extractionPrograms.update(id, { avg_processing_time_ms: newAvg });
       }
     },
@@ -1999,22 +1999,22 @@ export function createProgramStore(): ProgramStoreInstance {
         active: data.active ?? true,
         priority: data.priority,
         triggers: data.triggers,
-        claim_type_filter: data.claim_type_filter ?? null,
-        uses_llm: data.uses_llm,
-        llm_tier: data.llm_tier ?? null,
-        llm_temperature: data.llm_temperature ?? null,
-        llm_max_tokens: data.llm_max_tokens ?? null,
-        prompt_template: data.prompt_template ?? null,
-        output_schema_json: data.output_schema_json ?? null,
-        should_run_logic: data.should_run_logic ?? null,
+        claim_type_filter: data.claimTypeFilter ?? null,
+        uses_llm: data.usesLlm,
+        llm_tier: data.llmTier ?? null,
+        llm_temperature: data.llmTemperature ?? null,
+        llm_max_tokens: data.llmMaxTokens ?? null,
+        prompt_template: data.promptTemplate ?? null,
+        output_schema_json: data.outputSchemaJson ?? null,
+        should_run_logic: data.shouldRunLogic ?? null,
         process_logic: data.process_logic ?? null,
-        is_core: data.is_core ?? false,
+        is_core: data.isCore ?? false,
         version: data.version ?? 1,
         created_at: timestamp,
         updated_at: timestamp,
-        run_count: data.run_count ?? 0,
-        success_rate: data.success_rate ?? 0,
-        avg_processing_time_ms: data.avg_processing_time_ms ?? 0,
+        run_count: data.runCount ?? 0,
+        success_rate: data.successRate ?? 0,
+        avg_processing_time_ms: data.avgProcessingTimeMs ?? 0,
       };
 
       store.setRow('observer_programs', id, {
@@ -2024,22 +2024,22 @@ export function createProgramStore(): ProgramStoreInstance {
         active: program.active,
         priority: program.priority,
         triggers: JSON.stringify(program.triggers),
-        claim_type_filter: program.claim_type_filter || '',
-        uses_llm: program.uses_llm,
-        llm_tier: program.llm_tier || '',
-        llm_temperature: program.llm_temperature || 0,
-        llm_max_tokens: program.llm_max_tokens || 0,
-        prompt_template: program.prompt_template || '',
-        output_schema_json: program.output_schema_json || '',
-        should_run_logic: program.should_run_logic || '',
+        claim_type_filter: program.claimTypeFilter || '',
+        uses_llm: program.usesLlm,
+        llm_tier: program.llmTier || '',
+        llm_temperature: program.llmTemperature || 0,
+        llm_max_tokens: program.llmMaxTokens || 0,
+        prompt_template: program.promptTemplate || '',
+        output_schema_json: program.outputSchemaJson || '',
+        should_run_logic: program.shouldRunLogic || '',
         process_logic: program.process_logic || '',
-        is_core: program.is_core,
+        is_core: program.isCore,
         version: program.version,
         created_at: program.created_at,
-        updated_at: program.updated_at,
-        run_count: program.run_count,
-        success_rate: program.success_rate,
-        avg_processing_time_ms: program.avg_processing_time_ms,
+        updated_at: program.updatedAt,
+        run_count: program.runCount,
+        success_rate: program.successRate,
+        avg_processing_time_ms: program.avgProcessingTimeMs,
       });
 
       return program;
@@ -2083,13 +2083,13 @@ export function createProgramStore(): ProgramStoreInstance {
     },
 
     getCore(): ObserverProgram[] {
-      return observerPrograms.getAll().filter((p) => p.is_core);
+      return observerPrograms.getAll().filter((p) => p.isCore);
     },
 
     incrementRunCount(id: string): void {
       const program = observerPrograms.getById(id);
       if (program) {
-        observerPrograms.update(id, { run_count: program.run_count + 1 });
+        observerPrograms.update(id, { run_count: program.runCount + 1 });
       }
     },
 
@@ -2097,7 +2097,7 @@ export function createProgramStore(): ProgramStoreInstance {
       const program = observerPrograms.getById(id);
       if (program) {
         // Running average
-        const newRate = (program.success_rate * program.run_count + (success ? 1 : 0)) / (program.run_count + 1);
+        const newRate = (program.successRate * program.runCount + (success ? 1 : 0)) / (program.runCount + 1);
         observerPrograms.update(id, { success_rate: newRate });
       }
     },
@@ -2106,7 +2106,7 @@ export function createProgramStore(): ProgramStoreInstance {
       const program = observerPrograms.getById(id);
       if (program) {
         // Running average
-        const newAvg = (program.avg_processing_time_ms * program.run_count + timeMs) / (program.run_count + 1);
+        const newAvg = (program.avgProcessingTimeMs * program.runCount + timeMs) / (program.runCount + 1);
         observerPrograms.update(id, { avg_processing_time_ms: newAvg });
       }
     },

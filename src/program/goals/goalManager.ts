@@ -163,9 +163,9 @@ export class GoalManager {
     let depth = 0;
     let currentGoal = this.store.goals.getById(goalId);
 
-    while (currentGoal && currentGoal.parent_goal_id) {
+    while (currentGoal && currentGoal.parentGoalId) {
       depth++;
-      currentGoal = this.store.goals.getById(currentGoal.parent_goal_id);
+      currentGoal = this.store.goals.getById(currentGoal.parentGoalId);
 
       // Safety limit
       if (depth > 10) break;
@@ -225,7 +225,7 @@ export class GoalManager {
       throw new Error(`Goal not found: ${goalId}`);
     }
 
-    const milestones = parseMilestones(goal.progress_indicators_json);
+    const milestones = parseMilestones(goal.progressIndicatorsJson);
 
     const milestone: Milestone = {
       id: generateId(),
@@ -257,21 +257,21 @@ export class GoalManager {
     const goal = this.store.goals.getById(goalId);
     if (!goal) return null;
 
-    const milestones = parseMilestones(goal.progress_indicators_json);
+    const milestones = parseMilestones(goal.progressIndicatorsJson);
     const milestone = milestones.find((m) => m.id === milestoneId);
 
     if (!milestone) return null;
 
     milestone.status = 'achieved';
-    milestone.achieved_at = now();
-    milestone.evidence_claim_id = evidenceClaimId ?? null;
+    milestone.achievedAt = now();
+    milestone.evidenceClaimId = evidenceClaimId ?? null;
 
     this.store.goals.update(goalId, {
       progress_indicators_json: serializeMilestones(milestones),
     });
 
     // Update progress based on milestone completion
-    if (goal.progress_type === 'milestone') {
+    if (goal.progressType === 'milestone') {
       const achieved = milestones.filter((m) => m.status === 'achieved').length;
       const total = milestones.length;
       const progress = total > 0 ? Math.round((achieved / total) * 100) : 0;
@@ -298,7 +298,7 @@ export class GoalManager {
       throw new Error(`Goal not found: ${goalId}`);
     }
 
-    const blockers = parseBlockers(goal.blockers_json);
+    const blockers = parseBlockers(goal.blockersJson);
 
     const blocker: Blocker = {
       id: generateId(),
@@ -332,7 +332,7 @@ export class GoalManager {
     const goal = this.store.goals.getById(goalId);
     if (!goal) return null;
 
-    const blockers = parseBlockers(goal.blockers_json);
+    const blockers = parseBlockers(goal.blockersJson);
     const blocker = blockers.find((b) => b.id === blockerId);
 
     if (!blocker) return null;
@@ -365,13 +365,13 @@ export class GoalManager {
     const goal = this.store.goals.getById(goalId);
     if (!goal) return null;
 
-    const milestones = parseMilestones(goal.progress_indicators_json);
-    const blockers = parseBlockers(goal.blockers_json);
+    const milestones = parseMilestones(goal.progressIndicatorsJson);
+    const blockers = parseBlockers(goal.blockersJson);
     const children = this.store.goals.getChildren(goalId);
 
     // Count claims related to this goal
     const claims = this.store.claims.getAll().filter(
-      (c) => c.id === goal.source_claim_id || c.subject.toLowerCase().includes(goal.statement.toLowerCase().slice(0, 20))
+      (c) => c.id === goal.sourceClaimId || c.subject.toLowerCase().includes(goal.statement.toLowerCase().slice(0, 20))
     );
 
     return {
@@ -448,7 +448,7 @@ export class GoalManager {
       // Parent should be longer-term
       if (timeframeRank[g.timeframe] <= goalRank) return false;
       // Parent should not already be our child
-      if (g.parent_goal_id === goal.id) return false;
+      if (g.parentGoalId === goal.id) return false;
       // Basic topic overlap
       return this.hasTopicOverlap(goal.statement, g.statement);
     });
@@ -457,7 +457,7 @@ export class GoalManager {
       // Child should be shorter-term
       if (timeframeRank[g.timeframe] >= goalRank) return false;
       // Should not already have a parent
-      if (g.parent_goal_id) return false;
+      if (g.parentGoalId) return false;
       // Basic topic overlap
       return this.hasTopicOverlap(goal.statement, g.statement);
     });
@@ -517,7 +517,7 @@ export class GoalManager {
       visited.add(current);
 
       const goal = this.store.goals.getById(current);
-      current = goal?.parent_goal_id ?? '';
+      current = goal?.parentGoalId ?? '';
     }
 
     return false;
