@@ -11,12 +11,10 @@ export { createSourceTrackingStore } from './sourceTrackingStore'
 export { createEntityStore } from './entityStore'
 export { createGoalStore } from './goalStore'
 export { createExtractionProgramStore } from './extractionProgramStore'
+export { createObserverProgramStore } from './observerProgramStore'
+export { createObserverOutputStore } from './observerOutputStore'
+export { createExtensionStore } from './extensionStore'
+export { createSynthesisCacheStore } from './synthesisCacheStore'
 export { createCorrectionStore } from './correctionStore'
 
-// TODO: Implement remaining stores:
-// - observerOutputStore.ts (includes contradictions, patterns, values sub-stores)
-// - observerProgramStore.ts
-// - extensionStore.ts
-// - synthesisCacheStore.ts
-
-// These can follow the same pattern as the implemented stores above
+// All 12 stores implemented ✅
