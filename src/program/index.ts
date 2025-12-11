@@ -104,6 +104,9 @@ export type {
   CreateCorrection,
   UpdateCorrection,
 
+  // Extraction Programs (database records)
+  ExtractionProgramRecord,
+
   // Memory System
   MemoryTier,
   SalienceFactors,

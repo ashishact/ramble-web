@@ -12,6 +12,7 @@ import { useSTT } from '../services/stt/useSTT';
 import type { STTConfig } from '../services/stt/types';
 import type { Claim, Entity, Goal, Pattern, Contradiction, Correction } from '../program';
 import { MemoryTab } from './program/MemoryTab';
+import { ExtractorsObserversTab } from './program/ExtractorsObserversTab';
 
 // ============================================================================
 // Live Relative Time Component
@@ -373,7 +374,7 @@ function CorrectionCard({ correction, onRemove }: { correction: Correction; onRe
 // Main Page Component
 // ============================================================================
 
-type TabType = 'claims' | 'entities' | 'goals' | 'patterns' | 'corrections' | 'insights' | 'memory';
+type TabType = 'claims' | 'entities' | 'goals' | 'patterns' | 'corrections' | 'insights' | 'memory' | 'extractors';
 
 export function ProgramPage() {
   const navigate = useNavigate();
@@ -387,6 +388,7 @@ export function ProgramPage() {
   const [activeTab, setActiveTab] = useState<TabType>('claims');
   const [showConversations, setShowConversations] = useState(true);
   const [showRawText, setShowRawText] = useState(true); // Toggle between raw and sanitized text
+  const [conversationsDisplayLimit, setConversationsDisplayLimit] = useState(20); // Lazy load limit
   const [searchQuery, setSearchQuery] = useState('');
   const [replaceQuery, setReplaceQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Array<{
@@ -423,6 +425,9 @@ export function ProgramPage() {
     longTermMemory,
     topOfMind,
     memoryStats,
+    extractors,
+    observers,
+    observerStats,
     startSession,
     endSession,
     processText,
@@ -431,6 +436,8 @@ export function ProgramPage() {
     searchText,
     replaceText,
     recordMemoryAccess,
+    toggleExtractor,
+    toggleObserver,
     refresh,
   } = useProgram();
 
@@ -456,11 +463,38 @@ export function ProgramPage() {
     clearTranscript,
   } = useSTT({ config: sttConfig });
 
-  // Auto-start session if none active
+  // Session timing: Check last activity and auto-start session
   useEffect(() => {
-    if (isInitialized && !state?.activeSession) {
+    if (!isInitialized) return;
+
+    const LAST_ACTIVITY_KEY = 'ramble_last_activity';
+    const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+    // Check if we need to start a new session
+    const lastActivityStr = localStorage.getItem(LAST_ACTIVITY_KEY);
+    const lastActivity = lastActivityStr ? parseInt(lastActivityStr, 10) : 0;
+    const timeSinceLastActivity = Date.now() - lastActivity;
+
+    // Start new session if: no active session OR more than 30min since last activity
+    const shouldStartNewSession = !state?.activeSession || timeSinceLastActivity > SESSION_TIMEOUT_MS;
+
+    if (shouldStartNewSession) {
+      console.log(`Starting new session (${timeSinceLastActivity > SESSION_TIMEOUT_MS ? 'timeout' : 'no active session'})`);
       startSession();
     }
+
+    // Update activity timestamp
+    const updateActivity = () => {
+      localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
+    };
+
+    // Initial update
+    updateActivity();
+
+    // Set up interval to update every 1 minute
+    const heartbeatInterval = setInterval(updateActivity, 60 * 1000);
+
+    return () => clearInterval(heartbeatInterval);
   }, [isInitialized, state?.activeSession, startSession]);
 
   // Update transcript display
@@ -723,39 +757,81 @@ export function ProgramPage() {
                   No conversation yet.<br />Start speaking or typing.
                 </p>
               ) : (
-                conversations.slice().reverse().map((conv) => {
-                  const displayText = showRawText ? conv.raw_text : conv.sanitized_text;
-                  const hasChanges = conv.raw_text !== conv.sanitized_text;
-
-                  return (
-                    <div
-                      key={conv.id}
-                      className={`p-2 rounded-lg text-sm ${
-                        conv.processed ? 'bg-base-200' : 'bg-warning/10 border border-warning/30'
-                      }`}
-                    >
-                      <p className="leading-relaxed">{displayText}</p>
-                      {/* Show diff indicator when there are changes */}
-                      {hasChanges && (
-                        <div className="mt-1 text-xs">
-                          {showRawText ? (
-                            <span className="text-info opacity-70">📝 Has sanitized version</span>
-                          ) : (
-                            <span className="text-success opacity-70">✨ Cleaned from raw</span>
-                          )}
-                        </div>
-                      )}
-                      <div className="flex justify-between items-center mt-1 text-xs opacity-50">
-                        <div className="flex gap-1 items-center">
-                          <span className={`w-1.5 h-1.5 rounded-full ${conv.source === 'speech' ? 'bg-primary' : 'bg-secondary'}`}></span>
-                          <span>{conv.source}</span>
-                          {!conv.processed && <span className="text-warning">processing...</span>}
-                        </div>
-                        <span>{new Date(conv.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                <>
+                  {/* Show more button at top (for loading older conversations) */}
+                  {conversations.length > conversationsDisplayLimit && (
+                    <div className="text-center py-2">
+                      <button
+                        className="btn btn-sm btn-ghost gap-2"
+                        onClick={() => setConversationsDisplayLimit(prev => prev + 20)}
+                      >
+                        <span>↑</span>
+                        Show {Math.min(20, conversations.length - conversationsDisplayLimit)} more older
+                      </button>
+                      <div className="text-xs opacity-50 mt-1">
+                        Showing {conversationsDisplayLimit} of {conversations.length} conversations
                       </div>
                     </div>
-                  );
-                })
+                  )}
+
+                  {conversations.slice().reverse().slice(0, conversationsDisplayLimit).map((conv, index, arr) => {
+                    const displayText = showRawText ? conv.raw_text : conv.sanitized_text;
+                    const hasChanges = conv.raw_text !== conv.sanitized_text;
+
+                    // Check if this is the start of a new session
+                    const prevConv = arr[index + 1]; // reversed array, so next item is previous chronologically
+                    const isSessionStart = !prevConv || prevConv.session_id !== conv.session_id;
+
+                    return (
+                      <div key={conv.id}>
+                        {/* Session marker */}
+                        {isSessionStart && (
+                          <div className="flex items-center gap-2 my-3">
+                            <div className="flex-1 border-t border-base-300"></div>
+                            <div className="text-xs opacity-50 flex items-center gap-1">
+                              <span className="font-mono">📍</span>
+                              <span>Session started</span>
+                              <span className="font-mono">{new Date(conv.timestamp).toLocaleString([], {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}</span>
+                            </div>
+                            <div className="flex-1 border-t border-base-300"></div>
+                          </div>
+                        )}
+
+                        {/* Conversation unit */}
+                        <div
+                          className={`p-2 rounded-lg text-sm ${
+                            conv.processed ? 'bg-base-200' : 'bg-warning/10 border border-warning/30'
+                          }`}
+                        >
+                          <p className="leading-relaxed">{displayText}</p>
+                          {/* Show diff indicator when there are changes */}
+                          {hasChanges && (
+                            <div className="mt-1 text-xs">
+                              {showRawText ? (
+                                <span className="text-info opacity-70">📝 Has sanitized version</span>
+                              ) : (
+                                <span className="text-success opacity-70">✨ Cleaned from raw</span>
+                              )}
+                            </div>
+                          )}
+                          <div className="flex justify-between items-center mt-1 text-xs opacity-50">
+                            <div className="flex gap-1 items-center">
+                              <span className={`w-1.5 h-1.5 rounded-full ${conv.source === 'speech' ? 'bg-primary' : 'bg-secondary'}`}></span>
+                              <span>{conv.source}</span>
+                              {!conv.processed && <span className="text-warning">processing...</span>}
+                            </div>
+                            <span>{new Date(conv.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
               )}
             </div>
           </div>
@@ -849,6 +925,12 @@ export function ProgramPage() {
             >
               Insights
             </button>
+            <button
+              className={`tab tab-sm ${activeTab === 'extractors' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('extractors')}
+            >
+              Extractors
+            </button>
           </div>
 
           {/* Tab Content */}
@@ -861,6 +943,17 @@ export function ProgramPage() {
                 topOfMind={topOfMind}
                 memoryStats={memoryStats}
                 onRecordAccess={recordMemoryAccess}
+              />
+            )}
+
+            {/* Extractors & Observers Tab */}
+            {activeTab === 'extractors' && (
+              <ExtractorsObserversTab
+                extractors={extractors}
+                observers={observers}
+                observerStats={observerStats}
+                onToggleExtractor={toggleExtractor}
+                onToggleObserver={toggleObserver}
               />
             )}
 

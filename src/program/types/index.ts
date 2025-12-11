@@ -257,6 +257,9 @@ export type ExtractionProgram = z.infer<typeof ExtractionProgramSchema>;
 export type CreateExtractionProgram = z.infer<typeof CreateExtractionProgramSchema>;
 export type UpdateExtractionProgram = z.infer<typeof UpdateExtractionProgramSchema>;
 
+// Alias for database record type to avoid confusion with extractor interface
+export type ExtractionProgramRecord = ExtractionProgram;
+
 // ============================================================================
 // Correction Types
 // ============================================================================

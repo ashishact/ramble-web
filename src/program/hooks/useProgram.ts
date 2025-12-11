@@ -21,6 +21,8 @@ import {
   type Correction,
   type TopOfMind,
   type MemoryStats,
+  type ExtractionProgramRecord,
+  type DispatcherStats,
 } from '../index';
 import type { SearchResult, ReplaceResult } from '../kernel/kernel';
 
@@ -86,6 +88,15 @@ export interface UseProgramReturn {
   /** Memory statistics */
   memoryStats: MemoryStats | null;
 
+  /** All extraction programs */
+  extractors: ExtractionProgramRecord[];
+
+  /** All registered observers */
+  observers: Array<{ type: string; name: string; description: string; active: boolean }>;
+
+  /** Observer stats */
+  observerStats: DispatcherStats | null;
+
   /** Start a new session */
   startSession: () => void;
 
@@ -116,6 +127,12 @@ export interface UseProgramReturn {
 
   /** Promote claim to long-term memory */
   promoteToLongTerm: (claimId: string, reason?: string) => boolean;
+
+  /** Toggle extractor on/off */
+  toggleExtractor: (id: string, active: boolean) => void;
+
+  /** Toggle observer on/off */
+  toggleObserver: (type: string, active: boolean) => void;
 
   /** Manually refresh data */
   refresh: () => void;
@@ -151,6 +168,11 @@ export function useProgram(): UseProgramReturn {
   const [longTermMemory, setLongTermMemory] = useState<Claim[]>([]);
   const [topOfMind, setTopOfMind] = useState<TopOfMind | null>(null);
   const [memoryStats, setMemoryStats] = useState<MemoryStats | null>(null);
+
+  // Extractors & Observers state
+  const [extractors, setExtractors] = useState<ExtractionProgramRecord[]>([]);
+  const [observers, setObservers] = useState<Array<{ type: string; name: string; description: string; active: boolean }>>([]);
+  const [observerStats, setObserverStats] = useState<DispatcherStats | null>(null);
 
   // Initialize kernel on mount
   useEffect(() => {
@@ -211,6 +233,11 @@ export function useProgram(): UseProgramReturn {
       setLongTermMemory(kernel.getLongTermMemory());
       setTopOfMind(kernel.getTopOfMind());
       setMemoryStats(kernel.getMemoryStats());
+
+      // Extractors & Observers
+      setExtractors(kernel.getExtractionPrograms());
+      setObservers(kernel.getRegisteredObservers());
+      setObserverStats(kernel.getObserverStats());
     } catch (err) {
       console.error('Failed to refresh program data:', err);
     }
@@ -320,6 +347,22 @@ export function useProgram(): UseProgramReturn {
     return result;
   }, [refresh]);
 
+  // Toggle extractor
+  const toggleExtractor = useCallback((id: string, active: boolean): void => {
+    const kernel = kernelRef.current;
+    if (!kernel) return;
+    kernel.toggleExtractor(id, active);
+    refresh();
+  }, [refresh]);
+
+  // Toggle observer
+  const toggleObserver = useCallback((type: string, active: boolean): void => {
+    const kernel = kernelRef.current;
+    if (!kernel) return;
+    kernel.toggleObserver(type, active);
+    refresh();
+  }, [refresh]);
+
   return {
     isInitialized,
     isInitializing,
@@ -343,11 +386,17 @@ export function useProgram(): UseProgramReturn {
     replaceText,
     recordMemoryAccess,
     promoteToLongTerm,
+    toggleExtractor,
+    toggleObserver,
     refresh,
     // Memory System
     workingMemory,
     longTermMemory,
     topOfMind,
     memoryStats,
+    // Extractors & Observers
+    extractors,
+    observers,
+    observerStats,
   };
 }

@@ -15,7 +15,7 @@ import { createProgramStore, type ProgramStoreInstance } from '../store/programS
 import { QueueRunner, createQueueRunner } from '../pipeline/queueRunner';
 import { runExtractionPipeline, type PipelineInput, type PipelineOutput } from '../pipeline/extractionPipeline';
 import { GoalManager, createGoalManager } from '../goals/goalManager';
-import { ObserverDispatcher, createStandardDispatcher } from '../observers';
+import { ObserverDispatcher, createStandardDispatcher, type DispatcherStats } from '../observers';
 import { CorrectionService, createCorrectionService, type ProcessTextResult } from '../corrections';
 import { MemoryService, createMemoryService } from '../memory';
 import { MigrationManager, createMigrationManager, ALL_MIGRATIONS, type MigrationStatus, type MigrationResult } from '../migrations';
@@ -35,6 +35,7 @@ import type {
   TopOfMind,
   MemoryStats,
   DecayResult,
+  ExtractionProgramRecord,
 } from '../types';
 
 const logger = createLogger('Kernel');
@@ -673,12 +674,11 @@ export class ProgramKernel {
   }
 
   /**
-   * Get conversation units for the active session
+   * Get all conversation units across all sessions
    */
   getConversations(): ConversationUnit[] {
     this.ensureInitialized();
-    if (!this.state.activeSession) return [];
-    return this.store!.conversations.getBySession(this.state.activeSession.id);
+    return this.store!.conversations.getAll();
   }
 
   /**
@@ -1115,6 +1115,74 @@ export class ProgramKernel {
     if (start > 0) context = '...' + context;
     if (end < text.length) context = context + '...';
     return context;
+  }
+
+  // ==========================================================================
+  // Extractors & Observers Management
+  // ==========================================================================
+
+  /**
+   * Get all extraction programs
+   */
+  getExtractionPrograms(): ExtractionProgramRecord[] {
+    this.ensureInitialized();
+    return this.store!.extractionPrograms.getAll();
+  }
+
+  /**
+   * Toggle extractor active status
+   */
+  toggleExtractor(id: string, active: boolean): ExtractionProgramRecord | null {
+    this.ensureInitialized();
+    return this.store!.extractionPrograms.update(id, { active });
+  }
+
+  /**
+   * Get registered observer types
+   */
+  getRegisteredObservers(): Array<{ type: string; name: string; description: string; active: boolean }> {
+    this.ensureInitialized();
+    const observerTypes = this.dispatcher!.getRegisteredObservers();
+
+    // Get observer configs from the dispatcher's registered observers
+    const observers = observerTypes.map(type => {
+      const observer = (this.dispatcher as any).observers.get(type);
+      return {
+        type: observer.config.type,
+        name: observer.config.name,
+        description: observer.config.description,
+        active: true, // Currently all registered observers are active
+      };
+    });
+
+    return observers;
+  }
+
+  /**
+   * Toggle observer (enable/disable by registering/unregistering)
+   */
+  toggleObserver(observerType: string, active: boolean): boolean {
+    this.ensureInitialized();
+
+    if (active) {
+      // Re-register observer - need to recreate it
+      // For now, this is not supported as observers are registered at startup
+      logger.warn('Re-registering observers is not yet supported', { observerType });
+      return false;
+    } else {
+      // Unregister observer
+      this.dispatcher!.unregister(observerType);
+      logger.info('Observer disabled', { observerType });
+      return true;
+    }
+  }
+
+  /**
+   * Get observer dispatcher stats
+   */
+  getObserverStats(): DispatcherStats {
+    this.ensureInitialized();
+    return this.dispatcher!.getStats();
   }
 
   // ==========================================================================
