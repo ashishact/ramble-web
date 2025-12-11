@@ -12,10 +12,12 @@ export default class Extension extends Model {
   @text('name') name!: string
   @text('description') description!: string
   @text('configJson') configJson!: string
-  @text('systemPrompt') systemPrompt?: string
-  @text('userPromptTemplate') userPromptTemplate?: string
-  @text('llmTier') llmTier?: string
+  @text('systemPrompt') systemPrompt!: string
+  @text('userPromptTemplate') userPromptTemplate!: string
+  @text('variablesSchemaJson') variablesSchemaJson!: string
+  @text('llmTier') llmTier!: string
   @text('status') status!: string
+  @field('version') version!: number
   @field('createdAt') createdAt!: number
-  @field('lastUsed') lastUsed?: number
+  @field('verifiedAt') verifiedAt?: number
 }

@@ -13,5 +13,6 @@ export default class Correction extends Model {
   @text('originalCase') originalCase!: string
   @field('usageCount') usageCount!: number
   @field('createdAt') createdAt!: number
-  @field('lastUsed') lastUsed?: number
+  @field('lastUsed') lastUsed!: number
+  @text('sourceUnitId') sourceUnitId?: string
 }
