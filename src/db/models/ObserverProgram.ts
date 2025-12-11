@@ -13,8 +13,8 @@ export default class ObserverProgram extends Model {
   @text('description') description!: string
   @field('active') active!: boolean
   @text('triggers') triggers!: string // JSON array
-  @text('llmTier') llmTier?: string
-  @text('promptTemplate') promptTemplate?: string
-  @text('outputSchemaJson') outputSchemaJson?: string
+  @text('llmTier') llmTier!: string | null
+  @text('promptTemplate') promptTemplate!: string | null
+  @text('outputSchemaJson') outputSchemaJson!: string | null
   @field('createdAt') createdAt!: number
 }

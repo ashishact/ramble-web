@@ -9,8 +9,8 @@ export default class Session extends Model {
   static table = 'sessions'
 
   @field('startedAt') startedAt!: number
-  @field('endedAt') endedAt?: number
+  @field('endedAt') endedAt!: number | null
   @field('unitCount') unitCount!: number
-  @text('summary') summary?: string
-  @text('moodTrajectoryJson') moodTrajectoryJson?: string
+  @text('summary') summary!: string | null
+  @text('moodTrajectoryJson') moodTrajectoryJson!: string | null
 }

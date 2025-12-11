@@ -23,15 +23,15 @@ export default class ExtractionProgram extends Model {
   @text('promptTemplate') promptTemplate!: string
   @text('outputSchemaJson') outputSchemaJson!: string
   @text('llmTier') llmTier!: string
-  @field('llmTemperature') llmTemperature?: number
-  @field('llmMaxTokens') llmMaxTokens?: number
+  @field('llmTemperature') llmTemperature!: number | null
+  @field('llmMaxTokens') llmMaxTokens!: number | null
   @field('priority') priority!: number
   @field('minConfidence') minConfidence!: number
   @field('isCore') isCore!: boolean
   @text('claimTypesJson') claimTypesJson!: string
   @field('createdAt') createdAt!: number
   @field('updatedAt') updatedAt!: number
-  @field('lastUsed') lastUsed?: number
+  @field('lastUsed') lastUsed!: number | null
   @field('runCount') runCount!: number
   @field('successRate') successRate!: number
   @field('avgProcessingTimeMs') avgProcessingTimeMs!: number

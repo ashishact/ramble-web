@@ -14,5 +14,5 @@ export default class Correction extends Model {
   @field('usageCount') usageCount!: number
   @field('createdAt') createdAt!: number
   @field('lastUsed') lastUsed!: number
-  @text('sourceUnitId') sourceUnitId?: string
+  @text('sourceUnitId') sourceUnitId!: string | null
 }

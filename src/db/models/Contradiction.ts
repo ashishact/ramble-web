@@ -13,7 +13,7 @@ export default class Contradiction extends Model {
   @field('detectedAt') detectedAt!: number
   @text('contradictionType') contradictionType!: string
   @field('resolved') resolved!: boolean
-  @text('resolutionType') resolutionType?: string
-  @text('resolutionNotes') resolutionNotes?: string
-  @field('resolvedAt') resolvedAt?: number
+  @text('resolutionType') resolutionType!: string | null
+  @text('resolutionNotes') resolutionNotes!: string | null
+  @field('resolvedAt') resolvedAt!: number | null
 }

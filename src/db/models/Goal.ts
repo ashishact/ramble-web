@@ -15,6 +15,6 @@ export default class Goal extends Model {
   @field('progressValue') progressValue!: number
   @text('priority') priority!: string
   @field('createdAt') createdAt!: number
-  @field('achievedAt') achievedAt?: number
-  @text('parentGoalId') parentGoalId?: string
+  @field('achievedAt') achievedAt!: number | null
+  @text('parentGoalId') parentGoalId!: string | null
 }

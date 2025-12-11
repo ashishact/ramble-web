@@ -17,9 +17,9 @@ export default class SourceTracking extends Model {
   @text('unitId') unitId!: string
   @text('unitText') unitText!: string
   @text('textExcerpt') textExcerpt!: string
-  @field('charStart') charStart?: number
-  @field('charEnd') charEnd?: number
-  @text('patternId') patternId?: string
+  @field('charStart') charStart!: number | null
+  @field('charEnd') charEnd!: number | null
+  @text('patternId') patternId!: string | null
   @text('llmPrompt') llmPrompt!: string
   @text('llmResponse') llmResponse!: string
   @field('createdAt') createdAt!: number

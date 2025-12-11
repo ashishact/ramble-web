@@ -12,15 +12,15 @@ export default class Task extends Model {
   @text('status') status!: string
   @field('priority') priority!: number
   @text('payloadJson') payloadJson!: string
-  @text('resultJson') resultJson?: string
-  @text('errorMessage') errorMessage?: string
+  @text('resultJson') resultJson!: string | null
+  @text('errorMessage') errorMessage!: string | null
   @field('attempts') attempts!: number
   @field('maxAttempts') maxAttempts!: number
   @text('backoffConfigJson') backoffConfigJson!: string
-  @text('checkpointJson') checkpointJson?: string
-  @text('sessionId') sessionId?: string
+  @text('checkpointJson') checkpointJson!: string | null
+  @text('sessionId') sessionId!: string | null
   @field('createdAt') createdAt!: number
-  @field('startedAt') startedAt?: number
-  @field('completedAt') completedAt?: number
-  @field('nextRetryAt') nextRetryAt?: number
+  @field('startedAt') startedAt!: number | null
+  @field('completedAt') completedAt!: number | null
+  @field('nextRetryAt') nextRetryAt!: number | null
 }

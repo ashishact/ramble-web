@@ -35,20 +35,20 @@ export default class Claim extends Model {
 
   // Timestamps
   @field('validFrom') validFrom!: number
-  @field('validUntil') validUntil?: number
+  @field('validUntil') validUntil!: number | null
   @field('createdAt') createdAt!: number
   @field('lastConfirmed') lastConfirmed!: number
   @field('confirmationCount') confirmationCount!: number
 
   // Relations
   @text('extractionProgramId') extractionProgramId!: string
-  @text('supersededBy') supersededBy?: string
-  @text('elaborates') elaborates?: string
+  @text('supersededBy') supersededBy!: string | null
+  @text('elaborates') elaborates!: string | null
 
   // Memory system
   @text('memoryTier') memoryTier!: string
   @field('salience') salience!: number
-  @field('promotedAt') promotedAt?: number
+  @field('promotedAt') promotedAt!: number | null
   @field('lastAccessed') lastAccessed!: number
 
   // Relation accessors

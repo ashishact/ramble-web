@@ -19,5 +19,5 @@ export default class Extension extends Model {
   @text('status') status!: string
   @field('version') version!: number
   @field('createdAt') createdAt!: number
-  @field('verifiedAt') verifiedAt?: number
+  @field('verifiedAt') verifiedAt!: number | null
 }
