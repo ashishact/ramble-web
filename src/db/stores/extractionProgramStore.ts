@@ -9,7 +9,8 @@ import type {
   SubscriptionCallback,
   Unsubscribe,
 } from '../../program/interfaces/store'
-import type { ExtractionProgram, CreateExtractionProgram, UpdateExtractionProgram, LLMTier } from '../../program/types'
+import type { ExtractionProgram, CreateExtractionProgram, UpdateExtractionProgram } from '../../program/types'
+import type { LLMTier } from '../../program/types/llmTiers'
 import ExtractionProgramModel from '../models/ExtractionProgram'
 
 export function createExtractionProgramStore(db: Database): IExtractionProgramStore {
