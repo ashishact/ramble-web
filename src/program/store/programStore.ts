@@ -14,7 +14,6 @@ import type {
   IConversationStore,
   IClaimStore,
   IEntityStore,
-  IChainStore,
   IGoalStore,
   IObserverOutputStore,
   IExtensionStore,
@@ -40,11 +39,6 @@ import type {
   Entity,
   CreateEntity,
   UpdateEntity,
-  ThoughtChain,
-  CreateThoughtChain,
-  UpdateThoughtChain,
-  ChainClaim,
-  CreateChainClaim,
   Goal,
   CreateGoal,
   UpdateGoal,
@@ -60,7 +54,6 @@ import type {
   ClaimState,
   ClaimType,
   GoalStatus,
-  ChainState,
   Task,
   CreateTask,
   UpdateTask,
@@ -143,7 +136,6 @@ function rowToClaim(id: string, row: Record<string, unknown>): Claim {
     extraction_program_id: row.extraction_program_id as string,
     superseded_by: (row.superseded_by as string) || null,
     elaborates: (row.elaborates as string) || null,
-    thought_chain_id: (row.thought_chain_id as string) || null,
     // Memory system fields
     memory_tier: (row.memory_tier as MemoryTier) || 'working',
     salience: (row.salience as number) || 0,
@@ -169,26 +161,6 @@ function rowToEntity(id: string, row: Record<string, unknown>): Entity {
     created_at: row.created_at as number,
     last_referenced: row.last_referenced as number,
     mention_count: row.mention_count as number,
-  };
-}
-
-function rowToChain(id: string, row: Record<string, unknown>): ThoughtChain {
-  return {
-    id,
-    topic: row.topic as string,
-    started_at: row.started_at as number,
-    last_extended: row.last_extended as number,
-    branches_from: (row.branches_from as string) || null,
-    state: row.state as ChainState,
-  };
-}
-
-function rowToChainClaim(id: string, row: Record<string, unknown>): ChainClaim {
-  return {
-    id,
-    chain_id: row.chain_id as string,
-    claim_id: row.claim_id as string,
-    position: row.position as number,
   };
 }
 
@@ -386,7 +358,6 @@ export function createProgramStore(): ProgramStoreInstance {
   const conversationListeners = new Map<string, Set<SubscriptionCallback<ConversationUnit>>>();
   const claimListeners = new Map<string, Set<SubscriptionCallback<Claim>>>();
   const entityListeners = new Set<SubscriptionCallback<Entity>>();
-  const chainListeners = new Set<SubscriptionCallback<ThoughtChain>>();
   const goalListeners = new Set<SubscriptionCallback<Goal>>();
   const observerOutputListeners = new Set<SubscriptionCallback<ObserverOutput>>();
   const taskListeners = new Set<SubscriptionCallback<Task>>();
@@ -399,10 +370,6 @@ export function createProgramStore(): ProgramStoreInstance {
   const notifyEntityListeners = () => {
     const items = entities.getAll();
     entityListeners.forEach((l) => l(items));
-  };
-  const notifyChainListeners = () => {
-    const items = chains.getAll();
-    chainListeners.forEach((l) => l(items));
   };
   const notifyGoalListeners = () => {
     const items = goals.getAll();
@@ -632,7 +599,6 @@ export function createProgramStore(): ProgramStoreInstance {
         extraction_program_id: data.extraction_program_id,
         superseded_by: data.superseded_by ?? null,
         elaborates: data.elaborates,
-        thought_chain_id: data.thought_chain_id,
         // Memory system fields
         memory_tier: data.memory_tier ?? 'working',
         salience: data.salience ?? 0,
@@ -661,7 +627,6 @@ export function createProgramStore(): ProgramStoreInstance {
         extraction_program_id: claim.extraction_program_id,
         superseded_by: claim.superseded_by ?? '',
         elaborates: claim.elaborates ?? '',
-        thought_chain_id: claim.thought_chain_id ?? '',
         // Memory system fields
         memory_tier: claim.memory_tier,
         salience: claim.salience,
@@ -701,10 +666,6 @@ export function createProgramStore(): ProgramStoreInstance {
 
     getByType(type: ClaimType): Claim[] {
       return claims.getAll().filter((c) => c.claim_type === type);
-    },
-
-    getByChain(chainId: string): Claim[] {
-      return claims.getAll().filter((c) => c.thought_chain_id === chainId);
     },
 
     getBySubject(subject: string): Claim[] {
@@ -975,133 +936,6 @@ export function createProgramStore(): ProgramStoreInstance {
       entityListeners.add(callback);
       if (isInitialized) callback(entities.getAll());
       return () => entityListeners.delete(callback);
-    },
-  };
-
-  // --------------------------------------------------------------------------
-  // Chains Store
-  // --------------------------------------------------------------------------
-  const chains: IChainStore = {
-    getById(id: string): ThoughtChain | null {
-      const row = store.getRow('chains', id);
-      if (!row || Object.keys(row).length === 0) return null;
-      return rowToChain(id, row);
-    },
-
-    getAll(): ThoughtChain[] {
-      const table = store.getTable('chains');
-      if (!table) return [];
-      return Object.entries(table).map(([id, row]) => rowToChain(id, row));
-    },
-
-    create(data: CreateThoughtChain): ThoughtChain {
-      const id = idGen.thoughtChain();
-      const timestamp = now();
-      const chain: ThoughtChain = {
-        id,
-        topic: data.topic,
-        started_at: timestamp,
-        last_extended: timestamp,
-        branches_from: data.branches_from,
-        state: data.state ?? 'active',
-      };
-
-      store.setRow('chains', id, {
-        topic: chain.topic,
-        started_at: chain.started_at,
-        last_extended: chain.last_extended,
-        branches_from: chain.branches_from ?? '',
-        state: chain.state,
-      });
-
-      logger.debug('Created chain', { id, topic: chain.topic });
-      return chain;
-    },
-
-    update(id: string, data: UpdateThoughtChain): ThoughtChain | null {
-      const existing = chains.getById(id);
-      if (!existing) return null;
-
-      if (data.topic !== undefined) store.setCell('chains', id, 'topic', data.topic);
-      if (data.last_extended !== undefined) store.setCell('chains', id, 'last_extended', data.last_extended);
-      if (data.branches_from !== undefined) store.setCell('chains', id, 'branches_from', data.branches_from ?? '');
-      if (data.state !== undefined) store.setCell('chains', id, 'state', data.state);
-
-      return chains.getById(id);
-    },
-
-    delete(id: string): boolean {
-      const existing = chains.getById(id);
-      if (!existing) return false;
-      store.delRow('chains', id);
-      return true;
-    },
-
-    getByState(state: ChainState): ThoughtChain[] {
-      return chains.getAll().filter((c) => c.state === state);
-    },
-
-    getActive(): ThoughtChain[] {
-      return chains.getByState('active');
-    },
-
-    getDormant(): ThoughtChain[] {
-      return chains.getByState('dormant');
-    },
-
-    extendChain(id: string): void {
-      chains.update(id, { last_extended: now(), state: 'active' });
-    },
-
-    markDormant(id: string): void {
-      chains.update(id, { state: 'dormant' });
-    },
-
-    markConcluded(id: string): void {
-      chains.update(id, { state: 'concluded' });
-    },
-
-    revive(id: string): void {
-      chains.update(id, { state: 'active', last_extended: now() });
-    },
-
-    subscribe(callback: SubscriptionCallback<ThoughtChain>): Unsubscribe {
-      chainListeners.add(callback);
-      if (isInitialized) callback(chains.getAll());
-      return () => chainListeners.delete(callback);
-    },
-
-    addClaimToChain(data: CreateChainClaim): ChainClaim {
-      const id = idGen.chainClaim();
-      const chainClaim: ChainClaim = { id, ...data };
-
-      store.setRow('chain_claims', id, {
-        chain_id: chainClaim.chain_id,
-        claim_id: chainClaim.claim_id,
-        position: chainClaim.position,
-      });
-
-      // Update the chain's last_extended
-      chains.extendChain(data.chain_id);
-
-      // Update the claim's thought_chain_id
-      claims.update(data.claim_id, { thought_chain_id: data.chain_id });
-
-      return chainClaim;
-    },
-
-    getClaimsInChain(chainId: string): ChainClaim[] {
-      const table = store.getTable('chain_claims');
-      if (!table) return [];
-      return Object.entries(table)
-        .filter(([, row]) => row.chain_id === chainId)
-        .map(([id, row]) => rowToChainClaim(id, row))
-        .sort((a, b) => a.position - b.position);
-    },
-
-    getChainForClaim(claimId: string): string | null {
-      const claim = claims.getById(claimId);
-      return claim?.thought_chain_id ?? null;
     },
   };
 
@@ -2014,7 +1848,6 @@ export function createProgramStore(): ProgramStoreInstance {
     conversations,
     claims,
     entities,
-    chains,
     goals,
     observerOutputs,
     tasks,
@@ -2052,7 +1885,6 @@ export function createProgramStore(): ProgramStoreInstance {
           }
         });
         store.addTableListener('entities', notifyEntityListeners);
-        store.addTableListener('chains', notifyChainListeners);
         store.addTableListener('goals', notifyGoalListeners);
         store.addTableListener('observer_outputs', notifyObserverOutputListeners);
         store.addTableListener('tasks', notifyTaskListeners);

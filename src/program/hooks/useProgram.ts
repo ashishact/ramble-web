@@ -11,7 +11,6 @@ import {
   type ProgramKernel,
   type KernelState,
   type Claim,
-  type ThoughtChain,
   type Goal,
   type Entity,
   type Pattern,
@@ -44,9 +43,6 @@ export interface UseProgramReturn {
 
   /** Recent claims */
   claims: Claim[];
-
-  /** Active thought chains */
-  chains: ThoughtChain[];
 
   /** All goals */
   goals: Goal[];
@@ -136,7 +132,6 @@ export function useProgram(): UseProgramReturn {
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<KernelState | null>(null);
   const [claims, setClaims] = useState<Claim[]>([]);
-  const [chains, setChains] = useState<ThoughtChain[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
@@ -202,7 +197,6 @@ export function useProgram(): UseProgramReturn {
     try {
       setState(kernel.getState());
       setClaims(kernel.getClaims().slice(-50)); // Last 50 claims
-      setChains(kernel.getChains());
       setGoals(kernel.getGoals());
       setEntities(kernel.getEntities());
       setPatterns(kernel.getPatterns());
@@ -303,7 +297,7 @@ export function useProgram(): UseProgramReturn {
   ): ReplaceResult => {
     const kernel = kernelRef.current;
     if (!kernel) {
-      return { conversationsUpdated: 0, claimsUpdated: 0, entitiesUpdated: 0, goalsUpdated: 0, chainsUpdated: 0, totalReplacements: 0 };
+      return { conversationsUpdated: 0, claimsUpdated: 0, entitiesUpdated: 0, goalsUpdated: 0, totalReplacements: 0 };
     }
     const result = kernel.replaceText(search, replace, options);
     refresh();
@@ -332,7 +326,6 @@ export function useProgram(): UseProgramReturn {
     error,
     state,
     claims,
-    chains,
     goals,
     entities,
     patterns,

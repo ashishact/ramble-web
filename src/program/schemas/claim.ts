@@ -102,7 +102,6 @@ export const ClaimSchema = z.object({
   extraction_program_id: z.string(),
   superseded_by: z.string().nullable(),
   elaborates: z.string().nullable(), // Links to another claim this elaborates
-  thought_chain_id: z.string().nullable(),
 
   // Memory system fields
   memory_tier: MemoryTierSchema,        // 'working' | 'long_term'

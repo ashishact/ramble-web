@@ -20,11 +20,6 @@ import type {
   Entity,
   CreateEntity,
   UpdateEntity,
-  ThoughtChain,
-  CreateThoughtChain,
-  UpdateThoughtChain,
-  ChainClaim,
-  CreateChainClaim,
   Goal,
   CreateGoal,
   UpdateGoal,
@@ -40,7 +35,6 @@ import type {
   ClaimState,
   ClaimType,
   GoalStatus,
-  ChainState,
   Extension,
   CreateExtension,
   UpdateExtension,
@@ -114,7 +108,6 @@ export interface IConversationStore
 export interface IClaimStore extends IBaseStore<Claim, CreateClaim, UpdateClaim> {
   getByState(state: ClaimState): Claim[];
   getByType(type: ClaimType): Claim[];
-  getByChain(chainId: string): Claim[];
   getBySubject(subject: string): Claim[];
   getBySession(sessionId: string): Claim[];
   getRecent(limit: number): Claim[];
@@ -150,27 +143,6 @@ export interface IEntityStore extends IBaseStore<Entity, CreateEntity, UpdateEnt
   updateLastReferenced(id: string): void;
   mergeEntities(keepId: string, deleteId: string): Entity | null;
   subscribe(callback: SubscriptionCallback<Entity>): Unsubscribe;
-}
-
-// ============================================================================
-// Thought Chain Store
-// ============================================================================
-
-export interface IChainStore
-  extends IBaseStore<ThoughtChain, CreateThoughtChain, UpdateThoughtChain> {
-  getByState(state: ChainState): ThoughtChain[];
-  getActive(): ThoughtChain[];
-  getDormant(): ThoughtChain[];
-  extendChain(id: string): void;
-  markDormant(id: string): void;
-  markConcluded(id: string): void;
-  revive(id: string): void;
-  subscribe(callback: SubscriptionCallback<ThoughtChain>): Unsubscribe;
-
-  // Chain-claim relationships
-  addClaimToChain(data: CreateChainClaim): ChainClaim;
-  getClaimsInChain(chainId: string): ChainClaim[];
-  getChainForClaim(claimId: string): string | null;
 }
 
 // ============================================================================
@@ -287,7 +259,6 @@ export interface IProgramStore {
   conversations: IConversationStore;
   claims: IClaimStore;
   entities: IEntityStore;
-  chains: IChainStore;
   goals: IGoalStore;
   observerOutputs: IObserverOutputStore;
   extensions: IExtensionStore;

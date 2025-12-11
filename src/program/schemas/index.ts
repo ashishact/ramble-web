@@ -16,9 +16,6 @@ export * from './claim';
 // Entities
 export * from './entity';
 
-// Thought Chains
-export * from './thoughtChain';
-
 // Goals
 export * from './goal';
 

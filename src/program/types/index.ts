@@ -37,14 +37,6 @@ import {
   CreateEntitySchema,
   UpdateEntitySchema,
 
-  // Thought Chains
-  ChainStateSchema,
-  ThoughtChainSchema,
-  CreateThoughtChainSchema,
-  UpdateThoughtChainSchema,
-  ChainClaimSchema,
-  CreateChainClaimSchema,
-
   // Goals
   GoalTypeSchema,
   GoalTimeframeSchema,
@@ -176,17 +168,6 @@ export type EntityType = z.infer<typeof EntityTypeSchema>;
 export type Entity = z.infer<typeof EntitySchema>;
 export type CreateEntity = z.infer<typeof CreateEntitySchema>;
 export type UpdateEntity = z.infer<typeof UpdateEntitySchema>;
-
-// ============================================================================
-// Thought Chain Types
-// ============================================================================
-
-export type ChainState = z.infer<typeof ChainStateSchema>;
-export type ThoughtChain = z.infer<typeof ThoughtChainSchema>;
-export type CreateThoughtChain = z.infer<typeof CreateThoughtChainSchema>;
-export type UpdateThoughtChain = z.infer<typeof UpdateThoughtChainSchema>;
-export type ChainClaim = z.infer<typeof ChainClaimSchema>;
-export type CreateChainClaim = z.infer<typeof CreateChainClaimSchema>;
 
 // ============================================================================
 // Goal Types

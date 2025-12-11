@@ -10,7 +10,7 @@ import { useProgram } from '../program/hooks';
 import { settingsHelpers } from '../stores/settingsStore';
 import { useSTT } from '../services/stt/useSTT';
 import type { STTConfig } from '../services/stt/types';
-import type { Claim, Entity, Goal, ThoughtChain, Pattern, Contradiction, Correction } from '../program';
+import type { Claim, Entity, Goal, Pattern, Contradiction, Correction } from '../program';
 import { MemoryTab } from './program/MemoryTab';
 
 // ============================================================================
@@ -228,25 +228,6 @@ function GoalCard({ goal }: { goal: Goal }) {
   );
 }
 
-function ChainCard({ chain }: { chain: ThoughtChain }) {
-  return (
-    <div className="p-3 bg-base-200 rounded-lg">
-      <div className="flex items-center justify-between mb-1">
-        <span className="font-medium text-sm">{chain.topic}</span>
-        <span className={`badge badge-xs ${
-          chain.state === 'active' ? 'badge-success' :
-          chain.state === 'dormant' ? 'badge-warning' : 'badge-ghost'
-        }`}>
-          {chain.state}
-        </span>
-      </div>
-      <div className="text-xs opacity-60">
-        Last active: {formatRelativeTime(chain.last_extended)}
-      </div>
-    </div>
-  );
-}
-
 function PatternCard({ pattern }: { pattern: Pattern }) {
   return (
     <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
@@ -392,7 +373,7 @@ function CorrectionCard({ correction, onRemove }: { correction: Correction; onRe
 // Main Page Component
 // ============================================================================
 
-type TabType = 'claims' | 'entities' | 'goals' | 'chains' | 'patterns' | 'corrections' | 'insights' | 'memory';
+type TabType = 'claims' | 'entities' | 'goals' | 'patterns' | 'corrections' | 'insights' | 'memory';
 
 export function ProgramPage() {
   const navigate = useNavigate();
@@ -420,7 +401,6 @@ export function ProgramPage() {
     claimsUpdated: number;
     entitiesUpdated: number;
     goalsUpdated: number;
-    chainsUpdated: number;
     totalReplacements: number;
   } | null>(null);
   const [addAsCorrection, setAddAsCorrection] = useState(true);
@@ -431,7 +411,6 @@ export function ProgramPage() {
     error,
     state,
     claims,
-    chains,
     goals,
     entities,
     patterns,
@@ -585,11 +564,10 @@ export function ProgramPage() {
     totalClaims: claims.length,
     activeGoals: goals.filter(g => g.status === 'active').length,
     achievedGoals: goals.filter(g => g.status === 'achieved').length,
-    activeChains: chains.filter(c => c.state === 'active').length,
     unresolvedContradictions: contradictions.filter(c => !c.resolved).length,
     highStakesClaims: claims.filter(c => c.stakes === 'high' || c.stakes === 'existential').length,
     emotionalClaims: claims.filter(c => Math.abs(c.emotional_valence) > 0.5).length,
-  }), [claims, goals, chains, contradictions]);
+  }), [claims, goals, contradictions]);
 
   // Loading state
   if (isInitializing) {
@@ -854,12 +832,6 @@ export function ProgramPage() {
               Goals ({goals.length})
             </button>
             <button
-              className={`tab tab-sm ${activeTab === 'chains' ? 'tab-active' : ''}`}
-              onClick={() => setActiveTab('chains')}
-            >
-              Chains ({chains.length})
-            </button>
-            <button
               className={`tab tab-sm ${activeTab === 'patterns' ? 'tab-active' : ''}`}
               onClick={() => setActiveTab('patterns')}
             >
@@ -973,24 +945,6 @@ export function ProgramPage() {
               </div>
             )}
 
-            {/* Chains Tab */}
-            {activeTab === 'chains' && (
-              <div className="space-y-4">
-                {chains.length === 0 ? (
-                  <div className="text-center py-12 opacity-50">
-                    <div className="text-4xl mb-2">🔗</div>
-                    <p>No thought chains formed yet.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {chains.map((chain) => (
-                      <ChainCard key={chain.id} chain={chain} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Patterns Tab */}
             {activeTab === 'patterns' && (
               <div className="space-y-4">
@@ -1050,7 +1004,7 @@ export function ProgramPage() {
                     <span>🔍</span> Global Search & Replace
                   </h3>
                   <p className="text-xs opacity-70 mb-3">
-                    Search and replace text across all conversations, claims, entities, goals, and chains.
+                    Search and replace text across all conversations, claims, entities, and goals.
                   </p>
                   <div className="flex flex-col gap-2">
                     <div className="flex gap-2 items-end">
@@ -1166,9 +1120,6 @@ export function ProgramPage() {
                         {replaceResult.goalsUpdated > 0 && (
                           <span className="badge badge-xs badge-warning">{replaceResult.goalsUpdated} goals</span>
                         )}
-                        {replaceResult.chainsUpdated > 0 && (
-                          <span className="badge badge-xs badge-secondary">{replaceResult.chainsUpdated} chains</span>
-                        )}
                       </div>
                     </div>
                   )}
@@ -1259,10 +1210,6 @@ export function ProgramPage() {
                     <div className="stat-title text-xs">Active Goals</div>
                     <div className="stat-value text-2xl text-success">{stats.activeGoals}</div>
                     <div className="stat-desc">{stats.achievedGoals} achieved</div>
-                  </div>
-                  <div className="stat bg-base-200 rounded-lg p-4">
-                    <div className="stat-title text-xs">Active Chains</div>
-                    <div className="stat-value text-2xl">{stats.activeChains}</div>
                   </div>
                   <div className="stat bg-base-200 rounded-lg p-4">
                     <div className="stat-title text-xs">Entities Known</div>

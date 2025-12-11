@@ -84,13 +84,11 @@ export function MigrationPanel({ getMigrationStatus, runMigration, runAllPending
 
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {/* Status Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold">Database Migrations</h2>
-          <p className="text-sm opacity-70">
-            Current version: <span className="font-mono font-bold">{status.currentVersion}</span>
-          </p>
+        <div className="flex items-center gap-2">
+          <span className="text-sm opacity-70">Current version:</span>
+          <span className="badge badge-lg font-mono font-bold">v{status.currentVersion}</span>
         </div>
         {status.pendingMigrations.length > 0 && (
           <button

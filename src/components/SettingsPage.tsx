@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import { settingsHelpers, type AppSettings } from '../stores/settingsStore';
 import { ThemeSelector } from './ThemeSelector';
+import { MigrationPanel } from './MigrationPanel';
+import { getKernel } from '../program';
 
 interface ProviderConfig {
   id: keyof AppSettings['providers'];
@@ -318,6 +320,25 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
                 <span>No API keys configured. Add at least one API key to enable the Observer agent.</span>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Database Migrations */}
+        <div className="card bg-base-100 shadow-md">
+          <div className="card-body">
+            <h2 className="card-title text-lg flex items-center gap-2">
+              <Icon icon="mdi:database-cog" className="w-5 h-5 text-primary" />
+              Database Migrations
+            </h2>
+            <p className="text-sm text-base-content/60 mb-4">
+              Manage database schema changes and updates.
+            </p>
+
+            <MigrationPanel
+              getMigrationStatus={() => getKernel().getMigrationStatus()}
+              runMigration={(version) => getKernel().runMigration(version)}
+              runAllPending={() => getKernel().runAllPendingMigrations()}
+            />
           </div>
         </div>
 

@@ -5,7 +5,6 @@
  * - Store (TinyBase + IndexedDB)
  * - Queue Runner (durable task execution)
  * - Extraction Pipeline
- * - Chain Manager
  * - Goal Manager
  * - Observer Dispatcher
  *
@@ -15,7 +14,6 @@
 import { createProgramStore, type ProgramStoreInstance } from '../store/programStore';
 import { QueueRunner, createQueueRunner } from '../pipeline/queueRunner';
 import { runExtractionPipeline, type PipelineInput, type PipelineOutput } from '../pipeline/extractionPipeline';
-import { ChainManager, createChainManager } from '../chains/chainManager';
 import { GoalManager, createGoalManager } from '../goals/goalManager';
 import { ObserverDispatcher, createStandardDispatcher } from '../observers';
 import { CorrectionService, createCorrectionService, type ProcessTextResult } from '../corrections';
@@ -32,7 +30,6 @@ import type {
   CreateConversationUnit,
   Claim,
   Entity,
-  ThoughtChain,
   Goal,
   ConversationSource,
   TopOfMind,
@@ -102,7 +99,7 @@ interface ExtractFromUnitPayload {
 
 // Search & Replace types
 export interface SearchResult {
-  type: 'conversation' | 'claim' | 'entity' | 'goal' | 'chain';
+  type: 'conversation' | 'claim' | 'entity' | 'goal';
   id: string;
   field: string;
   value: string;
@@ -114,7 +111,6 @@ export interface ReplaceResult {
   claimsUpdated: number;
   entitiesUpdated: number;
   goalsUpdated: number;
-  chainsUpdated: number;
   totalReplacements: number;
 }
 
@@ -126,7 +122,6 @@ export class ProgramKernel {
   private config: KernelConfig;
   private store: ProgramStoreInstance | null = null;
   private queueRunner: QueueRunner | null = null;
-  private chainManager: ChainManager | null = null;
   private goalManager: GoalManager | null = null;
   private dispatcher: ObserverDispatcher | null = null;
   private correctionService: CorrectionService | null = null;
@@ -174,7 +169,6 @@ export class ProgramKernel {
       await this.store.initialize();
 
       // Initialize managers
-      this.chainManager = createChainManager(this.store);
       this.goalManager = createGoalManager(this.store);
       this.dispatcher = createStandardDispatcher(this.store, {
         autoRun: this.config.autoObservers,
@@ -481,7 +475,6 @@ export class ProgramKernel {
       unit,
       precedingContext: this.buildPrecedingContext(payload.sessionId, unit.id),
       recentClaims: this.getRecentClaimsForPipeline(),
-      activeChains: this.getActiveChainInfo(),
       knownEntities: this.getKnownEntityInfo(),
     };
 
@@ -530,7 +523,6 @@ export class ProgramKernel {
         valid_until: extractedClaim.valid_until || null,
         extraction_program_id: extractorIds[0] || 'unknown',
         elaborates: extractedClaim.elaborates || null,
-        thought_chain_id: null,
         // Default values for required fields
         state: 'active',
         confirmation_count: 1,
@@ -546,9 +538,6 @@ export class ProgramKernel {
         claim_id: claim.id,
         unit_id: unit.id,
       });
-
-      // Assign to chain
-      this.assignClaimToChain(claim);
 
       savedClaims.push(claim);
     }
@@ -582,24 +571,6 @@ export class ProgramKernel {
     }
   }
 
-  /**
-   * Assign a claim to an appropriate thought chain
-   */
-  private assignClaimToChain(claim: Claim): void {
-    // Find matching chain or create new one
-    const match = this.chainManager!.findMatchingChain(claim);
-
-    if (match) {
-      this.chainManager!.addClaimToChain(match.chainId, claim.id);
-      this.store!.claims.update(claim.id, { thought_chain_id: match.chainId });
-    } else {
-      // Create new chain for this topic
-      const chain = this.chainManager!.createChain(claim.subject);
-      this.chainManager!.addClaimToChain(chain.id, claim.id);
-      this.store!.claims.update(claim.id, { thought_chain_id: chain.id });
-    }
-  }
-
   // ==========================================================================
   // Context Building Helpers
   // ==========================================================================
@@ -627,17 +598,6 @@ export class ProgramKernel {
       statement: c.statement,
       claim_type: c.claim_type,
       subject: c.subject,
-    }));
-  }
-
-  /**
-   * Get active chain info for pipeline
-   */
-  private getActiveChainInfo(): PipelineInput['activeChains'] {
-    const chains = this.chainManager!.getActiveChainsByRecency().slice(0, 5);
-    return chains.map((c) => ({
-      id: c.id,
-      topic: c.topic,
     }));
   }
 
@@ -678,22 +638,6 @@ export class ProgramKernel {
   getEntities(): Entity[] {
     this.ensureInitialized();
     return this.store!.entities.getAll();
-  }
-
-  /**
-   * Get all thought chains
-   */
-  getChains(): ThoughtChain[] {
-    this.ensureInitialized();
-    return this.store!.chains.getAll();
-  }
-
-  /**
-   * Get chain summaries
-   */
-  getChainSummaries() {
-    this.ensureInitialized();
-    return this.chainManager!.getChainSummaries();
   }
 
   /**
@@ -765,18 +709,6 @@ export class ProgramKernel {
       this.state.stats.uptime = now() - this.startTime;
     }
     return { ...this.state };
-  }
-
-  // ==========================================================================
-  // Chain Manager API
-  // ==========================================================================
-
-  /**
-   * Manually check chain dormancy
-   */
-  checkChainDormancy(): void {
-    this.ensureInitialized();
-    this.chainManager!.checkDormancy();
   }
 
   // ==========================================================================
@@ -1035,22 +967,6 @@ export class ProgramKernel {
       }
     }
 
-    // Search chains (topic)
-    const chains = this.store!.chains.getAll();
-    for (const chain of chains) {
-      const topicLower = options?.caseSensitive ? chain.topic : chain.topic.toLowerCase();
-
-      if (topicLower.includes(searchLower)) {
-        results.push({
-          type: 'chain',
-          id: chain.id,
-          field: 'topic',
-          value: chain.topic,
-          context: chain.topic,
-        });
-      }
-    }
-
     return results;
   }
 
@@ -1068,7 +984,6 @@ export class ProgramKernel {
       claimsUpdated: 0,
       entitiesUpdated: 0,
       goalsUpdated: 0,
-      chainsUpdated: 0,
       totalReplacements: 0,
     };
 
@@ -1173,18 +1088,6 @@ export class ProgramKernel {
         this.store!.goals.update(goal.id, { statement: newStatement });
         result.goalsUpdated++;
         result.totalReplacements += (goal.statement.match(createRegex()) || []).length;
-      }
-    }
-
-    // Replace in chains
-    const chains = this.store!.chains.getAll();
-    for (const chain of chains) {
-      const regex = createRegex();
-      if (regex.test(chain.topic)) {
-        const newTopic = chain.topic.replace(createRegex(), replaceText);
-        this.store!.chains.update(chain.id, { topic: newTopic });
-        result.chainsUpdated++;
-        result.totalReplacements += (chain.topic.match(createRegex()) || []).length;
       }
     }
 

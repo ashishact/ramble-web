@@ -60,14 +60,6 @@ export type {
   CreateEntity,
   UpdateEntity,
 
-  // Thought Chains
-  ChainState,
-  ThoughtChain,
-  CreateThoughtChain,
-  UpdateThoughtChain,
-  ChainClaim,
-  CreateChainClaim,
-
   // Goals
   GoalType,
   GoalTimeframe,
@@ -128,15 +120,6 @@ export type {
   SalienceWeights,
   MemoryServiceConfig,
 } from './types';
-
-// Chain Manager
-export {
-  ChainManager,
-  createChainManager,
-  type ChainManagerConfig,
-  type ChainMatchResult,
-  type ChainSummary,
-} from './chains';
 
 // Goal Manager
 export {

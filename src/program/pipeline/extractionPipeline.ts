@@ -40,8 +40,8 @@ export interface PipelineInput {
     claim_type: ClaimType;
     subject: string;
   }>;
-  /** Active thought chains */
-  activeChains: Array<{
+  /** Active thought chains (deprecated, kept for backward compatibility) */
+  activeChains?: Array<{
     id: string;
     topic: string;
   }>;
@@ -227,7 +227,7 @@ async function runSingleExtractor(
       },
       matches,
       recent_claims: input.recentClaims,
-      active_chains: input.activeChains,
+      active_chains: input.activeChains || [],
       known_entities: input.knownEntities,
     };
 
@@ -337,7 +337,7 @@ export function buildBudgetedContext(
   // Start with full context
   let precedingContext = input.precedingContext;
   let recentClaims = input.recentClaims;
-  let activeChains = input.activeChains;
+  let activeChains = input.activeChains || [];
   let knownEntities = input.knownEntities;
 
   // Estimate base tokens

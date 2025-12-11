@@ -17,23 +17,7 @@ export const migration001: Migration = {
     let itemsAffected = 0;
 
     try {
-      // 1. Get all claims with thought_chain_id set
-      const claims = store.claims.getAll();
-      const claimsWithChains = claims.filter(c => c.thought_chain_id !== null);
-
-      console.log(`[Migration 001] Found ${claimsWithChains.length} claims linked to chains`);
-
-      // 2. Clear thought_chain_id from all claims
-      for (const claim of claimsWithChains) {
-        try {
-          store.claims.update(claim.id, { thought_chain_id: null });
-          itemsAffected++;
-        } catch (error) {
-          errors.push(`Failed to update claim ${claim.id}: ${error}`);
-        }
-      }
-
-      console.log(`[Migration 001] Updated ${itemsAffected} claims`);
+      console.log(`[Migration 001] Removing thought_chains system...`);
 
       // 3. Delete all chain_claims entries (if table exists)
       try {
@@ -73,9 +57,6 @@ export const migration001: Migration = {
         success: errors.length === 0,
         itemsAffected,
         errors,
-        details: {
-          claimsUpdated: claimsWithChains.length,
-        },
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
