@@ -229,6 +229,9 @@ export {
   createDecayHandler,
 } from './memory';
 
+// Migrations
+export type { Migration, MigrationResult, MigrationStatus, MigrationRecord } from './migrations';
+
 // Utilities
 export { createLogger, type LogLevel } from './utils/logger';
 export { generateId } from './utils/id';

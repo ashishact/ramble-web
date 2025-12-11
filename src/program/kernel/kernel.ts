@@ -20,6 +20,7 @@ import { GoalManager, createGoalManager } from '../goals/goalManager';
 import { ObserverDispatcher, createStandardDispatcher } from '../observers';
 import { CorrectionService, createCorrectionService, type ProcessTextResult } from '../corrections';
 import { MemoryService, createMemoryService } from '../memory';
+import { MigrationManager, createMigrationManager, ALL_MIGRATIONS, type MigrationStatus, type MigrationResult } from '../migrations';
 import { createLogger } from '../utils/logger';
 import { now } from '../utils/time';
 
@@ -130,6 +131,7 @@ export class ProgramKernel {
   private dispatcher: ObserverDispatcher | null = null;
   private correctionService: CorrectionService | null = null;
   private memoryService: MemoryService | null = null;
+  private migrationManager: MigrationManager | null = null;
   private decayIntervalId: ReturnType<typeof setInterval> | null = null;
 
   private state: KernelState = {
@@ -187,6 +189,16 @@ export class ProgramKernel {
 
       // Initialize memory service
       this.memoryService = createMemoryService(this.store);
+
+      // Initialize migration manager
+      this.migrationManager = createMigrationManager(this.store);
+      // Register all migrations
+      for (const migration of ALL_MIGRATIONS) {
+        this.migrationManager.registerMigration(migration);
+      }
+      logger.info('Migration system initialized', {
+        totalMigrations: ALL_MIGRATIONS.length,
+      });
 
       // Initialize queue runner
       this.queueRunner = createQueueRunner(this.store, {
@@ -1200,6 +1212,42 @@ export class ProgramKernel {
     if (start > 0) context = '...' + context;
     if (end < text.length) context = context + '...';
     return context;
+  }
+
+  // ==========================================================================
+  // Migrations
+  // ==========================================================================
+
+  /**
+   * Get migration status
+   */
+  getMigrationStatus(): MigrationStatus {
+    this.ensureInitialized();
+    return this.migrationManager!.getStatus();
+  }
+
+  /**
+   * Run a specific migration
+   */
+  async runMigration(version: number): Promise<MigrationResult> {
+    this.ensureInitialized();
+    return this.migrationManager!.runMigration(version);
+  }
+
+  /**
+   * Run all pending migrations
+   */
+  async runAllPendingMigrations(): Promise<MigrationResult[]> {
+    this.ensureInitialized();
+    return this.migrationManager!.runAllPending();
+  }
+
+  /**
+   * Rollback a migration (if supported)
+   */
+  async rollbackMigration(version: number): Promise<MigrationResult> {
+    this.ensureInitialized();
+    return this.migrationManager!.rollbackMigration(version);
   }
 
   // ==========================================================================

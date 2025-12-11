@@ -29,7 +29,8 @@ export type LogModule =
   | 'CorrectionApplier'
   | 'CorrectionService'
   | 'MemoryService'
-  | 'DecayHandler';
+  | 'DecayHandler'
+  | 'Migration';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -67,6 +68,7 @@ const MODULE_COLORS: Record<LogModule, string> = {
   CorrectionService: '#FF9800',
   MemoryService: '#2196F3',
   DecayHandler: '#607D8B',
+  Migration: '#9E9E9E',
 };
 
 interface LogConfig {
