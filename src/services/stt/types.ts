@@ -70,4 +70,7 @@ export interface ISTTProvider {
   isConnected(): boolean;
   isRecording(): boolean;
   getProvider(): STTProvider;
+
+  // Wait for final transcript after stopRecording
+  waitForFinalTranscript?(timeoutMs?: number): Promise<string>;
 }

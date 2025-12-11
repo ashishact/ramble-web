@@ -37,6 +37,7 @@ export interface UseSTTReturn {
   disconnect: () => void;
   startRecording: () => Promise<void>;
   stopRecording: () => void;
+  stopRecordingAndWait: (timeoutMs?: number) => Promise<string>;
   sendAudio: (audioData: ArrayBuffer | Blob) => void;
   clearTranscript: () => void;
 }
@@ -115,6 +116,25 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
     setIsRecording(false);
   }, []);
 
+  const stopRecordingAndWait = useCallback(async (timeoutMs = 10000): Promise<string> => {
+    setIsRecording(false);
+    try {
+      const finalTranscript = await sttService.stopRecordingAndWait(timeoutMs);
+      // Update transcript state with final value
+      if (finalTranscript) {
+        setTranscript(finalTranscript);
+      }
+      return finalTranscript || transcript;
+    } catch (err) {
+      setError({
+        code: 'STOP_RECORDING_FAILED',
+        message: err instanceof Error ? err.message : 'Failed to stop recording',
+        provider: options.config.provider || 'groq-whisper',
+      });
+      return transcript;
+    }
+  }, [options.config.provider, transcript]);
+
   const sendAudio = useCallback((audioData: ArrayBuffer | Blob) => {
     try {
       sttService.sendAudio(audioData);
@@ -152,6 +172,7 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
     disconnect,
     startRecording,
     stopRecording,
+    stopRecordingAndWait,
     sendAudio,
     clearTranscript,
   };

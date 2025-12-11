@@ -147,6 +147,27 @@ export class STTService {
   }
 
   /**
+   * Stop recording and wait for final transcript
+   * Returns the final accumulated transcript after all pending audio is processed
+   */
+  async stopRecordingAndWait(timeoutMs = 10000): Promise<string> {
+    if (!this.provider) {
+      throw new Error('No provider connected');
+    }
+
+    this.provider.stopRecording();
+
+    // If provider supports waiting, use it
+    if (this.provider.waitForFinalTranscript) {
+      return this.provider.waitForFinalTranscript(timeoutMs);
+    }
+
+    // Fallback: just wait a bit for any pending transcriptions
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    return '';
+  }
+
+  /**
    * Send audio data for transcription
    * (Headless mode: external audio source)
    */

@@ -502,7 +502,7 @@ export function ProgramPage() {
     connect: connectSTT,
     disconnect: disconnectSTT,
     startRecording,
-    stopRecording,
+    stopRecordingAndWait,
     clearTranscript,
   } = useSTT({ config: sttConfig });
 
@@ -576,19 +576,21 @@ export function ProgramPage() {
   // Handle recording toggle
   const handleToggleRecording = useCallback(async () => {
     if (isRecording) {
-      stopRecording();
-      if (transcript.trim()) {
-        setIsProcessing(true);
-        try {
-          await processText(transcript.trim(), 'speech');
-        } catch (err) {
-          console.error('Failed to process voice text:', err);
-        } finally {
-          setIsProcessing(false);
+      setIsProcessing(true);
+      try {
+        // Wait for final transcript (handles last words being processed)
+        const finalTranscript = await stopRecordingAndWait(10000);
+
+        if (finalTranscript.trim()) {
+          await processText(finalTranscript.trim(), 'speech');
         }
+      } catch (err) {
+        console.error('Failed to process voice text:', err);
+      } finally {
+        setIsProcessing(false);
+        clearTranscript();
+        setCurrentTranscript('');
       }
-      clearTranscript();
-      setCurrentTranscript('');
     } else {
       const groqApiKey = settingsHelpers.getApiKey('groq');
       if (!groqApiKey) {
@@ -601,7 +603,7 @@ export function ProgramPage() {
       }
       await startRecording();
     }
-  }, [isRecording, transcript, sttConnected, connectSTT, startRecording, stopRecording, clearTranscript, navigate, processText]);
+  }, [isRecording, sttConnected, connectSTT, startRecording, stopRecordingAndWait, clearTranscript, navigate, processText]);
 
   // Handle text input submit
   const handleSubmit = useCallback(

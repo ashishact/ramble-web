@@ -124,6 +124,8 @@ export class GroqWhisperProvider implements ISTTProvider {
     }
   }
 
+  private stopResolvers: Array<() => void> = [];
+
   stopRecording(): void {
     console.log('[GroqWhisper] stopRecording called, recording:', this.recording);
 
@@ -152,6 +154,51 @@ export class GroqWhisperProvider implements ISTTProvider {
     });
 
     console.log('[GroqWhisper] stopRecording complete, ready for next recording');
+  }
+
+  /**
+   * Wait for all pending transcriptions to complete
+   * Returns the final accumulated transcript
+   */
+  async waitForFinalTranscript(timeoutMs = 10000): Promise<string> {
+    // If nothing is processing and no pending chunks, return immediately
+    if (!this.isProcessing && this.pendingChunks.length === 0) {
+      // Small delay to allow any in-flight transcription to complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+      return this.fullTranscript;
+    }
+
+    return new Promise((resolve) => {
+      const timeoutId = setTimeout(() => {
+        // Remove from resolvers
+        const idx = this.stopResolvers.indexOf(resolveHandler);
+        if (idx > -1) this.stopResolvers.splice(idx, 1);
+        resolve(this.fullTranscript); // Return what we have on timeout
+      }, timeoutMs);
+
+      const resolveHandler = () => {
+        clearTimeout(timeoutId);
+        resolve(this.fullTranscript);
+      };
+
+      this.stopResolvers.push(resolveHandler);
+
+      // Check periodically if processing is done
+      const checkInterval = setInterval(() => {
+        if (!this.isProcessing && this.pendingChunks.length === 0) {
+          clearInterval(checkInterval);
+          clearTimeout(timeoutId);
+          // Small additional delay for any callbacks to fire
+          setTimeout(() => {
+            const idx = this.stopResolvers.indexOf(resolveHandler);
+            if (idx > -1) {
+              this.stopResolvers.splice(idx, 1);
+              resolveHandler();
+            }
+          }, 300);
+        }
+      }, 100);
+    });
   }
 
   async sendAudio(audioData: ArrayBuffer | Blob): Promise<void> {
