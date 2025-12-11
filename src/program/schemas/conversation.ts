@@ -38,8 +38,11 @@ export const CreateConversationUnitSchema = ConversationUnitSchema.omit({
 });
 
 /**
- * Schema for updating a conversation unit (only processed flag can change)
+ * Schema for updating a conversation unit
+ * Note: raw_text and sanitized_text can be updated for corrections
  */
 export const UpdateConversationUnitSchema = z.object({
   processed: z.boolean().optional(),
+  raw_text: z.string().optional(),
+  sanitized_text: z.string().optional(),
 });

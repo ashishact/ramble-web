@@ -106,6 +106,27 @@ export type {
   CreatePattern,
   Value,
   CreateValue,
+
+  // Corrections
+  Correction,
+  CreateCorrection,
+  UpdateCorrection,
+
+  // Memory System
+  MemoryTier,
+  SalienceFactors,
+  TopOfMind,
+  SalientTopic,
+  SalientEntity,
+  SalientGoal,
+  SalientConcern,
+  SalientQuestion,
+  EmotionalHighlight,
+  MemoryStats,
+  DecayConfig,
+  DecayResult,
+  SalienceWeights,
+  MemoryServiceConfig,
 } from './types';
 
 // Chain Manager
@@ -188,8 +209,28 @@ export {
 // Store
 export { createProgramStore, type ProgramStoreInstance } from './store';
 
+// Corrections
+export {
+  CorrectionService,
+  createCorrectionService,
+  parseCorrections,
+  applyCorrections,
+  type ProcessTextResult,
+  type CorrectionServiceConfig,
+  type ParsedCorrection,
+  type CorrectionParseResult,
+  type ApplyResult,
+} from './corrections';
+
+// Memory Service
+export {
+  MemoryService,
+  createMemoryService,
+  createDecayHandler,
+} from './memory';
+
 // Utilities
 export { createLogger, type LogLevel } from './utils/logger';
 export { generateId } from './utils/id';
-export { now } from './utils/time';
+export { now, exponentialDecay, SALIENCE_HALFLIFE, HALF_LIFE } from './utils/time';
 export { estimateTokens } from './utils/tokens';

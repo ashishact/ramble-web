@@ -18,6 +18,8 @@ import { runExtractionPipeline, type PipelineInput, type PipelineOutput } from '
 import { ChainManager, createChainManager } from '../chains/chainManager';
 import { GoalManager, createGoalManager } from '../goals/goalManager';
 import { ObserverDispatcher, createStandardDispatcher } from '../observers';
+import { CorrectionService, createCorrectionService, type ProcessTextResult } from '../corrections';
+import { MemoryService, createMemoryService } from '../memory';
 import { createLogger } from '../utils/logger';
 import { now } from '../utils/time';
 
@@ -32,6 +34,9 @@ import type {
   ThoughtChain,
   Goal,
   ConversationSource,
+  TopOfMind,
+  MemoryStats,
+  DecayResult,
 } from '../types';
 
 const logger = createLogger('Kernel');
@@ -49,6 +54,12 @@ export interface KernelConfig {
   queuePollInterval: number;
   /** Enable debug logging */
   debug: boolean;
+  /** Enable auto-learning of corrections from user statements */
+  autoLearnCorrections: boolean;
+  /** Enable auto-applying corrections to text */
+  autoApplyCorrections: boolean;
+  /** Minimum confidence for learning corrections (0-1) */
+  correctionMinConfidence: number;
 }
 
 const DEFAULT_CONFIG: KernelConfig = {
@@ -56,6 +67,9 @@ const DEFAULT_CONFIG: KernelConfig = {
   maxConcurrentTasks: 3,
   queuePollInterval: 1000,
   debug: false,
+  autoLearnCorrections: true,
+  autoApplyCorrections: true,
+  correctionMinConfidence: 0.7,
 };
 
 // ============================================================================
@@ -85,6 +99,24 @@ interface ExtractFromUnitPayload {
   sessionId: string;
 }
 
+// Search & Replace types
+export interface SearchResult {
+  type: 'conversation' | 'claim' | 'entity' | 'goal' | 'chain';
+  id: string;
+  field: string;
+  value: string;
+  context: string;
+}
+
+export interface ReplaceResult {
+  conversationsUpdated: number;
+  claimsUpdated: number;
+  entitiesUpdated: number;
+  goalsUpdated: number;
+  chainsUpdated: number;
+  totalReplacements: number;
+}
+
 // ============================================================================
 // Kernel Implementation
 // ============================================================================
@@ -96,6 +128,9 @@ export class ProgramKernel {
   private chainManager: ChainManager | null = null;
   private goalManager: GoalManager | null = null;
   private dispatcher: ObserverDispatcher | null = null;
+  private correctionService: CorrectionService | null = null;
+  private memoryService: MemoryService | null = null;
+  private decayIntervalId: ReturnType<typeof setInterval> | null = null;
 
   private state: KernelState = {
     initialized: false,
@@ -143,6 +178,16 @@ export class ProgramKernel {
         autoRun: this.config.autoObservers,
       });
 
+      // Initialize correction service
+      this.correctionService = createCorrectionService(this.store.corrections, {
+        autoLearn: this.config.autoLearnCorrections,
+        autoApply: this.config.autoApplyCorrections,
+        minConfidence: this.config.correctionMinConfidence,
+      });
+
+      // Initialize memory service
+      this.memoryService = createMemoryService(this.store);
+
       // Initialize queue runner
       this.queueRunner = createQueueRunner(this.store, {
         maxConcurrent: this.config.maxConcurrentTasks,
@@ -151,6 +196,9 @@ export class ProgramKernel {
 
       // Register task handlers
       this.registerTaskHandlers();
+
+      // Schedule periodic decay (every hour)
+      this.schedulePeriodicDecay();
 
       // Check for active session
       this.state.activeSession = this.store.sessions.getActive();
@@ -179,6 +227,12 @@ export class ProgramKernel {
     if (!this.state.initialized) return;
 
     logger.info('Shutting down Program Kernel...');
+
+    // Stop periodic decay
+    if (this.decayIntervalId) {
+      clearInterval(this.decayIntervalId);
+      this.decayIntervalId = null;
+    }
 
     // Stop queue runner
     this.queueRunner?.stop();
@@ -271,14 +325,38 @@ export class ProgramKernel {
     rawText: string,
     source: ConversationSource,
     _metadata?: Record<string, unknown>
-  ): Promise<{ unit: ConversationUnit; taskId: string }> {
+  ): Promise<{ unit: ConversationUnit; taskId: string; correctionResult?: ProcessTextResult }> {
     logger.info('processText called', { textLength: rawText.length, source });
 
     this.ensureInitialized();
     this.ensureActiveSession();
 
-    // Sanitize text
-    const sanitizedText = this.sanitizeText(rawText);
+    // Basic sanitization first (trim, whitespace normalization)
+    const basicSanitized = this.sanitizeText(rawText);
+
+    // Only apply corrections to speech input (STT), not typed text
+    let sanitizedText = basicSanitized;
+    let correctionResult: ProcessTextResult | undefined;
+
+    if (source === 'speech') {
+      // Process through correction service (learns new corrections and applies stored ones)
+      correctionResult = this.correctionService!.processText(basicSanitized);
+      sanitizedText = correctionResult.correctedText;
+
+      if (correctionResult.learnedNewCorrections) {
+        logger.info('Learned new corrections', {
+          count: correctionResult.newCorrections.length,
+          corrections: correctionResult.newCorrections.map((c) => `${c.wrong_text} → ${c.correct_text}`),
+        });
+      }
+
+      if (correctionResult.appliedCorrections.length > 0) {
+        logger.info('Applied corrections to text', {
+          count: correctionResult.appliedCorrections.length,
+          changes: correctionResult.appliedCorrections.map((c) => `${c.originalWord} → ${c.replacedWith}`),
+        });
+      }
+    }
 
     // Create conversation unit
     const data: CreateConversationUnit = {
@@ -309,7 +387,7 @@ export class ProgramKernel {
 
     logger.info('Queued extraction for unit', { unitId: unit.id, taskId });
 
-    return { unit, taskId };
+    return { unit, taskId, correctionResult };
   }
 
   /**
@@ -340,7 +418,41 @@ export class ProgramKernel {
       }
     );
 
+    // Decay claims handler
+    this.queueRunner!.registerHandler<Record<string, never>, DecayResult>(
+      'decay_claims',
+      {
+        execute: async () => {
+          return this.memoryService!.runDecay();
+        },
+      }
+    );
+
     logger.debug('Registered task handlers');
+  }
+
+  /**
+   * Schedule periodic decay task
+   */
+  private schedulePeriodicDecay(): void {
+    const DECAY_INTERVAL = 60 * 60 * 1000; // 1 hour
+
+    // Run decay immediately on startup
+    setTimeout(() => {
+      if (this.state.initialized) {
+        this.memoryService?.runDecay();
+      }
+    }, 5000); // Wait 5 seconds after startup
+
+    // Schedule periodic decay
+    this.decayIntervalId = setInterval(() => {
+      if (this.state.initialized) {
+        this.memoryService?.runDecay();
+        logger.debug('Ran periodic decay');
+      }
+    }, DECAY_INTERVAL);
+
+    logger.debug('Scheduled periodic decay', { intervalMs: DECAY_INTERVAL });
   }
 
   /**
@@ -411,6 +523,10 @@ export class ProgramKernel {
         state: 'active',
         confirmation_count: 1,
         superseded_by: null,
+        // Memory system defaults
+        memory_tier: 'working',
+        salience: 0,
+        promoted_at: null,
       });
 
       // Link claim to conversation unit
@@ -669,6 +785,421 @@ export class ProgramKernel {
   addMilestone(goalId: string, description: string) {
     this.ensureInitialized();
     return this.goalManager!.addMilestone(goalId, description);
+  }
+
+  // ==========================================================================
+  // Correction Service API
+  // ==========================================================================
+
+  /**
+   * Get all corrections
+   */
+  getCorrections() {
+    this.ensureInitialized();
+    return this.correctionService!.getAllCorrections();
+  }
+
+  /**
+   * Get frequently used corrections
+   */
+  getFrequentCorrections(limit = 10) {
+    this.ensureInitialized();
+    return this.correctionService!.getFrequentCorrections(limit);
+  }
+
+  /**
+   * Manually add a correction
+   */
+  addCorrection(wrongText: string, correctText: string) {
+    this.ensureInitialized();
+    return this.correctionService!.addCorrection(wrongText, correctText);
+  }
+
+  /**
+   * Remove a correction
+   */
+  removeCorrection(id: string) {
+    this.ensureInitialized();
+    return this.correctionService!.removeCorrection(id);
+  }
+
+  /**
+   * Get the correction service (for advanced use)
+   */
+  getCorrectionService() {
+    this.ensureInitialized();
+    return this.correctionService!;
+  }
+
+  // ==========================================================================
+  // Memory Service API
+  // ==========================================================================
+
+  /**
+   * Get working memory claims (high salience, recently active)
+   */
+  getWorkingMemory(): Claim[] {
+    this.ensureInitialized();
+    return this.memoryService!.getWorkingMemory();
+  }
+
+  /**
+   * Get long-term memory claims (consolidated, stable)
+   */
+  getLongTermMemory(): Claim[] {
+    this.ensureInitialized();
+    return this.memoryService!.getLongTermMemory();
+  }
+
+  /**
+   * Get top-of-mind snapshot
+   */
+  getTopOfMind(): TopOfMind {
+    this.ensureInitialized();
+    return this.memoryService!.getTopOfMind();
+  }
+
+  /**
+   * Get memory statistics
+   */
+  getMemoryStats(): MemoryStats {
+    this.ensureInitialized();
+    return this.memoryService!.getStats();
+  }
+
+  /**
+   * Record access to a claim (boosts its salience temporarily)
+   */
+  recordMemoryAccess(claimId: string): void {
+    this.ensureInitialized();
+    this.memoryService!.recordAccess(claimId);
+  }
+
+  /**
+   * Manually promote a claim to long-term memory
+   */
+  promoteToLongTerm(claimId: string, reason?: string): boolean {
+    this.ensureInitialized();
+    return this.memoryService!.promoteToLongTerm(claimId, reason);
+  }
+
+  /**
+   * Manually run decay on all claims
+   */
+  runDecay(): DecayResult {
+    this.ensureInitialized();
+    return this.memoryService!.runDecay();
+  }
+
+  /**
+   * Update salience for all active claims
+   */
+  updateAllSalience(): void {
+    this.ensureInitialized();
+    this.memoryService!.updateAllSalience();
+  }
+
+  /**
+   * Get the memory service (for advanced use)
+   */
+  getMemoryService() {
+    this.ensureInitialized();
+    return this.memoryService!;
+  }
+
+  // ==========================================================================
+  // Global Search & Replace API
+  // ==========================================================================
+
+  /**
+   * Search for text across all stored data (fuzzy search)
+   */
+  searchText(query: string, options?: { caseSensitive?: boolean }): SearchResult[] {
+    this.ensureInitialized();
+    const results: SearchResult[] = [];
+    const searchLower = options?.caseSensitive ? query : query.toLowerCase();
+
+    // Search conversations (raw_text and sanitized_text)
+    const conversations = this.store!.conversations.getAll();
+    for (const conv of conversations) {
+      const rawLower = options?.caseSensitive ? conv.raw_text : conv.raw_text.toLowerCase();
+      const sanitizedLower = options?.caseSensitive ? conv.sanitized_text : conv.sanitized_text.toLowerCase();
+
+      if (rawLower.includes(searchLower)) {
+        results.push({
+          type: 'conversation',
+          id: conv.id,
+          field: 'raw_text',
+          value: conv.raw_text,
+          context: this.getContext(conv.raw_text, query, options?.caseSensitive),
+        });
+      }
+      if (sanitizedLower.includes(searchLower) && conv.sanitized_text !== conv.raw_text) {
+        results.push({
+          type: 'conversation',
+          id: conv.id,
+          field: 'sanitized_text',
+          value: conv.sanitized_text,
+          context: this.getContext(conv.sanitized_text, query, options?.caseSensitive),
+        });
+      }
+    }
+
+    // Search claims (statement and subject)
+    const claims = this.store!.claims.getAll();
+    for (const claim of claims) {
+      const stmtLower = options?.caseSensitive ? claim.statement : claim.statement.toLowerCase();
+      const subjLower = options?.caseSensitive ? claim.subject : claim.subject.toLowerCase();
+
+      if (stmtLower.includes(searchLower)) {
+        results.push({
+          type: 'claim',
+          id: claim.id,
+          field: 'statement',
+          value: claim.statement,
+          context: this.getContext(claim.statement, query, options?.caseSensitive),
+        });
+      }
+      if (subjLower.includes(searchLower)) {
+        results.push({
+          type: 'claim',
+          id: claim.id,
+          field: 'subject',
+          value: claim.subject,
+          context: claim.subject,
+        });
+      }
+    }
+
+    // Search entities (canonical_name and aliases)
+    const entities = this.store!.entities.getAll();
+    for (const entity of entities) {
+      const nameLower = options?.caseSensitive ? entity.canonical_name : entity.canonical_name.toLowerCase();
+
+      if (nameLower.includes(searchLower)) {
+        results.push({
+          type: 'entity',
+          id: entity.id,
+          field: 'canonical_name',
+          value: entity.canonical_name,
+          context: entity.canonical_name,
+        });
+      }
+      // Check aliases
+      if (entity.aliases) {
+        try {
+          const aliases = JSON.parse(entity.aliases) as string[];
+          for (const alias of aliases) {
+            const aliasLower = options?.caseSensitive ? alias : alias.toLowerCase();
+            if (aliasLower.includes(searchLower)) {
+              results.push({
+                type: 'entity',
+                id: entity.id,
+                field: 'aliases',
+                value: alias,
+                context: `Alias of ${entity.canonical_name}`,
+              });
+            }
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }
+
+    // Search goals (statement)
+    const goals = this.store!.goals.getAll();
+    for (const goal of goals) {
+      const stmtLower = options?.caseSensitive ? goal.statement : goal.statement.toLowerCase();
+
+      if (stmtLower.includes(searchLower)) {
+        results.push({
+          type: 'goal',
+          id: goal.id,
+          field: 'statement',
+          value: goal.statement,
+          context: this.getContext(goal.statement, query, options?.caseSensitive),
+        });
+      }
+    }
+
+    // Search chains (topic)
+    const chains = this.store!.chains.getAll();
+    for (const chain of chains) {
+      const topicLower = options?.caseSensitive ? chain.topic : chain.topic.toLowerCase();
+
+      if (topicLower.includes(searchLower)) {
+        results.push({
+          type: 'chain',
+          id: chain.id,
+          field: 'topic',
+          value: chain.topic,
+          context: chain.topic,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Replace text across all stored data
+   */
+  replaceText(
+    searchText: string,
+    replaceText: string,
+    options?: { caseSensitive?: boolean; addAsCorrection?: boolean }
+  ): ReplaceResult {
+    this.ensureInitialized();
+    const result: ReplaceResult = {
+      conversationsUpdated: 0,
+      claimsUpdated: 0,
+      entitiesUpdated: 0,
+      goalsUpdated: 0,
+      chainsUpdated: 0,
+      totalReplacements: 0,
+    };
+
+    const createRegex = () => new RegExp(
+      searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      options?.caseSensitive ? 'g' : 'gi'
+    );
+
+    // Replace in conversations
+    const conversations = this.store!.conversations.getAll();
+    for (const conv of conversations) {
+      const regex = createRegex();
+      if (regex.test(conv.raw_text)) {
+        const newRaw = conv.raw_text.replace(createRegex(), replaceText);
+        this.store!.conversations.update(conv.id, { raw_text: newRaw });
+        result.conversationsUpdated++;
+        result.totalReplacements += (conv.raw_text.match(createRegex()) || []).length;
+      }
+
+      const regex2 = createRegex();
+      if (regex2.test(conv.sanitized_text)) {
+        const newSanitized = conv.sanitized_text.replace(createRegex(), replaceText);
+        this.store!.conversations.update(conv.id, { sanitized_text: newSanitized });
+        if (!createRegex().test(conv.raw_text)) {
+          result.conversationsUpdated++;
+        }
+        result.totalReplacements += (conv.sanitized_text.match(createRegex()) || []).length;
+      }
+    }
+
+    // Replace in claims
+    const claims = this.store!.claims.getAll();
+    for (const claim of claims) {
+      let updated = false;
+      const updates: { statement?: string; subject?: string } = {};
+
+      const regex1 = createRegex();
+      if (regex1.test(claim.statement)) {
+        updates.statement = claim.statement.replace(createRegex(), replaceText);
+        result.totalReplacements += (claim.statement.match(createRegex()) || []).length;
+        updated = true;
+      }
+
+      const regex2 = createRegex();
+      if (regex2.test(claim.subject)) {
+        updates.subject = claim.subject.replace(createRegex(), replaceText);
+        result.totalReplacements += (claim.subject.match(createRegex()) || []).length;
+        updated = true;
+      }
+
+      if (updated) {
+        this.store!.claims.update(claim.id, updates);
+        result.claimsUpdated++;
+      }
+    }
+
+    // Replace in entities
+    const entities = this.store!.entities.getAll();
+    for (const entity of entities) {
+      let updated = false;
+      const updates: { canonical_name?: string; aliases?: string } = {};
+
+      const regex1 = createRegex();
+      if (regex1.test(entity.canonical_name)) {
+        updates.canonical_name = entity.canonical_name.replace(createRegex(), replaceText);
+        result.totalReplacements += (entity.canonical_name.match(createRegex()) || []).length;
+        updated = true;
+      }
+
+      if (entity.aliases) {
+        try {
+          const aliases = JSON.parse(entity.aliases) as string[];
+          const newAliases = aliases.map(alias => {
+            const regex = createRegex();
+            if (regex.test(alias)) {
+              result.totalReplacements += (alias.match(createRegex()) || []).length;
+              updated = true;
+              return alias.replace(createRegex(), replaceText);
+            }
+            return alias;
+          });
+          if (updated) {
+            updates.aliases = JSON.stringify(newAliases);
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      if (updated) {
+        this.store!.entities.update(entity.id, updates);
+        result.entitiesUpdated++;
+      }
+    }
+
+    // Replace in goals
+    const goals = this.store!.goals.getAll();
+    for (const goal of goals) {
+      const regex = createRegex();
+      if (regex.test(goal.statement)) {
+        const newStatement = goal.statement.replace(createRegex(), replaceText);
+        this.store!.goals.update(goal.id, { statement: newStatement });
+        result.goalsUpdated++;
+        result.totalReplacements += (goal.statement.match(createRegex()) || []).length;
+      }
+    }
+
+    // Replace in chains
+    const chains = this.store!.chains.getAll();
+    for (const chain of chains) {
+      const regex = createRegex();
+      if (regex.test(chain.topic)) {
+        const newTopic = chain.topic.replace(createRegex(), replaceText);
+        this.store!.chains.update(chain.id, { topic: newTopic });
+        result.chainsUpdated++;
+        result.totalReplacements += (chain.topic.match(createRegex()) || []).length;
+      }
+    }
+
+    // Optionally add as a correction for future STT
+    if (options?.addAsCorrection) {
+      this.correctionService!.addCorrection(searchText, replaceText);
+    }
+
+    logger.info('Global replace completed', result);
+    return result;
+  }
+
+  /**
+   * Get context snippet around a match
+   */
+  private getContext(text: string, query: string, caseSensitive?: boolean): string {
+    const lowerText = caseSensitive ? text : text.toLowerCase();
+    const lowerQuery = caseSensitive ? query : query.toLowerCase();
+    const index = lowerText.indexOf(lowerQuery);
+    if (index === -1) return text.slice(0, 60);
+
+    const start = Math.max(0, index - 20);
+    const end = Math.min(text.length, index + query.length + 20);
+    let context = text.slice(start, end);
+    if (start > 0) context = '...' + context;
+    if (end < text.length) context = context + '...';
+    return context;
   }
 
   // ==========================================================================

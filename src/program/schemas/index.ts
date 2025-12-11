@@ -36,3 +36,9 @@ export * from './synthesis';
 
 // Extraction Programs
 export * from './extractionProgram';
+
+// Corrections
+export * from './correction';
+
+// Memory System
+export * from './memory';

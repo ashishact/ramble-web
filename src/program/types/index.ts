@@ -112,6 +112,27 @@ import {
   ExtractionProgramSchema,
   CreateExtractionProgramSchema,
   UpdateExtractionProgramSchema,
+
+  // Corrections
+  CorrectionSchema,
+  CreateCorrectionSchema,
+  UpdateCorrectionSchema,
+
+  // Memory System
+  MemoryTierSchema,
+  SalienceFactorsSchema,
+  TopOfMindSchema,
+  SalientTopicSchema,
+  SalientEntitySchema,
+  SalientGoalSchema,
+  SalientConcernSchema,
+  SalientQuestionSchema,
+  EmotionalHighlightSchema,
+  MemoryStatsSchema,
+  DecayConfigSchema,
+  DecayResultSchema,
+  SalienceWeightsSchema,
+  MemoryServiceConfigSchema,
 } from '../schemas';
 
 // ============================================================================
@@ -254,3 +275,30 @@ export type UpdateSynthesisCache = z.infer<typeof UpdateSynthesisCacheSchema>;
 export type ExtractionProgram = z.infer<typeof ExtractionProgramSchema>;
 export type CreateExtractionProgram = z.infer<typeof CreateExtractionProgramSchema>;
 export type UpdateExtractionProgram = z.infer<typeof UpdateExtractionProgramSchema>;
+
+// ============================================================================
+// Correction Types
+// ============================================================================
+
+export type Correction = z.infer<typeof CorrectionSchema>;
+export type CreateCorrection = z.infer<typeof CreateCorrectionSchema>;
+export type UpdateCorrection = z.infer<typeof UpdateCorrectionSchema>;
+
+// ============================================================================
+// Memory System Types
+// ============================================================================
+
+export type MemoryTier = z.infer<typeof MemoryTierSchema>;
+export type SalienceFactors = z.infer<typeof SalienceFactorsSchema>;
+export type TopOfMind = z.infer<typeof TopOfMindSchema>;
+export type SalientTopic = z.infer<typeof SalientTopicSchema>;
+export type SalientEntity = z.infer<typeof SalientEntitySchema>;
+export type SalientGoal = z.infer<typeof SalientGoalSchema>;
+export type SalientConcern = z.infer<typeof SalientConcernSchema>;
+export type SalientQuestion = z.infer<typeof SalientQuestionSchema>;
+export type EmotionalHighlight = z.infer<typeof EmotionalHighlightSchema>;
+export type MemoryStats = z.infer<typeof MemoryStatsSchema>;
+export type DecayConfig = z.infer<typeof DecayConfigSchema>;
+export type DecayResult = z.infer<typeof DecayResultSchema>;
+export type SalienceWeights = z.infer<typeof SalienceWeightsSchema>;
+export type MemoryServiceConfig = z.infer<typeof MemoryServiceConfigSchema>;

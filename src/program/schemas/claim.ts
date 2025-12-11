@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { MemoryTierSchema } from './memory';
 
 /**
  * Claim type - categorizes the nature of the claim
@@ -102,6 +103,12 @@ export const ClaimSchema = z.object({
   superseded_by: z.string().nullable(),
   elaborates: z.string().nullable(), // Links to another claim this elaborates
   thought_chain_id: z.string().nullable(),
+
+  // Memory system fields
+  memory_tier: MemoryTierSchema,        // 'working' | 'long_term'
+  salience: z.number().min(0).max(1),   // Computed salience score
+  promoted_at: z.number().nullable(),   // When promoted to LTM
+  last_accessed: z.number(),            // When last viewed in UI (for salience boost)
 });
 
 /**
@@ -115,10 +122,17 @@ export const CreateClaimSchema = ClaimSchema.omit({
   state: true,
   current_confidence: true,
   superseded_by: true,
+  memory_tier: true,
+  salience: true,
+  promoted_at: true,
+  last_accessed: true,
 }).extend({
   state: ClaimStateSchema.default('active'),
   confirmation_count: z.number().int().nonnegative().default(1),
   superseded_by: z.string().nullable().default(null),
+  memory_tier: MemoryTierSchema.default('working'),
+  salience: z.number().min(0).max(1).default(0),
+  promoted_at: z.number().nullable().default(null),
 });
 
 /**

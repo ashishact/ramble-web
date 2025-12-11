@@ -20,6 +20,7 @@ import type {
   IExtensionStore,
   ISynthesisCacheStore,
   IExtractionProgramStore,
+  ICorrectionStore,
   SubscriptionCallback,
   Unsubscribe,
 } from '../interfaces/store';
@@ -76,6 +77,10 @@ import type {
   ExtractionProgram,
   CreateExtractionProgram,
   UpdateExtractionProgram,
+  Correction,
+  CreateCorrection,
+  UpdateCorrection,
+  MemoryTier,
 } from '../types';
 
 import { createLogger } from '../utils/logger';
@@ -139,6 +144,11 @@ function rowToClaim(id: string, row: Record<string, unknown>): Claim {
     superseded_by: (row.superseded_by as string) || null,
     elaborates: (row.elaborates as string) || null,
     thought_chain_id: (row.thought_chain_id as string) || null,
+    // Memory system fields
+    memory_tier: (row.memory_tier as MemoryTier) || 'working',
+    salience: (row.salience as number) || 0,
+    promoted_at: (row.promoted_at as number) || null,
+    last_accessed: (row.last_accessed as number) || row.created_at as number,
   };
 }
 
@@ -328,12 +338,26 @@ function rowToExtractionProgram(id: string, row: Record<string, unknown>): Extra
   };
 }
 
+function rowToCorrection(id: string, row: Record<string, unknown>): Correction {
+  return {
+    id,
+    wrong_text: row.wrong_text as string,
+    correct_text: row.correct_text as string,
+    original_case: row.original_case as string,
+    usage_count: row.usage_count as number,
+    created_at: row.created_at as number,
+    last_used: row.last_used as number,
+    source_unit_id: (row.source_unit_id as string) || null,
+  };
+}
+
 // ============================================================================
 // Store Implementation
 // ============================================================================
 
 export interface ProgramStoreInstance extends IProgramStore {
   tasks: ITaskStore;
+  corrections: ICorrectionStore;
   patterns: { getAll(): Pattern[] };
   getStore(): Store;
 }
@@ -609,6 +633,11 @@ export function createProgramStore(): ProgramStoreInstance {
         superseded_by: data.superseded_by ?? null,
         elaborates: data.elaborates,
         thought_chain_id: data.thought_chain_id,
+        // Memory system fields
+        memory_tier: data.memory_tier ?? 'working',
+        salience: data.salience ?? 0,
+        promoted_at: data.promoted_at ?? null,
+        last_accessed: timestamp,
       };
 
       store.setRow('claims', id, {
@@ -633,6 +662,11 @@ export function createProgramStore(): ProgramStoreInstance {
         superseded_by: claim.superseded_by ?? '',
         elaborates: claim.elaborates ?? '',
         thought_chain_id: claim.thought_chain_id ?? '',
+        // Memory system fields
+        memory_tier: claim.memory_tier,
+        salience: claim.salience,
+        promoted_at: claim.promoted_at ?? 0,
+        last_accessed: claim.last_accessed,
       });
 
       logger.debug('Created claim', { id, type: claim.claim_type });
@@ -754,6 +788,56 @@ export function createProgramStore(): ProgramStoreInstance {
         .filter(([, row]) => row.unit_id === unitId)
         .map(([id, row]) => rowToClaimSource(id, row));
     },
+
+    // Memory system methods
+    getByMemoryTier(tier: MemoryTier): Claim[] {
+      return claims.getAll().filter((c) => c.memory_tier === tier);
+    },
+
+    getDecayable(): Claim[] {
+      return claims.getAll().filter((c) => c.temporality !== 'eternal' && c.state === 'active');
+    },
+
+    updateSalience(id: string, salience: number): void {
+      const claim = claims.getById(id);
+      if (claim) {
+        claims.update(id, { salience: Math.max(0, Math.min(1, salience)) });
+      }
+    },
+
+    updateLastAccessed(id: string): void {
+      const claim = claims.getById(id);
+      if (claim) {
+        claims.update(id, { last_accessed: now() });
+      }
+    },
+
+    promoteToLongTerm(id: string): void {
+      const claim = claims.getById(id);
+      if (claim && claim.memory_tier === 'working') {
+        claims.update(id, {
+          memory_tier: 'long_term',
+          promoted_at: now(),
+        });
+        logger.info('Promoted claim to long-term memory', { id });
+      }
+    },
+
+    markStale(id: string): void {
+      const claim = claims.getById(id);
+      if (claim && claim.state === 'active') {
+        claims.update(id, { state: 'stale' });
+        logger.debug('Marked claim as stale', { id });
+      }
+    },
+
+    markDormant(id: string): void {
+      const claim = claims.getById(id);
+      if (claim && (claim.state === 'active' || claim.state === 'stale')) {
+        claims.update(id, { state: 'dormant' });
+        logger.debug('Marked claim as dormant', { id });
+      }
+    },
   };
 
   // --------------------------------------------------------------------------
@@ -775,9 +859,12 @@ export function createProgramStore(): ProgramStoreInstance {
     create(data: CreateEntity): Entity {
       const id = idGen.entity();
       const timestamp = now();
+      // Normalize canonical name: trim whitespace and use proper casing
+      const canonicalName = data.canonical_name.trim();
+
       const entity: Entity = {
         id,
-        canonical_name: data.canonical_name,
+        canonical_name: canonicalName,
         entity_type: data.entity_type,
         aliases: data.aliases,
         created_at: timestamp,
@@ -821,7 +908,8 @@ export function createProgramStore(): ProgramStoreInstance {
     },
 
     getByName(name: string): Entity | null {
-      return entities.getAll().find((e) => e.canonical_name === name) ?? null;
+      const normalizedName = name.trim().toLowerCase();
+      return entities.getAll().find((e) => e.canonical_name.trim().toLowerCase() === normalizedName) ?? null;
     },
 
     getByType(type: string): Entity[] {
@@ -829,10 +917,12 @@ export function createProgramStore(): ProgramStoreInstance {
     },
 
     findByAlias(alias: string): Entity | null {
+      const normalizedAlias = alias.trim().toLowerCase();
       return (
         entities.getAll().find((e) => {
-          const aliases = parseAliases(e.aliases);
-          return aliases.includes(alias) || e.canonical_name === alias;
+          const aliases = parseAliases(e.aliases).map(a => a.trim().toLowerCase());
+          const canonicalName = e.canonical_name.trim().toLowerCase();
+          return aliases.includes(normalizedAlias) || canonicalName === normalizedAlias;
         }) ?? null
       );
     },
@@ -846,6 +936,39 @@ export function createProgramStore(): ProgramStoreInstance {
 
     updateLastReferenced(id: string): void {
       entities.update(id, { last_referenced: now() });
+    },
+
+    mergeEntities(keepId: string, deleteId: string): Entity | null {
+      const keepEntity = entities.getById(keepId);
+      const deleteEntity = entities.getById(deleteId);
+
+      if (!keepEntity || !deleteEntity) {
+        logger.error('Cannot merge entities - one or both not found', { keepId, deleteId });
+        return null;
+      }
+
+      // Merge aliases
+      const keepAliases = parseAliases(keepEntity.aliases);
+      const deleteAliases = parseAliases(deleteEntity.aliases);
+      const mergedAliases = [...new Set([...keepAliases, ...deleteAliases, deleteEntity.canonical_name])];
+
+      // Update the entity we're keeping
+      entities.update(keepId, {
+        aliases: JSON.stringify(mergedAliases),
+        mention_count: keepEntity.mention_count + deleteEntity.mention_count,
+        last_referenced: Math.max(keepEntity.last_referenced, deleteEntity.last_referenced),
+      });
+
+      // Delete the duplicate entity
+      entities.delete(deleteId);
+
+      logger.info('Merged entities', {
+        kept: { id: keepId, name: keepEntity.canonical_name },
+        deleted: { id: deleteId, name: deleteEntity.canonical_name },
+        newMentionCount: keepEntity.mention_count + deleteEntity.mention_count,
+      });
+
+      return entities.getById(keepId);
     },
 
     subscribe(callback: SubscriptionCallback<Entity>): Unsubscribe {
@@ -1776,6 +1899,108 @@ export function createProgramStore(): ProgramStoreInstance {
     },
   };
 
+  // --------------------------------------------------------------------------
+  // Corrections Store
+  // --------------------------------------------------------------------------
+  const correctionListeners = new Set<SubscriptionCallback<Correction>>();
+  const notifyCorrectionListeners = () => {
+    const items = corrections.getAll();
+    correctionListeners.forEach((l) => l(items));
+  };
+
+  const corrections: ICorrectionStore = {
+    getById(id: string): Correction | null {
+      const row = store.getRow('corrections', id);
+      if (!row || Object.keys(row).length === 0) return null;
+      return rowToCorrection(id, row);
+    },
+
+    getAll(): Correction[] {
+      const table = store.getTable('corrections');
+      if (!table) return [];
+      return Object.entries(table).map(([id, row]) => rowToCorrection(id, row));
+    },
+
+    create(data: CreateCorrection): Correction {
+      const id = idGen.correction();
+      const timestamp = now();
+      const correction: Correction = {
+        id,
+        wrong_text: data.wrong_text.toLowerCase(), // Normalize to lowercase
+        correct_text: data.correct_text,
+        original_case: data.original_case,
+        usage_count: data.usage_count ?? 0,
+        created_at: timestamp,
+        last_used: timestamp,
+        source_unit_id: data.source_unit_id ?? null,
+      };
+
+      store.setRow('corrections', id, {
+        wrong_text: correction.wrong_text,
+        correct_text: correction.correct_text,
+        original_case: correction.original_case,
+        usage_count: correction.usage_count,
+        created_at: correction.created_at,
+        last_used: correction.last_used,
+        source_unit_id: correction.source_unit_id ?? '',
+      });
+
+      logger.debug('Created correction', { id, wrong: correction.wrong_text, correct: correction.correct_text });
+      return correction;
+    },
+
+    update(id: string, data: UpdateCorrection): Correction | null {
+      const existing = corrections.getById(id);
+      if (!existing) return null;
+
+      const row = store.getRow('corrections', id);
+      for (const [key, value] of Object.entries(data)) {
+        if (value !== undefined) {
+          const storeValue = value === null ? (typeof row[key] === 'number' ? 0 : '') : value;
+          store.setCell('corrections', id, key, storeValue);
+        }
+      }
+
+      return corrections.getById(id);
+    },
+
+    delete(id: string): boolean {
+      const existing = corrections.getById(id);
+      if (!existing) return false;
+      store.delRow('corrections', id);
+      return true;
+    },
+
+    getByWrongText(wrongText: string): Correction | null {
+      const normalized = wrongText.toLowerCase();
+      return corrections.getAll().find((c) => c.wrong_text === normalized) ?? null;
+    },
+
+    getFrequentlyUsed(limit: number): Correction[] {
+      return corrections
+        .getAll()
+        .sort((a, b) => b.usage_count - a.usage_count)
+        .slice(0, limit);
+    },
+
+    incrementUsageCount(id: string): void {
+      const correction = corrections.getById(id);
+      if (correction) {
+        corrections.update(id, { usage_count: correction.usage_count + 1, last_used: now() });
+      }
+    },
+
+    updateLastUsed(id: string): void {
+      corrections.update(id, { last_used: now() });
+    },
+
+    subscribe(callback: SubscriptionCallback<Correction>): Unsubscribe {
+      correctionListeners.add(callback);
+      if (isInitialized) callback(corrections.getAll());
+      return () => correctionListeners.delete(callback);
+    },
+  };
+
   // Helper for patterns (needed by observers)
   const patterns = {
     getAll: () => observerOutputs.getPatterns(),
@@ -1796,6 +2021,7 @@ export function createProgramStore(): ProgramStoreInstance {
     extensions,
     synthesisCache,
     extractionPrograms,
+    corrections,
     patterns,
 
     async initialize(): Promise<void> {
@@ -1833,6 +2059,7 @@ export function createProgramStore(): ProgramStoreInstance {
         store.addTableListener('extensions', notifyExtensionListeners);
         store.addTableListener('synthesis_cache', notifySynthesisCacheListeners);
         store.addTableListener('extraction_programs', notifyExtractionProgramListeners);
+        store.addTableListener('corrections', notifyCorrectionListeners);
 
         isInitialized = true;
         logger.info('Program store initialized with IndexedDB');

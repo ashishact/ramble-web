@@ -24,7 +24,12 @@ export type LogModule =
   | 'GoalObserver'
   | 'NarrativeObserver'
   | 'RelationshipObserver'
-  | 'ConsolidationObserver';
+  | 'ConsolidationObserver'
+  | 'CorrectionParser'
+  | 'CorrectionApplier'
+  | 'CorrectionService'
+  | 'MemoryService'
+  | 'DecayHandler';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -57,6 +62,11 @@ const MODULE_COLORS: Record<LogModule, string> = {
   NarrativeObserver: '#9C27B0',
   RelationshipObserver: '#00BCD4',
   ConsolidationObserver: '#607D8B',
+  CorrectionParser: '#FF9800',
+  CorrectionApplier: '#FF9800',
+  CorrectionService: '#FF9800',
+  MemoryService: '#2196F3',
+  DecayHandler: '#607D8B',
 };
 
 interface LogConfig {

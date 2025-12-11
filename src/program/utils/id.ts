@@ -40,6 +40,7 @@ export const ID_PREFIX = {
   EXTENSION: 'ex',
   SYNTHESIS_CACHE: 'sc',
   EXTRACTION_PROGRAM: 'ep',
+  CORRECTION: 'cr',
 } as const;
 
 /**
@@ -64,4 +65,5 @@ export const id = {
   extension: () => generatePrefixedId(ID_PREFIX.EXTENSION),
   synthesisCache: () => generatePrefixedId(ID_PREFIX.SYNTHESIS_CACHE),
   extractionProgram: () => generatePrefixedId(ID_PREFIX.EXTRACTION_PROGRAM),
+  correction: () => generatePrefixedId(ID_PREFIX.CORRECTION),
 };

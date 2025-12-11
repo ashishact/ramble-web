@@ -52,6 +52,10 @@ import type {
   ExtractionProgram,
   CreateExtractionProgram,
   UpdateExtractionProgram,
+  Correction,
+  CreateCorrection,
+  UpdateCorrection,
+  MemoryTier,
 } from '../types';
 
 // ============================================================================
@@ -123,6 +127,15 @@ export interface IClaimStore extends IBaseStore<Claim, CreateClaim, UpdateClaim>
   addSource(data: CreateClaimSource): ClaimSource;
   getSourcesForClaim(claimId: string): ClaimSource[];
   getSourcesForUnit(unitId: string): ClaimSource[];
+
+  // Memory system methods
+  getByMemoryTier(tier: MemoryTier): Claim[];
+  getDecayable(): Claim[]; // All non-eternal claims
+  updateSalience(id: string, salience: number): void;
+  updateLastAccessed(id: string): void;
+  promoteToLongTerm(id: string): void;
+  markStale(id: string): void;
+  markDormant(id: string): void;
 }
 
 // ============================================================================
@@ -135,6 +148,7 @@ export interface IEntityStore extends IBaseStore<Entity, CreateEntity, UpdateEnt
   findByAlias(alias: string): Entity | null;
   incrementMentionCount(id: string): void;
   updateLastReferenced(id: string): void;
+  mergeEntities(keepId: string, deleteId: string): Entity | null;
   subscribe(callback: SubscriptionCallback<Entity>): Unsubscribe;
 }
 
@@ -249,6 +263,19 @@ export interface IExtractionProgramStore
 }
 
 // ============================================================================
+// Correction Store
+// ============================================================================
+
+export interface ICorrectionStore
+  extends IBaseStore<Correction, CreateCorrection, UpdateCorrection> {
+  getByWrongText(wrongText: string): Correction | null;
+  getFrequentlyUsed(limit: number): Correction[];
+  incrementUsageCount(id: string): void;
+  updateLastUsed(id: string): void;
+  subscribe(callback: SubscriptionCallback<Correction>): Unsubscribe;
+}
+
+// ============================================================================
 // Combined Store Interface
 // ============================================================================
 
@@ -266,6 +293,7 @@ export interface IProgramStore {
   extensions: IExtensionStore;
   synthesisCache: ISynthesisCacheStore;
   extractionPrograms: IExtractionProgramStore;
+  corrections: ICorrectionStore;
 
   /**
    * Initialize the store (load from IndexedDB)

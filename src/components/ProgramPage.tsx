@@ -1,8 +1,7 @@
 /**
  * Program Page - Main UI for the RAMBLE System
  *
- * Displays claims, thought chains, goals, entities, patterns, and contradictions.
- * Includes voice recorder similar to ObserverPage.
+ * Enhanced UI with tabbed panels, detailed views, and better usability.
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -11,6 +10,8 @@ import { useProgram } from '../program/hooks';
 import { settingsHelpers } from '../stores/settingsStore';
 import { useSTT } from '../services/stt/useSTT';
 import type { STTConfig } from '../services/stt/types';
+import type { Claim, Entity, Goal, ThoughtChain, Pattern, Contradiction, Correction } from '../program';
+import { MemoryTab } from './program/MemoryTab';
 
 // ============================================================================
 // Live Relative Time Component
@@ -25,27 +26,9 @@ function formatRelativeTime(timestamp: number): string {
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
 
-  if (days > 0) {
-    const remainingHours = hours % 24;
-    if (remainingHours > 0) {
-      return `${days}d ${remainingHours}h ago`;
-    }
-    return `${days}d ago`;
-  }
-
-  if (hours > 0) {
-    const remainingMinutes = minutes % 60;
-    if (remainingMinutes > 0) {
-      return `${hours}h ${remainingMinutes}m ago`;
-    }
-    return `${hours}h ago`;
-  }
-
-  if (minutes > 0) {
-    const remainingSeconds = seconds % 60;
-    return `${minutes}m ${remainingSeconds}s ago`;
-  }
-
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  if (minutes > 0) return `${minutes}m ago`;
   return `${seconds}s ago`;
 }
 
@@ -53,10 +36,7 @@ function LiveRelativeTime({ timestamp }: { timestamp: number }) {
   const [, setTick] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTick((t) => t + 1);
-    }, 1000);
-
+    const interval = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -66,7 +46,7 @@ function LiveRelativeTime({ timestamp }: { timestamp: number }) {
 }
 
 // ============================================================================
-// Claim Type Colors
+// Color Maps
 // ============================================================================
 
 const CLAIM_TYPE_COLORS: Record<string, string> = {
@@ -91,10 +71,6 @@ const CLAIM_TYPE_COLORS: Record<string, string> = {
   self_perception: 'badge-accent',
 };
 
-// ============================================================================
-// Stakes Colors
-// ============================================================================
-
 const STAKES_COLORS: Record<string, string> = {
   low: 'badge-ghost',
   medium: 'badge-info',
@@ -102,9 +78,321 @@ const STAKES_COLORS: Record<string, string> = {
   existential: 'badge-error',
 };
 
+const ENTITY_TYPE_ICONS: Record<string, string> = {
+  person: '👤',
+  organization: '🏢',
+  product: '📦',
+  place: '📍',
+  project: '📁',
+  role: '🎭',
+  event: '📅',
+  concept: '💡',
+};
+
 // ============================================================================
-// Page Component
+// Sub-Components
 // ============================================================================
+
+function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div
+      className={`p-3 bg-base-200 rounded-lg hover:bg-base-300 transition-all cursor-pointer ${
+        isLatest ? 'ring-2 ring-primary/30' : ''
+      }`}
+      onClick={() => setExpanded(!expanded)}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1">
+          <p className="text-sm font-medium leading-relaxed">{claim.statement}</p>
+          <div className="flex flex-wrap gap-1 mt-2">
+            <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claim.claim_type] || 'badge-ghost'}`}>
+              {claim.claim_type.replace('_', ' ')}
+            </span>
+            <span className={`badge badge-xs ${STAKES_COLORS[claim.stakes] || 'badge-ghost'}`}>
+              {claim.stakes}
+            </span>
+            <span className="badge badge-xs badge-outline">{claim.subject}</span>
+          </div>
+        </div>
+        <div className="text-right flex flex-col items-end gap-1">
+          {isLatest ? (
+            <LiveRelativeTime timestamp={claim.created_at} />
+          ) : (
+            <span className="text-xs opacity-50">{formatRelativeTime(claim.created_at)}</span>
+          )}
+          <span className="text-xs opacity-50">{Math.round(claim.current_confidence * 100)}%</span>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-base-300 text-xs space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <span className="opacity-50">Temporality:</span>{' '}
+              <span className="font-medium">{claim.temporality.replace('_', ' ')}</span>
+            </div>
+            <div>
+              <span className="opacity-50">Source:</span>{' '}
+              <span className="font-medium">{claim.source_type}</span>
+            </div>
+            <div>
+              <span className="opacity-50">Abstraction:</span>{' '}
+              <span className="font-medium">{claim.abstraction}</span>
+            </div>
+            <div>
+              <span className="opacity-50">State:</span>{' '}
+              <span className="font-medium">{claim.state}</span>
+            </div>
+          </div>
+          {(claim.emotional_valence !== 0 || claim.emotional_intensity > 0) && (
+            <div className="flex gap-4">
+              <div>
+                <span className="opacity-50">Valence:</span>{' '}
+                <span className={claim.emotional_valence > 0 ? 'text-success' : claim.emotional_valence < 0 ? 'text-error' : ''}>
+                  {claim.emotional_valence > 0 ? '+' : ''}{claim.emotional_valence.toFixed(2)}
+                </span>
+              </div>
+              <div>
+                <span className="opacity-50">Intensity:</span>{' '}
+                <span className={claim.emotional_intensity > 0.7 ? 'text-warning font-bold' : ''}>
+                  {Math.round(claim.emotional_intensity * 100)}%
+                </span>
+              </div>
+            </div>
+          )}
+          {claim.confirmation_count > 0 && (
+            <div>
+              <span className="opacity-50">Confirmed:</span>{' '}
+              <span className="font-medium">{claim.confirmation_count}x</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EntityCard({ entity }: { entity: Entity }) {
+  return (
+    <div className="p-2 bg-base-200 rounded-lg hover:bg-base-300 transition-colors">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">{ENTITY_TYPE_ICONS[entity.entity_type] || '❓'}</span>
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-sm truncate">{entity.canonical_name}</div>
+          <div className="text-xs opacity-50">{entity.entity_type}</div>
+        </div>
+        <div className="badge badge-sm badge-primary">{entity.mention_count}x</div>
+      </div>
+    </div>
+  );
+}
+
+function GoalCard({ goal }: { goal: Goal }) {
+  const statusColors: Record<string, string> = {
+    active: 'text-success',
+    achieved: 'text-primary',
+    blocked: 'text-error',
+    abandoned: 'text-base-content/50',
+    deferred: 'text-warning',
+  };
+
+  return (
+    <div className="p-3 bg-base-200 rounded-lg">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <span className="text-sm font-medium flex-1">{goal.statement}</span>
+        <span className={`text-xs font-bold uppercase ${statusColors[goal.status] || ''}`}>
+          {goal.status}
+        </span>
+      </div>
+      <progress
+        className={`progress w-full h-2 ${
+          goal.status === 'achieved' ? 'progress-success' :
+          goal.status === 'blocked' ? 'progress-error' :
+          'progress-primary'
+        }`}
+        value={goal.progress_value}
+        max="100"
+      />
+      <div className="flex justify-between items-center mt-1 text-xs opacity-60">
+        <span>{goal.progress_value}% complete</span>
+        <span className="badge badge-xs badge-ghost">{goal.timeframe}</span>
+      </div>
+      {goal.goal_type && (
+        <div className="mt-2 text-xs opacity-50">
+          Type: {goal.goal_type} | Priority: {goal.priority}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChainCard({ chain }: { chain: ThoughtChain }) {
+  return (
+    <div className="p-3 bg-base-200 rounded-lg">
+      <div className="flex items-center justify-between mb-1">
+        <span className="font-medium text-sm">{chain.topic}</span>
+        <span className={`badge badge-xs ${
+          chain.state === 'active' ? 'badge-success' :
+          chain.state === 'dormant' ? 'badge-warning' : 'badge-ghost'
+        }`}>
+          {chain.state}
+        </span>
+      </div>
+      <div className="text-xs opacity-60">
+        Last active: {formatRelativeTime(chain.last_extended)}
+      </div>
+    </div>
+  );
+}
+
+function PatternCard({ pattern }: { pattern: Pattern }) {
+  return (
+    <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
+      <div className="text-sm font-medium">{pattern.description}</div>
+      <div className="flex flex-wrap gap-2 mt-2">
+        <span className="badge badge-xs badge-primary">{pattern.pattern_type}</span>
+        <span className="badge badge-xs badge-outline">{pattern.occurrence_count} occurrences</span>
+        <span className="badge badge-xs">{Math.round(pattern.confidence * 100)}% confidence</span>
+      </div>
+    </div>
+  );
+}
+
+function ContradictionCard({
+  contradiction,
+  claimA,
+  claimB
+}: {
+  contradiction: Contradiction;
+  claimA: Claim | null;
+  claimB: Claim | null;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div
+      className={`p-3 rounded-lg border cursor-pointer transition-all ${
+        contradiction.resolved
+          ? 'bg-success/10 border-success/20 hover:bg-success/15'
+          : 'bg-error/10 border-error/20 hover:bg-error/15'
+      }`}
+      onClick={() => setExpanded(!expanded)}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{contradiction.resolved ? '✓' : '⚠️'}</span>
+          <span className="text-sm font-medium capitalize">
+            {contradiction.contradiction_type.replace('_', ' ')} contradiction
+          </span>
+        </div>
+        <span className={`badge badge-xs ${contradiction.resolved ? 'badge-success' : 'badge-error'}`}>
+          {contradiction.resolved ? 'Resolved' : 'Unresolved'}
+        </span>
+      </div>
+
+      {/* Show the two conflicting claims */}
+      <div className="space-y-2 mb-2">
+        <div className="bg-base-100/50 rounded p-2">
+          <div className="text-xs opacity-50 mb-1">Claim A:</div>
+          <p className="text-sm">
+            {claimA ? claimA.statement : <span className="opacity-50 italic">Claim not found</span>}
+          </p>
+          {claimA && (
+            <div className="flex gap-1 mt-1">
+              <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claimA.claim_type] || 'badge-ghost'}`}>
+                {claimA.claim_type.replace('_', ' ')}
+              </span>
+              <span className="badge badge-xs badge-outline">{claimA.subject}</span>
+            </div>
+          )}
+        </div>
+        <div className="flex justify-center">
+          <span className="text-error text-xs font-bold">VS</span>
+        </div>
+        <div className="bg-base-100/50 rounded p-2">
+          <div className="text-xs opacity-50 mb-1">Claim B:</div>
+          <p className="text-sm">
+            {claimB ? claimB.statement : <span className="opacity-50 italic">Claim not found</span>}
+          </p>
+          {claimB && (
+            <div className="flex gap-1 mt-1">
+              <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claimB.claim_type] || 'badge-ghost'}`}>
+                {claimB.claim_type.replace('_', ' ')}
+              </span>
+              <span className="badge badge-xs badge-outline">{claimB.subject}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Expanded details */}
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-base-300/50 text-xs space-y-2">
+          <div className="flex justify-between">
+            <span className="opacity-50">Detected:</span>
+            <span>{formatRelativeTime(contradiction.detected_at)}</span>
+          </div>
+          {contradiction.resolved && contradiction.resolved_at && (
+            <div className="flex justify-between">
+              <span className="opacity-50">Resolved:</span>
+              <span>{formatRelativeTime(contradiction.resolved_at)}</span>
+            </div>
+          )}
+          {contradiction.resolution_type && (
+            <div className="flex justify-between">
+              <span className="opacity-50">Resolution type:</span>
+              <span className="font-medium">{contradiction.resolution_type}</span>
+            </div>
+          )}
+          {contradiction.resolution_notes && (
+            <div>
+              <span className="opacity-50">Notes:</span>
+              <p className="mt-1 bg-base-100/50 p-2 rounded">{contradiction.resolution_notes}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="text-xs text-center opacity-40 mt-2">
+        {expanded ? '▲ Click to collapse' : '▼ Click for details'}
+      </div>
+    </div>
+  );
+}
+
+function CorrectionCard({ correction, onRemove }: { correction: Correction; onRemove: (id: string) => void }) {
+  return (
+    <div className="p-3 bg-base-200 rounded-lg flex items-center justify-between gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-error line-through opacity-70">{correction.wrong_text}</span>
+          <span className="text-base-content/50">→</span>
+          <span className="text-success font-medium">{correction.correct_text}</span>
+        </div>
+        <div className="flex gap-2 mt-1 text-xs opacity-50">
+          <span>Used {correction.usage_count}x</span>
+          <span>•</span>
+          <span>Added {formatRelativeTime(correction.created_at)}</span>
+        </div>
+      </div>
+      <button
+        className="btn btn-ghost btn-xs btn-square text-error"
+        onClick={() => onRemove(correction.id)}
+        title="Remove correction"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+// ============================================================================
+// Main Page Component
+// ============================================================================
+
+type TabType = 'claims' | 'entities' | 'goals' | 'chains' | 'patterns' | 'corrections' | 'insights' | 'memory';
 
 export function ProgramPage() {
   const navigate = useNavigate();
@@ -115,6 +403,27 @@ export function ProgramPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentTranscript, setCurrentTranscript] = useState('');
   const [selectedClaimType, setSelectedClaimType] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('claims');
+  const [showConversations, setShowConversations] = useState(true);
+  const [showRawText, setShowRawText] = useState(true); // Toggle between raw and sanitized text
+  const [searchQuery, setSearchQuery] = useState('');
+  const [replaceQuery, setReplaceQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Array<{
+    type: string;
+    id: string;
+    field: string;
+    value: string;
+    context: string;
+  }>>([]);
+  const [replaceResult, setReplaceResult] = useState<{
+    conversationsUpdated: number;
+    claimsUpdated: number;
+    entitiesUpdated: number;
+    goalsUpdated: number;
+    chainsUpdated: number;
+    totalReplacements: number;
+  } | null>(null);
+  const [addAsCorrection, setAddAsCorrection] = useState(true);
 
   const {
     isInitialized,
@@ -129,10 +438,20 @@ export function ProgramPage() {
     contradictions,
     conversations,
     tasks,
+    corrections,
     queueStatus,
+    workingMemory,
+    longTermMemory,
+    topOfMind,
+    memoryStats,
     startSession,
     endSession,
     processText,
+    addCorrection,
+    removeCorrection,
+    searchText,
+    replaceText,
+    recordMemoryAccess,
     refresh,
   } = useProgram();
 
@@ -173,15 +492,13 @@ export function ProgramPage() {
   // Auto-scroll claims container
   useEffect(() => {
     if (claims.length > 0 && claimsContainerRef.current) {
-      const container = claimsContainerRef.current;
-      container.scrollTo({ top: 0, behavior: 'smooth' });
+      claimsContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [claims.length]);
 
   // Connect STT on mount
   useEffect(() => {
     let mounted = true;
-
     const initSTT = async () => {
       const groqApiKey = settingsHelpers.getApiKey('groq');
       if (groqApiKey && mounted) {
@@ -192,9 +509,7 @@ export function ProgramPage() {
         }
       }
     };
-
     initSTT();
-
     return () => {
       mounted = false;
       disconnectSTT();
@@ -206,7 +521,6 @@ export function ProgramPage() {
   const handleToggleRecording = useCallback(async () => {
     if (isRecording) {
       stopRecording();
-      // Save the transcript as text when recording stops
       if (transcript.trim()) {
         setIsProcessing(true);
         try {
@@ -217,7 +531,6 @@ export function ProgramPage() {
           setIsProcessing(false);
         }
       }
-      // Clear transcript after processing so next recording starts fresh
       clearTranscript();
       setCurrentTranscript('');
     } else {
@@ -227,30 +540,18 @@ export function ProgramPage() {
         navigate('/settings');
         return;
       }
-
       if (!sttConnected) {
         await connectSTT();
       }
       await startRecording();
     }
-  }, [
-    isRecording,
-    transcript,
-    sttConnected,
-    connectSTT,
-    startRecording,
-    stopRecording,
-    clearTranscript,
-    navigate,
-    processText,
-  ]);
+  }, [isRecording, transcript, sttConnected, connectSTT, startRecording, stopRecording, clearTranscript, navigate, processText]);
 
   // Handle text input submit
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!inputText.trim() || isProcessing) return;
-
       setIsProcessing(true);
       try {
         await processText(inputText.trim(), 'text');
@@ -278,6 +579,17 @@ export function ProgramPage() {
     }
     return counts;
   }, [claims]);
+
+  // Stats summary
+  const stats = useMemo(() => ({
+    totalClaims: claims.length,
+    activeGoals: goals.filter(g => g.status === 'active').length,
+    achievedGoals: goals.filter(g => g.status === 'achieved').length,
+    activeChains: chains.filter(c => c.state === 'active').length,
+    unresolvedContradictions: contradictions.filter(c => !c.resolved).length,
+    highStakesClaims: claims.filter(c => c.stakes === 'high' || c.stakes === 'existential').length,
+    emotionalClaims: claims.filter(c => Math.abs(c.emotional_valence) > 0.5).length,
+  }), [claims, goals, chains, contradictions]);
 
   // Loading state
   if (isInitializing) {
@@ -309,66 +621,61 @@ export function ProgramPage() {
   return (
     <div className="h-screen bg-base-300 flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="navbar bg-base-100 border-b border-base-300 px-4 min-h-0 h-14">
-        <div className="flex-1">
+      <header className="navbar bg-base-100 border-b border-base-300 px-4 min-h-0 h-14 shrink-0">
+        <div className="flex-1 gap-2">
           <h1 className="text-xl font-bold">RAMBLE</h1>
-          <span className="text-xs text-base-content/50 ml-2 hidden sm:inline">
-            Reasoning Architecture for Memory-Based Learning and Extraction
-          </span>
+          <div className="hidden md:flex gap-1">
+            {queueStatus.isRunning ? (
+              <span className="badge badge-success badge-xs gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
+                Queue
+              </span>
+            ) : (
+              <span className="badge badge-warning badge-xs">Queue Paused</span>
+            )}
+            {queueStatus.pendingTasks > 0 && (
+              <span className="badge badge-info badge-xs">{queueStatus.pendingTasks} pending</span>
+            )}
+            {queueStatus.failedTasks > 0 && (
+              <span className="badge badge-error badge-xs">{queueStatus.failedTasks} failed</span>
+            )}
+          </div>
         </div>
-        <div className="flex-none gap-2">
-          {state?.activeSession && (
-            <div className="badge badge-success badge-sm gap-1">
-              <span className="w-2 h-2 rounded-full bg-success animate-pulse"></span>
-              Session Active
-            </div>
-          )}
+        <div className="flex-none gap-1">
           {isProcessing && (
-            <div className="badge badge-info badge-sm gap-1">
-              <span className="loading loading-spinner loading-xs"></span>
-              Processing
-            </div>
+            <span className="loading loading-spinner loading-sm text-primary"></span>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={refresh}>
-            Refresh
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
-            Back
+          <button className="btn btn-ghost btn-sm btn-square" onClick={refresh} title="Refresh">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
           </button>
           <button className="btn btn-ghost btn-sm" onClick={() => navigate('/settings')}>
             Settings
           </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
+            Home
+          </button>
         </div>
       </header>
 
-      {/* Input Bar (top) */}
-      <div className="bg-base-100 border-b border-base-300 p-4">
-        <div className="flex gap-2 items-center max-w-4xl mx-auto">
+      {/* Input Bar */}
+      <div className="bg-base-100 border-b border-base-300 p-3 shrink-0">
+        <div className="flex gap-2 items-center max-w-5xl mx-auto">
           <button
-            className={`btn ${isRecording ? 'btn-error animate-pulse' : 'btn-primary'} gap-2`}
+            className={`btn btn-sm ${isRecording ? 'btn-error animate-pulse' : 'btn-primary'} gap-1`}
             onClick={handleToggleRecording}
             disabled={isProcessing}
           >
             {isRecording ? (
               <>
-                <span className="w-3 h-3 rounded-full bg-white"></span>
+                <span className="w-2 h-2 rounded-full bg-white"></span>
                 Stop
               </>
             ) : (
               <>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-                  />
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                 </svg>
                 Record
               </>
@@ -378,526 +685,685 @@ export function ProgramPage() {
             <input
               ref={inputRef}
               type="text"
-              className="input input-bordered flex-1"
-              placeholder="Type something to analyze..."
+              className="input input-bordered input-sm flex-1"
+              placeholder="Share your thoughts..."
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               disabled={isProcessing}
             />
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={!inputText.trim() || isProcessing}
-            >
-              {isProcessing ? (
-                <span className="loading loading-spinner loading-sm"></span>
-              ) : (
-                'Send'
-              )}
+            <button type="submit" className="btn btn-primary btn-sm" disabled={!inputText.trim() || isProcessing}>
+              {isProcessing ? <span className="loading loading-spinner loading-xs"></span> : 'Send'}
             </button>
           </form>
         </div>
         {(currentTranscript || isRecording) && (
-          <div className="mt-2 max-w-4xl mx-auto">
+          <div className="mt-2 max-w-5xl mx-auto">
             <div className="bg-base-200 p-2 rounded text-sm flex items-center gap-2">
-              {isRecording && (
-                <span className="loading loading-dots loading-xs text-error"></span>
-              )}
-              <span className="opacity-70">
-                {currentTranscript || 'Listening...'}
-              </span>
+              {isRecording && <span className="loading loading-dots loading-xs text-error"></span>}
+              <span className="opacity-70 italic">{currentTranscript || 'Listening...'}</span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-          {/* Conversations Panel */}
-          <div className="card bg-base-100 shadow-sm xl:col-span-2">
-            <div className="card-body p-4">
-              <div className="flex justify-between items-center">
-                <h2 className="card-title text-sm font-bold uppercase opacity-70">
-                  Conversation ({conversations.length})
-                </h2>
-                <div className="flex gap-2 items-center">
-                  {queueStatus.isRunning ? (
-                    <span className="badge badge-success badge-sm">Queue Running</span>
-                  ) : (
-                    <span className="badge badge-warning badge-sm">Queue Stopped</span>
-                  )}
-                  {queueStatus.pendingTasks > 0 && (
-                    <span className="badge badge-info badge-sm">
-                      {queueStatus.pendingTasks} pending
-                    </span>
-                  )}
-                  {queueStatus.activeTasks > 0 && (
-                    <span className="badge badge-primary badge-sm">
-                      {queueStatus.activeTasks} active
-                    </span>
-                  )}
-                  {queueStatus.failedTasks > 0 && (
-                    <span className="badge badge-error badge-sm">
-                      {queueStatus.failedTasks} failed
-                    </span>
-                  )}
+      {/* Main Content Area */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Panel - Conversations */}
+        {showConversations && (
+          <div className="w-80 border-r border-base-300 bg-base-100 flex flex-col shrink-0">
+            <div className="p-3 border-b border-base-300 flex justify-between items-center">
+              <h2 className="font-bold text-sm">Conversation</h2>
+              <div className="flex items-center gap-1">
+                {/* Raw/Processed Toggle */}
+                <div className="join">
+                  <button
+                    className={`join-item btn btn-xs ${showRawText ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setShowRawText(true)}
+                    title="Show raw transcript"
+                  >
+                    Raw
+                  </button>
+                  <button
+                    className={`join-item btn btn-xs ${!showRawText ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setShowRawText(false)}
+                    title="Show sanitized/processed text"
+                  >
+                    Clean
+                  </button>
                 </div>
-              </div>
-              <div className="overflow-y-auto max-h-48 space-y-2">
-                {conversations.length === 0 ? (
-                  <p className="text-base-content/50 text-sm text-center py-4">
-                    No conversation yet. Start speaking or typing.
-                  </p>
-                ) : (
-                  conversations
-                    .slice()
-                    .reverse()
-                    .map((conv) => (
-                      <div
-                        key={conv.id}
-                        className={`p-3 rounded-lg ${
-                          conv.processed ? 'bg-base-200' : 'bg-warning/10 border border-warning/30'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start gap-2">
-                          <div className="flex-1">
-                            <p className="text-sm">{conv.raw_text}</p>
-                            <div className="flex gap-2 mt-1 text-xs text-base-content/50">
-                              <span className="badge badge-xs badge-ghost">{conv.source}</span>
-                              <span>
-                                {conv.processed ? (
-                                  <span className="text-success">✓ processed</span>
-                                ) : (
-                                  <span className="text-warning">⏳ processing</span>
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                          <span className="text-xs opacity-50 whitespace-nowrap">
-                            {new Date(conv.timestamp).toLocaleTimeString()}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                )}
+                <button
+                  className="btn btn-ghost btn-xs"
+                  onClick={() => setShowConversations(false)}
+                >
+                  ✕
+                </button>
               </div>
             </div>
-          </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-2">
+              {conversations.length === 0 ? (
+                <p className="text-center text-sm opacity-50 py-8">
+                  No conversation yet.<br />Start speaking or typing.
+                </p>
+              ) : (
+                conversations.slice().reverse().map((conv) => {
+                  const displayText = showRawText ? conv.raw_text : conv.sanitized_text;
+                  const hasChanges = conv.raw_text !== conv.sanitized_text;
 
-          {/* Statistics Card */}
-          <div className="card bg-base-100 shadow-sm">
-            <div className="card-body p-4">
-              <h2 className="card-title text-sm font-bold uppercase opacity-70">Overview</h2>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="stat bg-base-200 rounded-lg p-3">
-                  <div className="stat-title text-xs">Claims</div>
-                  <div className="stat-value text-2xl">{claims.length}</div>
-                </div>
-                <div className="stat bg-base-200 rounded-lg p-3">
-                  <div className="stat-title text-xs">Chains</div>
-                  <div className="stat-value text-2xl">{chains.length}</div>
-                </div>
-                <div className="stat bg-base-200 rounded-lg p-3">
-                  <div className="stat-title text-xs">Goals</div>
-                  <div className="stat-value text-2xl">{goals.length}</div>
-                </div>
-                <div className="stat bg-base-200 rounded-lg p-3">
-                  <div className="stat-title text-xs">Entities</div>
-                  <div className="stat-value text-2xl">{entities.length}</div>
-                </div>
-                <div className="stat bg-base-200 rounded-lg p-3">
-                  <div className="stat-title text-xs">Patterns</div>
-                  <div className="stat-value text-2xl">{patterns.length}</div>
-                </div>
-                <div className="stat bg-base-200 rounded-lg p-3">
-                  <div className="stat-title text-xs">Contradictions</div>
-                  <div className="stat-value text-2xl">{contradictions.length}</div>
-                </div>
-              </div>
-              {/* Task Debug Info */}
-              {tasks.length > 0 && (
-                <div className="mt-2 text-xs">
-                  <div className="font-bold opacity-70 mb-1">Recent Tasks:</div>
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {tasks.slice(-5).reverse().map((task) => (
-                      <div key={task.id} className="flex justify-between bg-base-200 p-1 rounded">
-                        <span className="truncate flex-1">{task.task_type}</span>
-                        <span className={`badge badge-xs ${
-                          task.status === 'completed' ? 'badge-success' :
-                          task.status === 'processing' ? 'badge-primary' :
-                          task.status === 'failed' ? 'badge-error' :
-                          'badge-ghost'
-                        }`}>
-                          {task.status}
-                        </span>
+                  return (
+                    <div
+                      key={conv.id}
+                      className={`p-2 rounded-lg text-sm ${
+                        conv.processed ? 'bg-base-200' : 'bg-warning/10 border border-warning/30'
+                      }`}
+                    >
+                      <p className="leading-relaxed">{displayText}</p>
+                      {/* Show diff indicator when there are changes */}
+                      {hasChanges && (
+                        <div className="mt-1 text-xs">
+                          {showRawText ? (
+                            <span className="text-info opacity-70">📝 Has sanitized version</span>
+                          ) : (
+                            <span className="text-success opacity-70">✨ Cleaned from raw</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center mt-1 text-xs opacity-50">
+                        <div className="flex gap-1 items-center">
+                          <span className={`w-1.5 h-1.5 rounded-full ${conv.source === 'speech' ? 'bg-primary' : 'bg-secondary'}`}></span>
+                          <span>{conv.source}</span>
+                          {!conv.processed && <span className="text-warning">processing...</span>}
+                        </div>
+                        <span>{new Date(conv.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
-                    ))}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Right Panel - Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Stats Bar */}
+          <div className="bg-base-100 border-b border-base-300 p-2 flex gap-4 overflow-x-auto shrink-0">
+            {!showConversations && (
+              <button
+                className="btn btn-ghost btn-xs"
+                onClick={() => setShowConversations(true)}
+              >
+                ☰ Conv
+              </button>
+            )}
+            <div className="flex gap-3 text-xs">
+              <div className="flex items-center gap-1">
+                <span className="font-bold text-lg">{stats.totalClaims}</span>
+                <span className="opacity-50">claims</span>
+              </div>
+              <div className="divider divider-horizontal m-0"></div>
+              <div className="flex items-center gap-1">
+                <span className="font-bold text-lg text-success">{stats.activeGoals}</span>
+                <span className="opacity-50">active goals</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="font-bold text-lg">{entities.length}</span>
+                <span className="opacity-50">entities</span>
+              </div>
+              {stats.unresolvedContradictions > 0 && (
+                <>
+                  <div className="divider divider-horizontal m-0"></div>
+                  <div className="flex items-center gap-1 text-error">
+                    <span className="font-bold text-lg">{stats.unresolvedContradictions}</span>
+                    <span className="opacity-70">contradictions</span>
                   </div>
+                </>
+              )}
+              {stats.highStakesClaims > 0 && (
+                <div className="flex items-center gap-1 text-warning">
+                  <span className="font-bold">{stats.highStakesClaims}</span>
+                  <span className="opacity-70">high stakes</span>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Claim Types Filter */}
-          <div className="card bg-base-100 shadow-sm xl:col-span-2">
-            <div className="card-body p-4">
-              <h2 className="card-title text-sm font-bold uppercase opacity-70">
-                Claim Types
-              </h2>
-              <div className="flex flex-wrap gap-1">
-                <button
-                  className={`badge badge-lg cursor-pointer ${
-                    !selectedClaimType ? 'badge-primary' : 'badge-ghost'
-                  }`}
-                  onClick={() => setSelectedClaimType(null)}
-                >
-                  All ({claims.length})
-                </button>
-                {Object.entries(claimTypeCounts)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([type, count]) => (
-                    <button
-                      key={type}
-                      className={`badge badge-lg cursor-pointer ${
-                        selectedClaimType === type
-                          ? CLAIM_TYPE_COLORS[type] || 'badge-primary'
-                          : 'badge-ghost'
-                      }`}
-                      onClick={() =>
-                        setSelectedClaimType(selectedClaimType === type ? null : type)
-                      }
-                    >
-                      {type.replace('_', ' ')} ({count})
-                    </button>
-                  ))}
-              </div>
-            </div>
+          {/* Tabs */}
+          <div className="tabs tabs-boxed bg-base-200 m-2 mb-0 shrink-0">
+            <button
+              className={`tab tab-sm ${activeTab === 'memory' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('memory')}
+            >
+              Memory
+            </button>
+            <button
+              className={`tab tab-sm ${activeTab === 'claims' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('claims')}
+            >
+              Claims ({claims.length})
+            </button>
+            <button
+              className={`tab tab-sm ${activeTab === 'entities' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('entities')}
+            >
+              Entities ({entities.length})
+            </button>
+            <button
+              className={`tab tab-sm ${activeTab === 'goals' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('goals')}
+            >
+              Goals ({goals.length})
+            </button>
+            <button
+              className={`tab tab-sm ${activeTab === 'chains' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('chains')}
+            >
+              Chains ({chains.length})
+            </button>
+            <button
+              className={`tab tab-sm ${activeTab === 'patterns' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('patterns')}
+            >
+              Patterns ({patterns.length})
+            </button>
+            <button
+              className={`tab tab-sm ${activeTab === 'corrections' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('corrections')}
+            >
+              Corrections ({corrections.length})
+            </button>
+            <button
+              className={`tab tab-sm ${activeTab === 'insights' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('insights')}
+            >
+              Insights
+            </button>
           </div>
 
-          {/* Claims List */}
-          <div className="card bg-base-100 shadow-sm xl:col-span-2 lg:row-span-2">
-            <div className="card-body p-4">
-              <div className="flex justify-between items-center">
-                <h2 className="card-title text-sm font-bold uppercase opacity-70">
-                  Claims ({filteredClaims.length})
-                </h2>
-                {isProcessing && (
-                  <div className="flex items-center gap-2 text-info">
-                    <span className="loading loading-spinner loading-xs"></span>
-                    <span className="text-xs">Extracting...</span>
+          {/* Tab Content */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {/* Memory Tab */}
+            {activeTab === 'memory' && (
+              <MemoryTab
+                workingMemory={workingMemory}
+                longTermMemory={longTermMemory}
+                topOfMind={topOfMind}
+                memoryStats={memoryStats}
+                onRecordAccess={recordMemoryAccess}
+              />
+            )}
+
+            {/* Claims Tab */}
+            {activeTab === 'claims' && (
+              <div className="space-y-4">
+                {/* Claim Type Filter */}
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    className={`badge badge-sm cursor-pointer ${!selectedClaimType ? 'badge-primary' : 'badge-ghost'}`}
+                    onClick={() => setSelectedClaimType(null)}
+                  >
+                    All ({claims.length})
+                  </button>
+                  {Object.entries(claimTypeCounts)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([type, count]) => (
+                      <button
+                        key={type}
+                        className={`badge badge-sm cursor-pointer ${
+                          selectedClaimType === type ? CLAIM_TYPE_COLORS[type] || 'badge-primary' : 'badge-ghost'
+                        }`}
+                        onClick={() => setSelectedClaimType(selectedClaimType === type ? null : type)}
+                      >
+                        {type.replace('_', ' ')} ({count})
+                      </button>
+                    ))}
+                </div>
+
+                {/* Claims List */}
+                <div ref={claimsContainerRef} className="space-y-2">
+                  {filteredClaims.length === 0 ? (
+                    <div className="text-center py-12 opacity-50">
+                      <div className="text-4xl mb-2">💭</div>
+                      <p>{claims.length === 0 ? 'No claims yet. Start sharing your thoughts!' : 'No claims match this filter.'}</p>
+                    </div>
+                  ) : (
+                    filteredClaims.slice().reverse().map((claim, i) => (
+                      <ClaimCard key={claim.id} claim={claim} isLatest={i === 0} />
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Entities Tab */}
+            {activeTab === 'entities' && (
+              <div className="space-y-4">
+                {entities.length === 0 ? (
+                  <div className="text-center py-12 opacity-50">
+                    <div className="text-4xl mb-2">👥</div>
+                    <p>No entities detected yet.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {entities
+                      .slice()
+                      .sort((a, b) => b.mention_count - a.mention_count)
+                      .map((entity) => (
+                        <EntityCard key={entity.id} entity={entity} />
+                      ))}
                   </div>
                 )}
               </div>
-              <div
-                ref={claimsContainerRef}
-                className="overflow-y-auto max-h-[500px] space-y-2"
-              >
-                {filteredClaims.length === 0 ? (
-                  <p className="text-base-content/50 text-sm text-center py-8">
-                    {claims.length === 0
-                      ? 'No claims yet. Record or type something above to start.'
-                      : 'No claims matching this filter.'}
-                  </p>
-                ) : (
-                  filteredClaims
-                    .slice()
-                    .reverse()
-                    .map((claim, index) => {
-                      const isLast = index === 0;
-                      return (
-                        <div
-                          key={claim.id}
-                          className="p-3 bg-base-200 rounded-lg hover:bg-base-300 transition-colors"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1">
-                              <p className="text-sm font-medium">{claim.statement}</p>
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                <span
-                                  className={`badge badge-xs ${
-                                    CLAIM_TYPE_COLORS[claim.claim_type] || 'badge-ghost'
-                                  }`}
-                                >
-                                  {claim.claim_type.replace('_', ' ')}
-                                </span>
-                                <span className="badge badge-xs badge-outline">
-                                  {claim.subject}
-                                </span>
-                                <span
-                                  className={`badge badge-xs ${
-                                    STAKES_COLORS[claim.stakes] || 'badge-ghost'
-                                  }`}
-                                >
-                                  {claim.stakes} stakes
-                                </span>
-                                <span className="badge badge-xs badge-ghost">
-                                  {Math.round(claim.current_confidence * 100)}% conf
-                                </span>
-                                {claim.emotional_valence !== 0 && (
-                                  <span
-                                    className={`badge badge-xs ${
-                                      claim.emotional_valence > 0
-                                        ? 'badge-success'
-                                        : 'badge-error'
-                                    }`}
-                                  >
-                                    {claim.emotional_valence > 0 ? '+' : ''}
-                                    {claim.emotional_valence.toFixed(1)} val
-                                  </span>
-                                )}
-                                {claim.emotional_intensity > 0.5 && (
-                                  <span className="badge badge-xs badge-warning">
-                                    {Math.round(claim.emotional_intensity * 100)}% intense
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            {isLast ? (
-                              <LiveRelativeTime timestamp={claim.created_at} />
-                            ) : (
-                              <span className="text-xs opacity-50">
-                                {formatRelativeTime(claim.created_at)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
-                )}
-              </div>
-            </div>
-          </div>
+            )}
 
-          {/* Thought Chains */}
-          <div className="card bg-base-100 shadow-sm">
-            <div className="card-body p-4">
-              <h2 className="card-title text-sm font-bold uppercase opacity-70">
-                Thought Chains ({chains.length})
-              </h2>
-              <div className="overflow-y-auto max-h-64 space-y-2">
-                {chains.length === 0 ? (
-                  <p className="text-base-content/50 text-sm text-center py-4">
-                    No chains yet.
-                  </p>
-                ) : (
-                  chains.map((chain) => (
-                    <div key={chain.id} className="p-3 bg-base-200 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm">{chain.topic}</span>
-                        <span
-                          className={`badge badge-xs ${
-                            chain.state === 'active'
-                              ? 'badge-success'
-                              : chain.state === 'dormant'
-                              ? 'badge-warning'
-                              : 'badge-ghost'
-                          }`}
-                        >
-                          {chain.state}
-                        </span>
-                      </div>
-                      <div className="text-xs text-base-content/50 mt-1">
-                        Last active: {formatRelativeTime(chain.last_extended)}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Goals */}
-          <div className="card bg-base-100 shadow-sm">
-            <div className="card-body p-4">
-              <h2 className="card-title text-sm font-bold uppercase opacity-70">
-                Goals ({goals.length})
-              </h2>
-              <div className="overflow-y-auto max-h-64 space-y-2">
+            {/* Goals Tab */}
+            {activeTab === 'goals' && (
+              <div className="space-y-4">
                 {goals.length === 0 ? (
-                  <p className="text-base-content/50 text-sm text-center py-4">
-                    No goals detected yet.
-                  </p>
+                  <div className="text-center py-12 opacity-50">
+                    <div className="text-4xl mb-2">🎯</div>
+                    <p>No goals detected yet.</p>
+                  </div>
                 ) : (
-                  goals.map((goal) => (
-                    <div key={goal.id} className="p-3 bg-base-200 rounded-lg">
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-sm flex-1">{goal.statement}</span>
-                        <span
-                          className={`badge badge-xs ${
-                            goal.status === 'active'
-                              ? 'badge-success'
-                              : goal.status === 'achieved'
-                              ? 'badge-primary'
-                              : goal.status === 'blocked'
-                              ? 'badge-error'
-                              : 'badge-ghost'
-                          }`}
-                        >
-                          {goal.status}
-                        </span>
-                      </div>
-                      <div className="mt-2">
-                        <progress
-                          className="progress progress-primary w-full h-2"
-                          value={goal.progress_value}
-                          max="100"
-                        ></progress>
-                        <div className="flex justify-between text-xs text-base-content/50 mt-1">
-                          <span>{goal.progress_value}%</span>
-                          <span className="badge badge-xs badge-ghost">{goal.timeframe}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {goals.map((goal) => (
+                      <GoalCard key={goal.id} goal={goal} />
+                    ))}
+                  </div>
                 )}
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Entities */}
-          <div className="card bg-base-100 shadow-sm">
-            <div className="card-body p-4">
-              <h2 className="card-title text-sm font-bold uppercase opacity-70">
-                Entities ({entities.length})
-              </h2>
-              <div className="overflow-y-auto max-h-64 space-y-1">
-                {entities.length === 0 ? (
-                  <p className="text-base-content/50 text-sm text-center py-4">
-                    No entities detected yet.
-                  </p>
+            {/* Chains Tab */}
+            {activeTab === 'chains' && (
+              <div className="space-y-4">
+                {chains.length === 0 ? (
+                  <div className="text-center py-12 opacity-50">
+                    <div className="text-4xl mb-2">🔗</div>
+                    <p>No thought chains formed yet.</p>
+                  </div>
                 ) : (
-                  entities
-                    .slice()
-                    .sort((a, b) => b.mention_count - a.mention_count)
-                    .map((entity) => (
-                      <div
-                        key={entity.id}
-                        className="flex justify-between items-center p-2 bg-base-200 rounded"
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {chains.map((chain) => (
+                      <ChainCard key={chain.id} chain={chain} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Patterns Tab */}
+            {activeTab === 'patterns' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Patterns */}
+                  <div>
+                    <h3 className="font-bold text-sm uppercase opacity-70 mb-3">Detected Patterns</h3>
+                    {patterns.length === 0 ? (
+                      <div className="text-center py-8 opacity-50">
+                        <div className="text-3xl mb-2">🔍</div>
+                        <p className="text-sm">No patterns detected yet.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {patterns.map((pattern) => (
+                          <PatternCard key={pattern.id} pattern={pattern} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Contradictions */}
+                  <div>
+                    <h3 className="font-bold text-sm uppercase opacity-70 mb-3">Contradictions</h3>
+                    {contradictions.length === 0 ? (
+                      <div className="text-center py-8 opacity-50">
+                        <div className="text-3xl mb-2">✓</div>
+                        <p className="text-sm">No contradictions detected.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {contradictions.map((c) => {
+                          const claimA = claims.find(cl => cl.id === c.claim_a_id) || null;
+                          const claimB = claims.find(cl => cl.id === c.claim_b_id) || null;
+                          return (
+                            <ContradictionCard
+                              key={c.id}
+                              contradiction={c}
+                              claimA={claimA}
+                              claimB={claimB}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Corrections Tab */}
+            {activeTab === 'corrections' && (
+              <div className="space-y-4">
+                {/* Global Search & Replace */}
+                <div className="bg-warning/10 border border-warning/30 rounded-lg p-4">
+                  <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
+                    <span>🔍</span> Global Search & Replace
+                  </h3>
+                  <p className="text-xs opacity-70 mb-3">
+                    Search and replace text across all conversations, claims, entities, goals, and chains.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <label className="label label-text text-xs py-0">Find text</label>
+                        <input
+                          type="text"
+                          className="input input-bordered input-sm w-full"
+                          placeholder="Text to find..."
+                          value={searchQuery}
+                          onChange={(e) => {
+                            setSearchQuery(e.target.value);
+                            setReplaceResult(null);
+                            if (e.target.value.trim().length >= 2) {
+                              setSearchResults(searchText(e.target.value.trim()));
+                            } else {
+                              setSearchResults([]);
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="text-base-content/50 pb-2">→</div>
+                      <div className="flex-1">
+                        <label className="label label-text text-xs py-0">Replace with</label>
+                        <input
+                          type="text"
+                          className="input input-bordered input-sm w-full"
+                          placeholder="Replacement text..."
+                          value={replaceQuery}
+                          onChange={(e) => {
+                            setReplaceQuery(e.target.value);
+                            setReplaceResult(null);
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <label className="label cursor-pointer gap-2">
+                        <input
+                          type="checkbox"
+                          className="checkbox checkbox-sm checkbox-primary"
+                          checked={addAsCorrection}
+                          onChange={(e) => setAddAsCorrection(e.target.checked)}
+                        />
+                        <span className="label-text text-xs">Also add as future STT correction</span>
+                      </label>
+                      <button
+                        className="btn btn-warning btn-sm"
+                        disabled={!searchQuery.trim() || !replaceQuery.trim() || searchResults.length === 0}
+                        onClick={() => {
+                          if (searchQuery.trim() && replaceQuery.trim()) {
+                            const result = replaceText(searchQuery.trim(), replaceQuery.trim(), {
+                              addAsCorrection,
+                            });
+                            setReplaceResult(result);
+                            setSearchResults([]);
+                            setSearchQuery('');
+                            setReplaceQuery('');
+                          }
+                        }}
                       >
-                        <span className="text-sm">
-                          <span className="badge badge-xs badge-ghost mr-2">
-                            {entity.entity_type}
-                          </span>
-                          {entity.canonical_name}
-                        </span>
-                        <span className="badge badge-sm">{entity.mention_count}x</span>
-                      </div>
-                    ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Patterns */}
-          <div className="card bg-base-100 shadow-sm">
-            <div className="card-body p-4">
-              <h2 className="card-title text-sm font-bold uppercase opacity-70">
-                Detected Patterns ({patterns.length})
-              </h2>
-              <div className="overflow-y-auto max-h-64 space-y-2">
-                {patterns.length === 0 ? (
-                  <p className="text-base-content/50 text-sm text-center py-4">
-                    No patterns detected yet.
-                  </p>
-                ) : (
-                  patterns.map((pattern) => (
-                    <div key={pattern.id} className="p-3 bg-base-200 rounded-lg">
-                      <div className="text-sm">{pattern.description}</div>
-                      <div className="flex gap-2 mt-2">
-                        <span className="badge badge-xs badge-ghost">
-                          {pattern.pattern_type}
-                        </span>
-                        <span className="badge badge-xs badge-outline">
-                          {pattern.occurrence_count}x
-                        </span>
-                        <span className="badge badge-xs">
-                          {Math.round(pattern.confidence * 100)}%
-                        </span>
-                      </div>
+                        Replace All ({searchResults.length} matches)
+                      </button>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+                  </div>
 
-          {/* Contradictions */}
-          <div className="card bg-base-100 shadow-sm">
-            <div className="card-body p-4">
-              <h2 className="card-title text-sm font-bold uppercase opacity-70">
-                Contradictions ({contradictions.length})
-              </h2>
-              <div className="overflow-y-auto max-h-64 space-y-2">
-                {contradictions.length === 0 ? (
-                  <p className="text-base-content/50 text-sm text-center py-4">
-                    No contradictions detected.
-                  </p>
-                ) : (
-                  contradictions.map((contradiction) => (
-                    <div
-                      key={contradiction.id}
-                      className="p-3 bg-error/10 rounded-lg border border-error/20"
-                    >
-                      <div className="text-sm">
-                        <span className="font-medium">
-                          {contradiction.contradiction_type}
-                        </span>{' '}
-                        contradiction
+                  {/* Search Results Preview */}
+                  {searchResults.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-warning/30">
+                      <div className="text-xs font-bold opacity-70 mb-2">
+                        Found {searchResults.length} matches:
                       </div>
-                      {contradiction.resolution_notes && (
-                        <p className="text-xs text-base-content/70 mt-1">
-                          {contradiction.resolution_notes}
-                        </p>
-                      )}
-                      <div className="flex gap-2 mt-2">
-                        <span
-                          className={`badge badge-xs ${
-                            contradiction.resolved ? 'badge-success' : 'badge-warning'
-                          }`}
-                        >
-                          {contradiction.resolved ? 'Resolved' : 'Unresolved'}
-                        </span>
-                        {contradiction.resolution_type && (
-                          <span className="badge badge-xs badge-ghost">
-                            {contradiction.resolution_type}
-                          </span>
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {searchResults.slice(0, 20).map((result, i) => (
+                          <div key={`${result.id}-${result.field}-${i}`} className="flex items-center gap-2 text-xs bg-base-100 p-2 rounded">
+                            <span className={`badge badge-xs ${
+                              result.type === 'conversation' ? 'badge-info' :
+                              result.type === 'claim' ? 'badge-primary' :
+                              result.type === 'entity' ? 'badge-success' :
+                              result.type === 'goal' ? 'badge-warning' : 'badge-secondary'
+                            }`}>
+                              {result.type}
+                            </span>
+                            <span className="opacity-50">{result.field}:</span>
+                            <span className="flex-1 truncate font-mono">{result.context}</span>
+                          </div>
+                        ))}
+                        {searchResults.length > 20 && (
+                          <div className="text-xs text-center opacity-50">
+                            ... and {searchResults.length - 20} more
+                          </div>
                         )}
                       </div>
                     </div>
-                  ))
+                  )}
+
+                  {/* Replace Result */}
+                  {replaceResult && (
+                    <div className="mt-3 pt-3 border-t border-success/30 bg-success/10 -m-4 p-4 rounded-b-lg">
+                      <div className="text-xs font-bold text-success mb-2">
+                        ✓ Replaced {replaceResult.totalReplacements} occurrences
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        {replaceResult.conversationsUpdated > 0 && (
+                          <span className="badge badge-xs badge-info">{replaceResult.conversationsUpdated} conversations</span>
+                        )}
+                        {replaceResult.claimsUpdated > 0 && (
+                          <span className="badge badge-xs badge-primary">{replaceResult.claimsUpdated} claims</span>
+                        )}
+                        {replaceResult.entitiesUpdated > 0 && (
+                          <span className="badge badge-xs badge-success">{replaceResult.entitiesUpdated} entities</span>
+                        )}
+                        {replaceResult.goalsUpdated > 0 && (
+                          <span className="badge badge-xs badge-warning">{replaceResult.goalsUpdated} goals</span>
+                        )}
+                        {replaceResult.chainsUpdated > 0 && (
+                          <span className="badge badge-xs badge-secondary">{replaceResult.chainsUpdated} chains</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Add New Correction for Future STT */}
+                <div className="bg-base-200 rounded-lg p-4">
+                  <h3 className="font-bold text-sm mb-3">Add Future STT Correction</h3>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const form = e.target as HTMLFormElement;
+                      const wrongInput = form.elements.namedItem('wrong') as HTMLInputElement;
+                      const correctInput = form.elements.namedItem('correct') as HTMLInputElement;
+                      if (wrongInput.value.trim() && correctInput.value.trim()) {
+                        addCorrection(wrongInput.value.trim(), correctInput.value.trim());
+                        wrongInput.value = '';
+                        correctInput.value = '';
+                      }
+                    }}
+                    className="flex gap-2 items-end"
+                  >
+                    <div className="flex-1">
+                      <label className="label label-text text-xs py-0">Wrong spelling</label>
+                      <input
+                        type="text"
+                        name="wrong"
+                        className="input input-bordered input-sm w-full"
+                        placeholder="e.g., Micheal"
+                      />
+                    </div>
+                    <div className="text-base-content/50 pb-2">→</div>
+                    <div className="flex-1">
+                      <label className="label label-text text-xs py-0">Correct spelling</label>
+                      <input
+                        type="text"
+                        name="correct"
+                        className="input input-bordered input-sm w-full"
+                        placeholder="e.g., Michael"
+                      />
+                    </div>
+                    <button type="submit" className="btn btn-primary btn-sm">Add</button>
+                  </form>
+                  <p className="text-xs opacity-50 mt-2">
+                    Tip: You can also say "I meant X not Y" while speaking and the system will learn automatically.
+                  </p>
+                </div>
+
+                {/* Learned Corrections List */}
+                {corrections.length === 0 ? (
+                  <div className="text-center py-12 opacity-50">
+                    <div className="text-4xl mb-2">📝</div>
+                    <p>No corrections learned yet.</p>
+                    <p className="text-sm mt-2">
+                      Say "I meant X not Y" while recording or add corrections manually above.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <h3 className="font-bold text-sm opacity-70">
+                      Learned Corrections ({corrections.length})
+                    </h3>
+                    {corrections
+                      .slice()
+                      .sort((a, b) => b.usage_count - a.usage_count)
+                      .map((correction) => (
+                        <CorrectionCard
+                          key={correction.id}
+                          correction={correction}
+                          onRemove={removeCorrection}
+                        />
+                      ))}
+                  </div>
                 )}
               </div>
-            </div>
+            )}
+
+            {/* Insights Tab */}
+            {activeTab === 'insights' && (
+              <div className="space-y-6">
+                {/* Summary Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="stat bg-base-200 rounded-lg p-4">
+                    <div className="stat-title text-xs">Total Claims</div>
+                    <div className="stat-value text-2xl">{stats.totalClaims}</div>
+                  </div>
+                  <div className="stat bg-base-200 rounded-lg p-4">
+                    <div className="stat-title text-xs">Active Goals</div>
+                    <div className="stat-value text-2xl text-success">{stats.activeGoals}</div>
+                    <div className="stat-desc">{stats.achievedGoals} achieved</div>
+                  </div>
+                  <div className="stat bg-base-200 rounded-lg p-4">
+                    <div className="stat-title text-xs">Active Chains</div>
+                    <div className="stat-value text-2xl">{stats.activeChains}</div>
+                  </div>
+                  <div className="stat bg-base-200 rounded-lg p-4">
+                    <div className="stat-title text-xs">Entities Known</div>
+                    <div className="stat-value text-2xl">{entities.length}</div>
+                  </div>
+                </div>
+
+                {/* Claim Type Distribution */}
+                {Object.keys(claimTypeCounts).length > 0 && (
+                  <div className="bg-base-200 rounded-lg p-4">
+                    <h3 className="font-bold text-sm mb-3">Claim Distribution</h3>
+                    <div className="space-y-2">
+                      {Object.entries(claimTypeCounts)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 8)
+                        .map(([type, count]) => (
+                          <div key={type} className="flex items-center gap-2">
+                            <span className="w-24 text-xs truncate">{type.replace('_', ' ')}</span>
+                            <progress
+                              className="progress progress-primary flex-1 h-2"
+                              value={count}
+                              max={Math.max(...Object.values(claimTypeCounts))}
+                            />
+                            <span className="text-xs w-8 text-right">{count}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Task Queue Status */}
+                <div className="bg-base-200 rounded-lg p-4">
+                  <h3 className="font-bold text-sm mb-3">Processing Queue</h3>
+                  <div className="grid grid-cols-4 gap-3 text-center">
+                    <div>
+                      <div className={`text-2xl font-bold ${queueStatus.isRunning ? 'text-success' : 'text-warning'}`}>
+                        {queueStatus.isRunning ? '●' : '○'}
+                      </div>
+                      <div className="text-xs opacity-50">{queueStatus.isRunning ? 'Running' : 'Stopped'}</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold">{queueStatus.pendingTasks}</div>
+                      <div className="text-xs opacity-50">Pending</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-primary">{queueStatus.activeTasks}</div>
+                      <div className="text-xs opacity-50">Active</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-error">{queueStatus.failedTasks}</div>
+                      <div className="text-xs opacity-50">Failed</div>
+                    </div>
+                  </div>
+                  {tasks.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-base-300">
+                      <div className="text-xs font-bold opacity-70 mb-2">Recent Tasks</div>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {tasks.slice(-8).reverse().map((task) => (
+                          <div key={task.id} className="flex justify-between text-xs bg-base-100 p-1 rounded">
+                            <span className="truncate flex-1 opacity-70">{task.task_type}</span>
+                            <span className={`badge badge-xs ${
+                              task.status === 'completed' ? 'badge-success' :
+                              task.status === 'processing' ? 'badge-primary' :
+                              task.status === 'failed' ? 'badge-error' : 'badge-ghost'
+                            }`}>
+                              {task.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Footer with session controls */}
-      <footer className="bg-base-100 border-t border-base-300 px-4 py-2">
-        <div className="flex items-center justify-between text-sm">
-          <div className="text-base-content/50 flex items-center gap-4">
+      {/* Footer */}
+      <footer className="bg-base-100 border-t border-base-300 px-4 py-1.5 shrink-0">
+        <div className="flex items-center justify-between text-xs">
+          <div className="text-base-content/50 flex items-center gap-3">
             {state?.activeSession ? (
               <>
-                <span>Session: {state.activeSession.id.slice(0, 8)}...</span>
-                <span>Started: {new Date(state.activeSession.started_at).toLocaleTimeString()}</span>
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
+                  Session {state.activeSession.id.slice(0, 8)}
+                </span>
+                <span>Started {new Date(state.activeSession.started_at).toLocaleTimeString()}</span>
               </>
             ) : (
-              <>No active session</>
+              <span>No active session</span>
             )}
-            {sttConnected && (
-              <span className="badge badge-xs badge-success">STT Connected</span>
-            )}
+            {sttConnected && <span className="badge badge-xs badge-success">STT</span>}
           </div>
           <div className="flex gap-2">
             {state?.activeSession ? (
-              <button className="btn btn-sm btn-ghost" onClick={endSession}>
-                End Session
-              </button>
+              <button className="btn btn-xs btn-ghost" onClick={endSession}>End Session</button>
             ) : (
-              <button className="btn btn-sm btn-primary" onClick={startSession}>
-                Start Session
-              </button>
+              <button className="btn btn-xs btn-primary" onClick={startSession}>Start Session</button>
             )}
           </div>
         </div>

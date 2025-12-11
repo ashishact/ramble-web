@@ -67,6 +67,18 @@ export const HALF_LIFE = {
 } as const;
 
 /**
+ * Salience half-life for memory system
+ * Items lose half their recency-based salience after 6 hours
+ */
+export const SALIENCE_HALFLIFE = HALF_LIFE.SIX_HOURS;
+
+/**
+ * Access boost duration for memory system
+ * UI access boost lasts for 5 minutes
+ */
+export const ACCESS_BOOST_DURATION = 5 * 60 * 1000;
+
+/**
  * Format a timestamp as ISO date string (YYYY-MM-DD)
  */
 export function toDateString(timestamp: number): string {
