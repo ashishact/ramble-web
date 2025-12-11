@@ -13,6 +13,7 @@ import type {
   ISessionStore,
   IConversationStore,
   IClaimStore,
+  ISourceTrackingStore,
   IEntityStore,
   IGoalStore,
   IObserverOutputStore,
@@ -79,6 +80,8 @@ import type {
   CreateCorrection,
   UpdateCorrection,
   MemoryTier,
+  SourceTracking,
+  CreateSourceTracking,
 } from '../types';
 
 import { createLogger } from '../utils/logger';
@@ -166,6 +169,22 @@ function rowToClaimSource(id: string, row: Record<string, unknown>): ClaimSource
     id,
     claim_id: row.claim_id as string,
     unit_id: row.unit_id as string,
+  };
+}
+
+function rowToSourceTracking(id: string, row: Record<string, unknown>): SourceTracking {
+  return {
+    id,
+    claim_id: row.claim_id as string,
+    unit_id: row.unit_id as string,
+    unit_text: row.unit_text as string,
+    text_excerpt: row.text_excerpt as string,
+    char_start: (row.char_start as number) || null,
+    char_end: (row.char_end as number) || null,
+    pattern_id: (row.pattern_id as string) || null,
+    llm_prompt: row.llm_prompt as string,
+    llm_response: row.llm_response as string,
+    created_at: row.created_at as number,
   };
 }
 
@@ -865,6 +884,82 @@ export function createProgramStore(): ProgramStoreInstance {
         claims.update(id, { state: 'dormant' });
         logger.debug('Marked claim as dormant', { id });
       }
+    },
+  };
+
+  // --------------------------------------------------------------------------
+  // Source Tracking Store
+  // --------------------------------------------------------------------------
+  const sourceTracking: ISourceTrackingStore = {
+    getById(id: string): SourceTracking | null {
+      const row = store.getRow('source_tracking', id);
+      if (!row || Object.keys(row).length === 0) return null;
+      return rowToSourceTracking(id, row);
+    },
+
+    getAll(): SourceTracking[] {
+      const table = store.getTable('source_tracking');
+      if (!table) return [];
+      return Object.entries(table).map(([id, row]) => rowToSourceTracking(id, row));
+    },
+
+    create(data: CreateSourceTracking): SourceTracking {
+      const id = idGen.claim(); // Reuse claim ID generator
+      const timestamp = now();
+      const tracking: SourceTracking = {
+        id,
+        ...data,
+        created_at: timestamp,
+      };
+
+      store.setRow('source_tracking', id, {
+        claim_id: tracking.claim_id,
+        unit_id: tracking.unit_id,
+        unit_text: tracking.unit_text,
+        text_excerpt: tracking.text_excerpt,
+        char_start: tracking.char_start ?? 0,
+        char_end: tracking.char_end ?? 0,
+        pattern_id: tracking.pattern_id ?? '',
+        llm_prompt: tracking.llm_prompt,
+        llm_response: tracking.llm_response,
+        created_at: tracking.created_at,
+      });
+
+      logger.debug('Created source tracking', { id, claimId: tracking.claim_id });
+      return tracking;
+    },
+
+    update() {
+      // Source tracking is immutable - no updates allowed
+      throw new Error('Source tracking cannot be updated');
+    },
+
+    delete(id: string): boolean {
+      const existing = sourceTracking.getById(id);
+      if (!existing) return false;
+      store.delRow('source_tracking', id);
+      return true;
+    },
+
+    getByClaimId(claimId: string): SourceTracking | null {
+      const table = store.getTable('source_tracking');
+      if (!table) return null;
+      const entry = Object.entries(table).find(([, row]) => row.claim_id === claimId);
+      return entry ? rowToSourceTracking(entry[0], entry[1]) : null;
+    },
+
+    getByUnitId(unitId: string): SourceTracking[] {
+      const table = store.getTable('source_tracking');
+      if (!table) return [];
+      return Object.entries(table)
+        .filter(([, row]) => row.unit_id === unitId)
+        .map(([id, row]) => rowToSourceTracking(id, row));
+    },
+
+    deleteByClaimId(claimId: string): boolean {
+      const tracking = sourceTracking.getByClaimId(claimId);
+      if (!tracking) return false;
+      return sourceTracking.delete(tracking.id);
     },
   };
 
@@ -2106,6 +2201,7 @@ export function createProgramStore(): ProgramStoreInstance {
     observerPrograms,
     corrections,
     patterns,
+    sourceTracking,
 
     async initialize(): Promise<void> {
       if (isInitialized) return;

@@ -48,6 +48,8 @@ import type {
   UpdateExtractionProgram,
   ObserverProgram,
   CreateObserverProgram,
+  SourceTracking,
+  CreateSourceTracking,
   UpdateObserverProgram,
   ObserverType,
   Correction,
@@ -133,6 +135,17 @@ export interface IClaimStore extends IBaseStore<Claim, CreateClaim, UpdateClaim>
   promoteToLongTerm(id: string): void;
   markStale(id: string): void;
   markDormant(id: string): void;
+}
+
+// ============================================================================
+// Source Tracking Store
+// ============================================================================
+
+export interface ISourceTrackingStore
+  extends IBaseStore<SourceTracking, CreateSourceTracking, never> {
+  getByClaimId(claimId: string): SourceTracking | null;
+  getByUnitId(unitId: string): SourceTracking[];
+  deleteByClaimId(claimId: string): boolean;
 }
 
 // ============================================================================
@@ -278,6 +291,7 @@ export interface IProgramStore {
   sessions: ISessionStore;
   conversations: IConversationStore;
   claims: IClaimStore;
+  sourceTracking: ISourceTrackingStore;
   entities: IEntityStore;
   goals: IGoalStore;
   observerOutputs: IObserverOutputStore;
