@@ -336,15 +336,15 @@ function attachSourceTracking(
 ): ExtractedClaim[] {
   return claims.map((claim) => ({
     ...claim,
-    source_tracking: {
-      unit_id: sourceInfo.unitId,
-      unit_text: sourceInfo.unitText,
-      text_excerpt: sourceInfo.unitText, // Full text for now, could be refined
-      char_start: sourceInfo.matches[0]?.position?.start || null,
-      char_end: sourceInfo.matches[0]?.position?.end || null,
-      pattern_id: sourceInfo.matches[0]?.patternId || null,
-      llm_prompt: sourceInfo.prompt,
-      llm_response: sourceInfo.response,
+    sourceTracking: {
+      unitId: sourceInfo.unitId,
+      unitText: sourceInfo.unitText,
+      textExcerpt: sourceInfo.unitText, // Full text for now, could be refined
+      charStart: sourceInfo.matches[0]?.position?.start ?? null,
+      charEnd: sourceInfo.matches[0]?.position?.end ?? null,
+      patternId: sourceInfo.matches[0]?.patternId ?? null,
+      llmPrompt: sourceInfo.prompt,
+      llmResponse: sourceInfo.response,
     },
   }));
 }
