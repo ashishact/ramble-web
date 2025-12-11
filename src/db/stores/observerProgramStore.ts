@@ -45,7 +45,7 @@ export function createObserverProgramStore(db: Database): IObserverProgramStore 
           program.llmTier = data.llmTier
           program.promptTemplate = data.promptTemplate
           program.outputSchemaJson = data.outputSchemaJson
-          program.createdAt = data.createdAt
+          program.createdAt = Date.now()
         })
       )
       return modelToObserverProgram(model)

@@ -41,8 +41,8 @@ export function createExtensionStore(db: Database): IExtensionStore {
           extension.userPromptTemplate = data.userPromptTemplate
           extension.llmTier = data.llmTier
           extension.status = data.status
-          extension.createdAt = data.createdAt
-          extension.lastUsed = data.lastUsed
+          extension.createdAt = Date.now()
+          extension.lastUsed = Date.now()
         })
       )
       return modelToExtension(model)
@@ -59,7 +59,7 @@ export function createExtensionStore(db: Database): IExtensionStore {
           if (data.userPromptTemplate !== undefined) extension.userPromptTemplate = data.userPromptTemplate
           if (data.llmTier !== undefined) extension.llmTier = data.llmTier
           if (data.status !== undefined) extension.status = data.status
-          if (data.lastUsed !== undefined) extension.lastUsed = data.lastUsed
+          if (Date.now() !== undefined) extension.lastUsed = Date.now()
         })
         return modelToExtension(updated)
       } catch {

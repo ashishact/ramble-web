@@ -38,7 +38,7 @@ export function createSynthesisCacheStore(db: Database): ISynthesisCacheStore {
           cache.contentJson = data.contentJson
           cache.sourceClaimsJson = data.sourceClaimsJson
           cache.ttlSeconds = data.ttlSeconds
-          cache.createdAt = data.createdAt
+          cache.createdAt = Date.now()
           cache.stale = data.stale
         })
       )

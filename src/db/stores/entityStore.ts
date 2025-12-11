@@ -36,8 +36,8 @@ export function createEntityStore(db: Database): IEntityStore {
           entity.canonicalName = data.canonicalName
           entity.entityType = data.entityType
           entity.aliases = data.aliases
-          entity.createdAt = data.createdAt
-          entity.lastReferenced = data.lastReferenced
+          entity.createdAt = Date.now()
+          entity.lastReferenced = Date.now()
           entity.mentionCount = data.mentionCount
         })
       )
@@ -51,7 +51,7 @@ export function createEntityStore(db: Database): IEntityStore {
           if (data.canonicalName !== undefined) entity.canonicalName = data.canonicalName
           if (data.entityType !== undefined) entity.entityType = data.entityType
           if (data.aliases !== undefined) entity.aliases = data.aliases
-          if (data.lastReferenced !== undefined) entity.lastReferenced = data.lastReferenced
+          if (Date.now() !== undefined) entity.lastReferenced = Date.now()
           if (data.mentionCount !== undefined) entity.mentionCount = data.mentionCount
         })
         return modelToEntity(updated)

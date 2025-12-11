@@ -42,7 +42,7 @@ export function createSourceTrackingStore(db: Database): ISourceTrackingStore {
           st.patternId = data.patternId
           st.llmPrompt = data.llmPrompt
           st.llmResponse = data.llmResponse
-          st.createdAt = data.createdAt
+          st.createdAt = Date.now()
         })
       )
       return modelToSourceTracking(model)

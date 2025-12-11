@@ -31,6 +31,7 @@ export function createConversationStore(db: Database): IConversationStore {
     },
 
     async create(data: CreateConversationUnit): Promise<ConversationUnit> {
+      const now = Date.now()
       const model = await db.write(() =>
         collection.create((conversation) => {
           conversation.sessionId = data.sessionId
@@ -39,8 +40,8 @@ export function createConversationStore(db: Database): IConversationStore {
           conversation.sanitizedText = data.sanitizedText
           conversation.source = data.source
           conversation.precedingContextSummary = data.precedingContextSummary
-          conversation.createdAt = data.createdAt
-          conversation.processed = data.processed
+          conversation.createdAt = now
+          conversation.processed = data.processed || false
         })
       )
       return modelToConversation(model)

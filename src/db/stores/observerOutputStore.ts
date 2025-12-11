@@ -58,7 +58,7 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
           output.outputType = data.outputType
           output.contentJson = data.contentJson
           output.sourceClaimsJson = data.sourceClaimsJson
-          output.createdAt = data.createdAt
+          output.createdAt = Date.now()
           output.sessionId = data.sessionId
         })
       )
@@ -125,7 +125,7 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
           contradiction.resolutionType = data.resolutionType
           contradiction.resolutionExplanation = data.resolutionExplanation
           contradiction.resolved = data.resolved
-          contradiction.createdAt = data.createdAt
+          contradiction.createdAt = Date.now()
           contradiction.resolvedAt = data.resolvedAt
         })
       )
@@ -170,7 +170,7 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
           pattern.evidenceClaimsJson = data.evidenceClaimsJson
           pattern.occurrenceCount = data.occurrenceCount
           pattern.confidence = data.confidence
-          pattern.createdAt = data.createdAt
+          pattern.createdAt = Date.now()
           pattern.lastObserved = data.lastObserved
         })
       )
@@ -203,7 +203,7 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
           value.domain = data.domain
           value.importance = data.importance
           value.sourceClaimId = data.sourceClaimId
-          value.createdAt = data.createdAt
+          value.createdAt = Date.now()
         })
       )
       return modelToValue(model)

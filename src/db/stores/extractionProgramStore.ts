@@ -47,8 +47,8 @@ export function createExtractionProgramStore(db: Database): IExtractionProgramSt
           program.outputSchemaJson = data.outputSchemaJson
           program.llmTier = data.llmTier
           program.priority = data.priority
-          program.createdAt = data.createdAt
-          program.lastUsed = data.lastUsed
+          program.createdAt = Date.now()
+          program.lastUsed = Date.now()
           program.runCount = data.runCount
           program.successRate = data.successRate
         })
@@ -68,7 +68,7 @@ export function createExtractionProgramStore(db: Database): IExtractionProgramSt
           if (data.outputSchemaJson !== undefined) program.outputSchemaJson = data.outputSchemaJson
           if (data.llmTier !== undefined) program.llmTier = data.llmTier
           if (data.priority !== undefined) program.priority = data.priority
-          if (data.lastUsed !== undefined) program.lastUsed = data.lastUsed
+          if (Date.now() !== undefined) program.lastUsed = Date.now()
           if (data.runCount !== undefined) program.runCount = data.runCount
           if (data.successRate !== undefined) program.successRate = data.successRate
         })

@@ -14,6 +14,10 @@ import type {
   ClaimState,
   ClaimType,
   MemoryTier,
+  Temporality,
+  Abstraction,
+  SourceType,
+  Stakes,
 } from '../../program/types'
 import ClaimModel from '../models/Claim'
 import ClaimSourceModel from '../models/ClaimSource'
@@ -58,16 +62,16 @@ export function createClaimStore(db: Database): IClaimStore {
           claim.emotionalIntensity = data.emotionalIntensity
           claim.stakes = data.stakes
           claim.validFrom = data.validFrom
-          claim.validUntil = data.validUntil ?? null
+          claim.validUntil = data.validUntil ?? undefined
           claim.createdAt = now
           claim.lastConfirmed = now
           claim.confirmationCount = data.confirmationCount || 1
           claim.extractionProgramId = data.extractionProgramId
-          claim.supersededBy = data.supersededBy ?? null
-          claim.elaborates = data.elaborates ?? null
+          claim.supersededBy = data.supersededBy ?? undefined
+          claim.elaborates = data.elaborates ?? undefined
           claim.memoryTier = data.memoryTier || 'working'
           claim.salience = data.salience || 0
-          claim.promotedAt = data.promotedAt ?? null
+          claim.promotedAt = data.promotedAt ?? undefined
           claim.lastAccessed = now
         })
       )
@@ -83,13 +87,13 @@ export function createClaimStore(db: Database): IClaimStore {
           if (data.state !== undefined) claim.state = data.state
           if (data.emotionalValence !== undefined) claim.emotionalValence = data.emotionalValence
           if (data.emotionalIntensity !== undefined) claim.emotionalIntensity = data.emotionalIntensity
-          if (data.validUntil !== undefined) claim.validUntil = data.validUntil
+          if (data.validUntil !== undefined) claim.validUntil = data.validUntil ?? undefined
           if (data.lastConfirmed !== undefined) claim.lastConfirmed = data.lastConfirmed
           if (data.confirmationCount !== undefined) claim.confirmationCount = data.confirmationCount
-          if (data.supersededBy !== undefined) claim.supersededBy = data.supersededBy
+          if (data.supersededBy !== undefined) claim.supersededBy = data.supersededBy ?? undefined
           if (data.memoryTier !== undefined) claim.memoryTier = data.memoryTier
           if (data.salience !== undefined) claim.salience = data.salience
-          if (data.promotedAt !== undefined) claim.promotedAt = data.promotedAt
+          if (data.promotedAt !== undefined) claim.promotedAt = data.promotedAt ?? undefined
           if (data.lastAccessed !== undefined) claim.lastAccessed = data.lastAccessed
         })
         return modelToClaim(updated)
@@ -187,7 +191,7 @@ export function createClaimStore(db: Database): IClaimStore {
       }
     },
 
-    subscribe(sessionId: string, callback: SubscriptionCallback<Claim>): Unsubscribe {
+    subscribe(_sessionId: string, callback: SubscriptionCallback<Claim>): Unsubscribe {
       // For session-specific claims, we need to query through claim_sources
       // This is a simplified version - in production you'd want to optimize this
       const subscription = collection

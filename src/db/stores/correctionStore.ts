@@ -31,14 +31,16 @@ export function createCorrectionStore(db: Database): ICorrectionStore {
     },
 
     async create(data: CreateCorrection): Promise<Correction> {
+      const now = Date.now()
       const model = await db.write(() =>
         collection.create((correction) => {
           correction.wrongText = data.wrongText
           correction.correctText = data.correctText
           correction.originalCase = data.originalCase
-          correction.usageCount = data.usageCount
-          correction.createdAt = data.createdAt
-          correction.lastUsed = data.lastUsed
+          correction.usageCount = data.usageCount || 0
+          correction.createdAt = now
+          correction.lastUsed = now
+          correction.sourceUnitId = data.sourceUnitId ?? undefined
         })
       )
       return modelToCorrection(model)

@@ -39,7 +39,7 @@ export function createGoalStore(db: Database): IGoalStore {
           goal.status = data.status
           goal.progressValue = data.progressValue
           goal.priority = data.priority
-          goal.createdAt = data.createdAt
+          goal.createdAt = Date.now()
           goal.achievedAt = data.achievedAt
           goal.parentGoalId = data.parentGoalId
         })
