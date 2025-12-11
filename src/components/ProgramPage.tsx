@@ -104,15 +104,18 @@ function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
 
   // Check if source tracking exists for this claim
   useEffect(() => {
-    try {
-      const kernel = getKernel();
-      const store = kernel.getStore();
-      const tracking = store.sourceTracking.getByClaimId(claim.id);
-      setHasSourceTracking(!!tracking);
-    } catch (error) {
-      // Kernel not initialized yet or error fetching
-      setHasSourceTracking(false);
+    async function checkSourceTracking() {
+      try {
+        const kernel = getKernel();
+        const store = kernel.getStore();
+        const tracking = await store.sourceTracking.getByClaimId(claim.id);
+        setHasSourceTracking(!!tracking);
+      } catch (error) {
+        // Kernel not initialized yet or error fetching
+        setHasSourceTracking(false);
+      }
     }
+    checkSourceTracking();
   }, [claim.id]);
 
   return (
@@ -382,7 +385,7 @@ function ContradictionCard({
   );
 }
 
-function CorrectionCard({ correction, onRemove }: { correction: Correction; onRemove: (id: string) => void }) {
+function CorrectionCard({ correction, onRemove }: { correction: Correction; onRemove: (id: string) => Promise<boolean> }) {
   return (
     <div className="p-3 bg-base-200 rounded-lg flex items-center justify-between gap-3">
       <div className="flex-1 min-w-0">
@@ -1163,11 +1166,11 @@ export function ProgramPage() {
                           className="input input-bordered input-sm w-full"
                           placeholder="Text to find..."
                           value={searchQuery}
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             setSearchQuery(e.target.value);
                             setReplaceResult(null);
                             if (e.target.value.trim().length >= 2) {
-                              setSearchResults(searchText(e.target.value.trim()));
+                              setSearchResults(await searchText(e.target.value.trim()));
                             } else {
                               setSearchResults([]);
                             }
@@ -1202,9 +1205,9 @@ export function ProgramPage() {
                       <button
                         className="btn btn-warning btn-sm"
                         disabled={!searchQuery.trim() || !replaceQuery.trim() || searchResults.length === 0}
-                        onClick={() => {
+                        onClick={async () => {
                           if (searchQuery.trim() && replaceQuery.trim()) {
-                            const result = replaceText(searchQuery.trim(), replaceQuery.trim(), {
+                            const result = await replaceText(searchQuery.trim(), replaceQuery.trim(), {
                               addAsCorrection,
                             });
                             setReplaceResult(result);
@@ -1277,13 +1280,13 @@ export function ProgramPage() {
                 <div className="bg-base-200 rounded-lg p-4">
                   <h3 className="font-bold text-sm mb-3">Add Future STT Correction</h3>
                   <form
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                       e.preventDefault();
                       const form = e.target as HTMLFormElement;
                       const wrongInput = form.elements.namedItem('wrong') as HTMLInputElement;
                       const correctInput = form.elements.namedItem('correct') as HTMLInputElement;
                       if (wrongInput.value.trim() && correctInput.value.trim()) {
-                        addCorrection(wrongInput.value.trim(), correctInput.value.trim());
+                        await addCorrection(wrongInput.value.trim(), correctInput.value.trim());
                         wrongInput.value = '';
                         correctInput.value = '';
                       }

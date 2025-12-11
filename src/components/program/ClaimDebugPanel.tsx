@@ -26,7 +26,7 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
       try {
         const kernel = getKernel();
         const store = kernel.getStore();
-        const tracking = store.sourceTracking.getByClaimId(claim.id);
+        const tracking = await store.sourceTracking.getByClaimId(claim.id);
         setSourceTracking(tracking);
       } catch (error) {
         console.error('Failed to fetch source tracking:', error);

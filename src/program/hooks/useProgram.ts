@@ -101,35 +101,35 @@ export interface UseProgramReturn {
   observerStats: DispatcherStats | null;
 
   /** Start a new session */
-  startSession: () => void;
+  startSession: () => Promise<void>;
 
   /** End current session */
-  endSession: () => void;
+  endSession: () => Promise<void>;
 
   /** Process text input */
   processText: (text: string, source: ConversationSource) => Promise<void>;
 
   /** Manually add a correction */
-  addCorrection: (wrongText: string, correctText: string) => Correction | null;
+  addCorrection: (wrongText: string, correctText: string) => Promise<Correction | null>;
 
   /** Remove a correction */
-  removeCorrection: (id: string) => boolean;
+  removeCorrection: (id: string) => Promise<boolean>;
 
   /** Search text across all data */
-  searchText: (query: string, options?: { caseSensitive?: boolean }) => SearchResult[];
+  searchText: (query: string, options?: { caseSensitive?: boolean }) => Promise<SearchResult[]>;
 
   /** Replace text across all data */
   replaceText: (
     searchText: string,
     replaceText: string,
     options?: { caseSensitive?: boolean; addAsCorrection?: boolean }
-  ) => ReplaceResult;
+  ) => Promise<ReplaceResult>;
 
   /** Record access to a claim (boosts salience) */
   recordMemoryAccess: (claimId: string) => void;
 
   /** Promote claim to long-term memory */
-  promoteToLongTerm: (claimId: string, reason?: string) => boolean;
+  promoteToLongTerm: (claimId: string, reason?: string) => Promise<boolean>;
 
   /** Toggle extractor on/off */
   toggleExtractor: (id: string, active: boolean) => void;
@@ -220,31 +220,31 @@ export function useProgram(): UseProgramReturn {
   }, []);
 
   // Refresh data from kernel
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     const kernel = kernelRef.current;
     if (!kernel) return;
 
     try {
       setState(kernel.getState());
-      setClaims(kernel.getClaims(claimLimit)); // Limited claims
-      setClaimCount(kernel.getClaimCount()); // Total count
-      setGoals(kernel.getGoals());
-      setEntities(kernel.getEntities());
-      setPatterns(kernel.getPatterns());
-      setContradictions(kernel.getContradictions());
-      setConversations(kernel.getConversations());
-      setTasks(kernel.getTasks());
-      setCorrections(kernel.getCorrections());
+      setClaims(await kernel.getClaims(claimLimit)); // Limited claims
+      setClaimCount(await kernel.getClaimCount()); // Total count
+      setGoals(await kernel.getGoals());
+      setEntities(await kernel.getEntities());
+      setPatterns(await kernel.getPatterns());
+      setContradictions(await kernel.getContradictions());
+      setConversations(await kernel.getConversations());
+      setTasks(await kernel.getTasks());
+      setCorrections(await kernel.getCorrections());
       setQueueStatus(kernel.getQueueStatus());
 
       // Memory System
-      setWorkingMemory(kernel.getWorkingMemory());
-      setLongTermMemory(kernel.getLongTermMemory());
-      setTopOfMind(kernel.getTopOfMind());
-      setMemoryStats(kernel.getMemoryStats());
+      setWorkingMemory(await kernel.getWorkingMemory());
+      setLongTermMemory(await kernel.getLongTermMemory());
+      setTopOfMind(await kernel.getTopOfMind());
+      setMemoryStats(await kernel.getMemoryStats());
 
       // Extractors & Observers
-      setExtractors(kernel.getExtractionPrograms());
+      setExtractors(await kernel.getExtractionPrograms());
       setObservers(kernel.getRegisteredObservers());
       setObserverStats(kernel.getObserverStats());
     } catch (err) {
@@ -261,26 +261,26 @@ export function useProgram(): UseProgramReturn {
   }, [isInitialized, refresh]);
 
   // Start session
-  const startSession = useCallback(() => {
+  const startSession = useCallback(async () => {
     const kernel = kernelRef.current;
     if (!kernel) return;
 
     try {
-      kernel.startSession();
-      refresh();
+      await kernel.startSession();
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start session');
     }
   }, [refresh]);
 
   // End session
-  const endSession = useCallback(() => {
+  const endSession = useCallback(async () => {
     const kernel = kernelRef.current;
     if (!kernel) return;
 
     try {
-      kernel.endSession();
-      refresh();
+      await kernel.endSession();
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to end session');
     }
@@ -299,44 +299,44 @@ export function useProgram(): UseProgramReturn {
   }, [refresh]);
 
   // Add correction
-  const addCorrection = useCallback((wrongText: string, correctText: string): Correction | null => {
+  const addCorrection = useCallback(async (wrongText: string, correctText: string): Promise<Correction | null> => {
     const kernel = kernelRef.current;
     if (!kernel) return null;
 
-    const result = kernel.addCorrection(wrongText, correctText);
-    refresh();
+    const result = await kernel.addCorrection(wrongText, correctText);
+    await refresh();
     return result;
   }, [refresh]);
 
   // Remove correction
-  const removeCorrection = useCallback((id: string): boolean => {
+  const removeCorrection = useCallback(async (id: string): Promise<boolean> => {
     const kernel = kernelRef.current;
     if (!kernel) return false;
 
-    const result = kernel.removeCorrection(id);
-    refresh();
+    const result = await kernel.removeCorrection(id);
+    await refresh();
     return result;
   }, [refresh]);
 
   // Search text
-  const searchText = useCallback((query: string, options?: { caseSensitive?: boolean }): SearchResult[] => {
+  const searchText = useCallback(async (query: string, options?: { caseSensitive?: boolean }): Promise<SearchResult[]> => {
     const kernel = kernelRef.current;
     if (!kernel) return [];
-    return kernel.searchText(query, options);
+    return await kernel.searchText(query, options);
   }, []);
 
   // Replace text
-  const replaceText = useCallback((
+  const replaceText = useCallback(async (
     search: string,
     replace: string,
     options?: { caseSensitive?: boolean; addAsCorrection?: boolean }
-  ): ReplaceResult => {
+  ): Promise<ReplaceResult> => {
     const kernel = kernelRef.current;
     if (!kernel) {
       return { conversationsUpdated: 0, claimsUpdated: 0, entitiesUpdated: 0, goalsUpdated: 0, totalReplacements: 0 };
     }
-    const result = kernel.replaceText(search, replace, options);
-    refresh();
+    const result = await kernel.replaceText(search, replace, options);
+    await refresh();
     return result;
   }, [refresh]);
 
@@ -348,11 +348,11 @@ export function useProgram(): UseProgramReturn {
   }, []);
 
   // Promote to long-term memory
-  const promoteToLongTerm = useCallback((claimId: string, reason?: string): boolean => {
+  const promoteToLongTerm = useCallback(async (claimId: string, reason?: string): Promise<boolean> => {
     const kernel = kernelRef.current;
     if (!kernel) return false;
-    const result = kernel.promoteToLongTerm(claimId, reason);
-    refresh();
+    const result = await kernel.promoteToLongTerm(claimId, reason);
+    await refresh();
     return result;
   }, [refresh]);
 
