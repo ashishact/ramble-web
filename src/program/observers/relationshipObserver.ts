@@ -78,8 +78,8 @@ export class RelationshipObserver extends BaseObserver {
       }
 
       logger.info('Relationship observation complete', {
-        updates: outputs.filter((o) => o.output_type === 'relationship_update').length,
-        hasReport: outputs.some((o) => o.output_type === 'relationship_report'),
+        updates: outputs.filter((o) => o.outputType === 'relationship_update').length,
+        hasReport: outputs.some((o) => o.outputType === 'relationship_report'),
       });
 
       return this.successResult(outputs, startTime);

@@ -83,9 +83,9 @@ export class ConcernObserver extends BaseObserver {
       }
 
       logger.info('Concern observation complete', {
-        newConcerns: outputs.filter((o) => o.output_type === 'concern_new').length,
-        continuedConcerns: outputs.filter((o) => o.output_type === 'concern_continued').length,
-        resolvedConcerns: outputs.filter((o) => o.output_type === 'concern_possibly_resolved')
+        newConcerns: outputs.filter((o) => o.outputType === 'concern_new').length,
+        continuedConcerns: outputs.filter((o) => o.outputType === 'concern_continued').length,
+        resolvedConcerns: outputs.filter((o) => o.outputType === 'concern_possibly_resolved')
           .length,
       });
 
@@ -126,7 +126,7 @@ export class ConcernObserver extends BaseObserver {
 
     for (const pattern of patterns) {
       if (
-        pattern.pattern_type === 'concern' &&
+        pattern.patternType === 'concern' &&
         pattern.description.toLowerCase().includes(claim.subject.toLowerCase())
       ) {
         return { id: pattern.id };
@@ -147,7 +147,7 @@ export class ConcernObserver extends BaseObserver {
     // Get all concern patterns
     const concernPatterns = context.store.patterns
       .getAll()
-      .filter((p) => p.pattern_type === 'concern');
+      .filter((p) => p.patternType === 'concern');
 
     for (const pattern of concernPatterns) {
       // Get recent claims about this concern's subject

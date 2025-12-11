@@ -258,7 +258,7 @@ export class MemoryService {
         statement: g.statement,
         salience,
         status: g.status,
-        progressValue: g.progress_value,
+        progressValue: g.progressValue,
       };
     });
 

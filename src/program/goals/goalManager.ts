@@ -106,7 +106,7 @@ export class GoalManager {
       statement: claim.statement,
       goal_type: options.goalType,
       timeframe: options.timeframe,
-      parent_goal_id: options.parentGoalId ?? null,
+      parentGoalId: options.parentGoalId ?? null,
       priority: options.priority ?? this.config.defaultPriority,
       progress_type: this.inferProgressType(options.goalType, options.timeframe),
       source_claim_id: claim.id,
@@ -114,8 +114,8 @@ export class GoalManager {
       deadline: options.deadline ?? null,
       status: 'active',
       progress_value: 0,
-      progress_indicators_json: '[]',
-      blockers_json: '[]',
+      progressIndicatorsJson: '[]',
+      blockersJson: '[]',
     };
 
     const goal = this.store.goals.create(data);
@@ -188,7 +188,7 @@ export class GoalManager {
       throw new Error(`Goal not found: ${goalId}`);
     }
 
-    const previousValue = goal.progress_value;
+    const previousValue = goal.progressValue;
     const clampedValue = Math.max(0, Math.min(100, newValue));
 
     this.store.goals.updateProgress(goalId, clampedValue);
@@ -238,7 +238,7 @@ export class GoalManager {
     milestones.push(milestone);
 
     this.store.goals.update(goalId, {
-      progress_indicators_json: serializeMilestones(milestones),
+      progressIndicatorsJson: serializeMilestones(milestones),
     });
 
     logger.debug('Added milestone', { goalId, milestoneId: milestone.id });
@@ -267,7 +267,7 @@ export class GoalManager {
     milestone.evidenceClaimId = evidenceClaimId ?? null;
 
     this.store.goals.update(goalId, {
-      progress_indicators_json: serializeMilestones(milestones),
+      progressIndicatorsJson: serializeMilestones(milestones),
     });
 
     // Update progress based on milestone completion
@@ -312,7 +312,7 @@ export class GoalManager {
     blockers.push(blocker);
 
     this.store.goals.update(goalId, {
-      blockers_json: serializeBlockers(blockers),
+      blockersJson: serializeBlockers(blockers),
     });
 
     // Update goal status if blocker is severe
@@ -340,7 +340,7 @@ export class GoalManager {
     blocker.status = 'resolved';
 
     this.store.goals.update(goalId, {
-      blockers_json: serializeBlockers(blockers),
+      blockersJson: serializeBlockers(blockers),
     });
 
     // Check if goal can be unblocked
@@ -498,7 +498,7 @@ export class GoalManager {
     }
 
     this.store.goals.update(childGoalId, {
-      parent_goal_id: parentGoalId,
+      parentGoalId: parentGoalId,
     });
 
     logger.debug('Set goal parent', { childGoalId, parentGoalId });

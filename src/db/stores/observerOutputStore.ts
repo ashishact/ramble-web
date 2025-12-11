@@ -122,11 +122,12 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
         contradictionsCollection.create((contradiction) => {
           contradiction.claimAId = data.claimAId
           contradiction.claimBId = data.claimBId
-          contradiction.resolutionType = data.resolutionType
-          contradiction.resolutionExplanation = data.resolutionExplanation
+          contradiction.detectedAt = Date.now()
+          contradiction.contradictionType = data.contradictionType
           contradiction.resolved = data.resolved
-          contradiction.createdAt = Date.now()
-          contradiction.resolvedAt = data.resolvedAt
+          contradiction.resolutionType = data.resolutionType ?? undefined
+          contradiction.resolutionNotes = data.resolutionNotes ?? undefined
+          contradiction.resolvedAt = data.resolvedAt ?? undefined
         })
       )
       return modelToContradiction(model)
@@ -151,7 +152,7 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
         const model = await contradictionsCollection.find(id)
         const updated = await model.update((contradiction) => {
           contradiction.resolutionType = resolutionType
-          contradiction.resolutionExplanation = notes || undefined
+          contradiction.resolutionNotes = notes || undefined
           contradiction.resolved = true
           contradiction.resolvedAt = Date.now()
         })
@@ -244,10 +245,11 @@ function modelToContradiction(model: ContradictionModel): Contradiction {
     id: model.id,
     claimAId: model.claimAId,
     claimBId: model.claimBId,
-    resolutionType: model.resolutionType || null,
-    resolutionExplanation: model.resolutionExplanation || null,
+    detectedAt: model.detectedAt,
+    contradictionType: model.contradictionType as 'direct' | 'temporal' | 'implication',
     resolved: model.resolved,
-    createdAt: model.createdAt,
+    resolutionType: model.resolutionType || null,
+    resolutionNotes: model.resolutionNotes || null,
     resolvedAt: model.resolvedAt || null,
   }
 }

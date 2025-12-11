@@ -73,7 +73,7 @@ export class PatternObserver extends BaseObserver {
         // Check if pattern already exists
         const existing = existingPatterns.find(
           (p) =>
-            p.pattern_type === candidate.patternType &&
+            p.patternType === candidate.patternType &&
             this.isSimilarPattern(p.description, candidate.description)
         );
 

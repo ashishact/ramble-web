@@ -76,13 +76,13 @@ export class ContradictionObserver extends BaseObserver {
       const outputs = [];
       for (const contradiction of contradictions) {
         const data: CreateContradiction = {
-          claim_a_id: contradiction.claimAId,
-          claim_b_id: contradiction.claimBId,
-          contradiction_type: contradiction.type,
+          claimAId: contradiction.claimAId,
+          claimBId: contradiction.claimBId,
+          contradictionType: contradiction.type,
           resolved: false,
-          resolution_type: null,
-          resolution_notes: null,
-          resolved_at: null,
+          resolutionType: null,
+          resolutionNotes: null,
+          resolvedAt: null,
         };
 
         context.store.observerOutputs.addContradiction(data);
@@ -92,7 +92,7 @@ export class ContradictionObserver extends BaseObserver {
           context,
           'contradiction_detected',
           {
-            contradiction_type: contradiction.type,
+            contradictionType: contradiction.type,
             explanation: contradiction.explanation,
           },
           [contradiction.claimAId, contradiction.claimBId]

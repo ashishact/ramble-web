@@ -83,9 +83,9 @@ export class GoalObserver extends BaseObserver {
       }
 
       logger.info('Goal observation complete', {
-        newGoals: outputs.filter((o) => o.output_type === 'goal_new').length,
-        progressUpdates: outputs.filter((o) => o.output_type === 'goal_progress').length,
-        stalledGoals: outputs.filter((o) => o.output_type === 'goal_stalled').length,
+        newGoals: outputs.filter((o) => o.outputType === 'goal_new').length,
+        progressUpdates: outputs.filter((o) => o.outputType === 'goal_progress').length,
+        stalledGoals: outputs.filter((o) => o.outputType === 'goal_stalled').length,
       });
 
       return this.successResult(outputs, startTime);
@@ -154,7 +154,7 @@ export class GoalObserver extends BaseObserver {
       statement.includes('did it') ||
       statement.includes('finished')
     ) {
-      return { status: 'achieved', progressChange: 1.0 - goal.progress_value };
+      return { status: 'achieved', progressChange: 1.0 - goal.progressValue };
     }
 
     // Check for abandonment indicators
@@ -209,7 +209,7 @@ export class GoalObserver extends BaseObserver {
             daysSinceReference: Math.floor(
               (now() - goal.lastReferenced) / (24 * 60 * 60 * 1000)
             ),
-            currentProgress: goal.progress_value,
+            currentProgress: goal.progressValue,
           },
           []
         );

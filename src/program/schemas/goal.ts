@@ -89,6 +89,7 @@ export const GoalSchema = z.object({
   parentGoalId: z.string().nullable(),
   createdAt: z.number(),
   lastReferenced: z.number(),
+  achievedAt: z.number().nullable(),
   priority: z.number().int().min(1).max(10),
   progressType: ProgressTypeSchema,
   progressValue: z.number().min(0).max(100),

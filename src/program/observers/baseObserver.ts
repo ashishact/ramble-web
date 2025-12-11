@@ -56,8 +56,8 @@ export abstract class BaseObserver implements Observer {
     sourceClaimIds: string[]
   ): ObserverOutput {
     const data: CreateObserverOutput = {
-      observer_type: this.config.type,
-      output_type: outputType,
+      observerType: this.config.type,
+      outputType: outputType,
       content_json: JSON.stringify(content),
       source_claims_json: JSON.stringify(sourceClaimIds),
       stale: false,
