@@ -12,7 +12,7 @@ export default class SynthesisCache extends Model {
   @text('cacheKey') cacheKey!: string
   @text('contentJson') contentJson!: string
   @text('sourceClaimsJson') sourceClaimsJson!: string
-  @field('ttlSeconds') ttlSeconds!: number
   @field('createdAt') createdAt!: number
   @field('stale') stale!: boolean
+  @field('ttlSeconds') ttlSeconds!: number
 }

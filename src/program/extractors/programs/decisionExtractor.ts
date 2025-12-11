@@ -35,9 +35,9 @@ class DecisionExtractor extends BaseExtractor {
       // Rejection
       { id: 'rejection', type: 'keyword', pattern: "not going to|won't|rejected|ruled out|dismissed", weight: 0.7 },
     ],
-    llm_tier: 'small',
-    llm_options: { temperature: 0.2, max_tokens: 1500 },
-    min_confidence: 0.6,
+    llmTier: 'small',
+    llmOptions: { temperature: 0.2, maxTokens: 1500 },
+    minConfidence: 0.6,
     priority: 68,
   };
 
@@ -89,7 +89,8 @@ If no decisions found, respond: []`;
           'certain': 0.95,
         };
 
-        const confidenceLevel = obj.confidenceLevel as string;
+        // Handle both camelCase and snake_case from LLM response
+        const confidenceLevel = (obj.confidenceLevel || obj.confidence_level) as string;
         const rawStakes = obj.stakes as string;
         let stakes: Stakes = 'medium';
         if (validStakes.includes(rawStakes as Stakes)) {
@@ -102,12 +103,12 @@ If no decisions found, respond: []`;
           statement: obj.statement as string,
           subject: (obj.subject as string) || (obj.decision as string),
           claimType: 'decision',
-          temporality: 'point_in_time',
+          temporality: 'pointInTime',
           abstraction: 'specific',
-          source_type: 'direct',
+          sourceType: 'direct',
           confidence: confidenceMap[confidenceLevel] || 0.7,
-          emotional_valence: 0.2,
-          emotional_intensity: 0.4,
+          emotionalValence: 0.2,
+          emotionalIntensity: 0.4,
           stakes,
         });
       }
@@ -116,7 +117,7 @@ If no decisions found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processingTimeMs: 0 },
     };
   }
 }

@@ -24,7 +24,7 @@ import {
   type ExtractionProgramRecord,
   type DispatcherStats,
 } from '../index';
-import type { SearchResult, ReplaceResult } from '../kernel/kernel';
+import type { SearchResult, ReplaceResult } from '../kernel';
 
 // ============================================================================
 // Types
@@ -235,7 +235,7 @@ export function useProgram(): UseProgramReturn {
       setConversations(await kernel.getConversations());
       setTasks(await kernel.getTasks());
       setCorrections(await kernel.getCorrections());
-      setQueueStatus(kernel.getQueueStatus());
+      setQueueStatus(await kernel.getQueueStatus());
 
       // Memory System
       setWorkingMemory(await kernel.getWorkingMemory());

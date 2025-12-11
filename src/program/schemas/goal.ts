@@ -22,9 +22,9 @@ export const GoalTypeSchema = z.enum([
  */
 export const GoalTimeframeSchema = z.enum([
   'immediate', // Today/this week
-  'short_term', // This month
-  'medium_term', // This quarter/year
-  'long_term', // Multi-year
+  'shortTerm', // This month
+  'mediumTerm', // This quarter/year
+  'longTerm', // Multi-year
   'life', // Lifetime goal
 ]);
 
@@ -107,11 +107,13 @@ export const CreateGoalSchema = GoalSchema.omit({
   id: true,
   createdAt: true,
   lastReferenced: true,
+  achievedAt: true,
   status: true,
   progressValue: true,
   progressIndicatorsJson: true,
   blockersJson: true,
 }).extend({
+  achievedAt: z.number().nullable().default(null),
   status: GoalStatusSchema.default('active'),
   progressValue: z.number().min(0).max(100).default(0),
   progressIndicatorsJson: z.string().default('[]'),

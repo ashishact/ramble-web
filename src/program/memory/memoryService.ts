@@ -80,7 +80,7 @@ export class MemoryService {
       weights.access * factors.accessFactor;
 
     // LTM claims get stability floor - they don't drop below 0.3
-    if (claim.memoryTier === 'long_term') {
+    if (claim.memoryTier === 'longTerm') {
       salience = Math.max(salience, 0.3);
     }
 
@@ -128,11 +128,11 @@ export class MemoryService {
   /**
    * Bulk update salience for all working memory claims
    */
-  updateAllSalience(): void {
-    const claims = this.store.claims.getByState('active');
+  async updateAllSalience(): Promise<void> {
+    const claims = await this.store.claims.getByState('active');
     for (const claim of claims) {
       const salience = this.calculateSalience(claim);
-      this.store.claims.updateSalience(claim.id, salience);
+      await this.store.claims.updateSalience(claim.id, salience);
     }
     logger.debug('Updated salience for all active claims', { count: claims.length });
   }
@@ -144,8 +144,8 @@ export class MemoryService {
   /**
    * Get current working memory contents sorted by salience
    */
-  getWorkingMemory(): Claim[] {
-    const claims = this.store.claims.getByMemoryTier('working');
+  async getWorkingMemory(): Promise<Claim[]> {
+    const claims = await this.store.claims.getByMemoryTier('working');
 
     // Calculate and update salience for each
     const withSalience = claims.map((claim) => ({
@@ -162,10 +162,10 @@ export class MemoryService {
   /**
    * Get TopOfMind snapshot - formatted view of working memory
    */
-  getTopOfMind(): TopOfMind {
-    const allClaims = this.store.claims.getByState('active');
-    const allEntities = this.store.entities.getAll();
-    const allGoals = this.store.goals.getActive();
+  async getTopOfMind(): Promise<TopOfMind> {
+    const allClaims = await this.store.claims.getByState('active');
+    const allEntities = await this.store.entities.getAll();
+    const allGoals = await this.store.goals.getActive();
     const limit = this.config.topOfMindLimit;
 
     // Calculate salience for all active claims
@@ -316,16 +316,16 @@ export class MemoryService {
   /**
    * Record access to a claim (viewing it boosts salience)
    */
-  recordAccess(claimId: string): void {
-    this.store.claims.updateLastAccessed(claimId);
+  async recordAccess(claimId: string): Promise<void> {
+    await this.store.claims.updateLastAccessed(claimId);
   }
 
   /**
    * Add new claim to working memory with initial salience
    */
-  addToWorkingMemory(claim: Claim): void {
+  async addToWorkingMemory(claim: Claim): Promise<void> {
     const salience = this.calculateSalience(claim);
-    this.store.claims.updateSalience(claim.id, salience);
+    await this.store.claims.updateSalience(claim.id, salience);
   }
 
   // ============================================================================
@@ -335,8 +335,8 @@ export class MemoryService {
   /**
    * Get all long-term memory claims
    */
-  getLongTermMemory(): Claim[] {
-    const claims = this.store.claims.getByMemoryTier('long_term');
+  async getLongTermMemory(): Promise<Claim[]> {
+    const claims = await this.store.claims.getByMemoryTier('longTerm');
     return claims
       .map((c) => ({ ...c, salience: this.calculateSalience(c) }))
       .sort((a, b) => b.salience - a.salience);
@@ -345,13 +345,13 @@ export class MemoryService {
   /**
    * Promote claim from working to long-term memory
    */
-  promoteToLongTerm(claimId: string, reason?: string): boolean {
-    const claim = this.store.claims.getById(claimId);
-    if (!claim || claim.memoryTier === 'long_term') {
+  async promoteToLongTerm(claimId: string, reason?: string): Promise<boolean> {
+    const claim = await this.store.claims.getById(claimId);
+    if (!claim || claim.memoryTier === 'longTerm') {
       return false;
     }
 
-    this.store.claims.promoteToLongTerm(claimId);
+    await this.store.claims.promoteToLongTerm(claimId);
     this.promotedThisSession++;
     logger.info('Promoted claim to long-term memory', { claimId, reason });
     return true;
@@ -416,7 +416,7 @@ export class MemoryService {
   /**
    * Run decay process on all applicable claims
    */
-  runDecay(): DecayResult {
+  async runDecay(): Promise<DecayResult> {
     const result: DecayResult = {
       processedCount: 0,
       decayedCount: 0,
@@ -425,7 +425,7 @@ export class MemoryService {
       errors: [],
     };
 
-    const decayableClaims = this.store.claims.getDecayable();
+    const decayableClaims = await this.store.claims.getDecayable();
 
     for (const claim of decayableClaims) {
       try {
@@ -433,15 +433,15 @@ export class MemoryService {
         const newConfidence = claim.currentConfidence * decayFactor;
 
         // Update confidence
-        this.store.claims.decayConfidence(claim.id, decayFactor);
+        await this.store.claims.decayConfidence(claim.id, decayFactor);
         result.decayedCount++;
 
         // Check thresholds and update state
         if (newConfidence < this.config.dormantThreshold) {
-          this.store.claims.markDormant(claim.id);
+          await this.store.claims.markDormant(claim.id);
           result.dormantCount++;
         } else if (newConfidence < this.config.staleThreshold) {
-          this.store.claims.markStale(claim.id);
+          await this.store.claims.markStale(claim.id);
           result.staleCount++;
         }
 
@@ -477,10 +477,10 @@ export class MemoryService {
   /**
    * Get memory system statistics
    */
-  getStats(): MemoryStats {
-    const allClaims = this.store.claims.getAll();
-    const workingMemory = this.store.claims.getByMemoryTier('working');
-    const longTermMemory = this.store.claims.getByMemoryTier('long_term');
+  async getStats(): Promise<MemoryStats> {
+    const allClaims = await this.store.claims.getAll();
+    const workingMemory = await this.store.claims.getByMemoryTier('working');
+    const longTermMemory = await this.store.claims.getByMemoryTier('longTerm');
 
     // Calculate salience for all claims
     const claimsWithSalience = allClaims

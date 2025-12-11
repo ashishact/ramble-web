@@ -12,7 +12,5 @@ export default class Value extends Model {
   @text('domain') domain!: string
   @field('importance') importance!: number
   @text('sourceClaimId') sourceClaimId!: string
-  @field('firstExpressed') firstExpressed!: number
-  @field('lastConfirmed') lastConfirmed!: number
-  @field('confirmationCount') confirmationCount!: number
+  @field('createdAt') createdAt!: number
 }

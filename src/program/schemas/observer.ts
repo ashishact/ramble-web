@@ -42,6 +42,7 @@ export const ObserverTriggerSchema = z.object({
 
 /**
  * Observer output schema (stored in database)
+ * Note: Matches WatermelonDB schema in src/db/schema.ts
  */
 export const ObserverOutputSchema = z.object({
   id: z.string(),
@@ -49,7 +50,6 @@ export const ObserverOutputSchema = z.object({
   outputType: z.string(),
   contentJson: z.string(), // JSON serialized content
   sourceClaimsJson: z.string(), // JSON array of claim IDs
-  stale: z.boolean(),
   sessionId: z.string().nullable(),
   createdAt: z.number(),
 });
@@ -60,9 +60,6 @@ export const ObserverOutputSchema = z.object({
 export const CreateObserverOutputSchema = ObserverOutputSchema.omit({
   id: true,
   createdAt: true,
-  stale: true,
-}).extend({
-  stale: z.boolean().default(false),
 });
 
 /**
@@ -75,16 +72,18 @@ export const UpdateObserverOutputSchema = ObserverOutputSchema.partial().omit({
 
 /**
  * Contradiction schema
+ * Note: Database uses createdAt, resolutionExplanation instead of detectedAt, resolutionNotes
+ * The store maps between these for backwards compatibility
  */
 export const ContradictionSchema = z.object({
   id: z.string(),
   claimAId: z.string(),
   claimBId: z.string(),
-  detectedAt: z.number(),
-  contradictionType: z.enum(['direct', 'temporal', 'implication']),
+  detectedAt: z.number(), // Maps to createdAt in DB
+  contradictionType: z.enum(['direct', 'temporal', 'implication']), // Not stored in DB, defaults to 'direct'
   resolved: z.boolean(),
   resolutionType: z.string().nullable(),
-  resolutionNotes: z.string().nullable(),
+  resolutionNotes: z.string().nullable(), // Maps to resolutionExplanation in DB
   resolvedAt: z.number().nullable(),
 });
 
@@ -107,14 +106,16 @@ export const CreateContradictionSchema = ContradictionSchema.omit({
 
 /**
  * Pattern schema (recurring patterns detected)
+ * Note: Database uses createdAt, lastObserved instead of firstDetected, lastDetected
+ * The store maps between these for backwards compatibility
  */
 export const PatternSchema = z.object({
   id: z.string(),
   patternType: z.string(),
   description: z.string(),
   evidenceClaimsJson: z.string(), // JSON array of claim IDs
-  firstDetected: z.number(),
-  lastDetected: z.number(),
+  firstDetected: z.number(), // Maps to createdAt in DB
+  lastDetected: z.number(), // Maps to lastObserved in DB
   occurrenceCount: z.number().int().positive(),
   confidence: z.number().min(0).max(1),
 });
@@ -133,6 +134,8 @@ export const CreatePatternSchema = PatternSchema.omit({
 
 /**
  * Value schema (core values/principles)
+ * Note: Database only has createdAt, not firstExpressed/lastConfirmed/confirmationCount
+ * The store provides defaults for backwards compatibility
  */
 export const ValueSchema = z.object({
   id: z.string(),
@@ -140,9 +143,9 @@ export const ValueSchema = z.object({
   domain: z.string(), // work, relationships, health, etc.
   importance: z.number().min(0).max(1),
   sourceClaimId: z.string(),
-  firstExpressed: z.number(),
-  lastConfirmed: z.number(),
-  confirmationCount: z.number().int().nonnegative(),
+  firstExpressed: z.number(), // Maps to createdAt in DB
+  lastConfirmed: z.number(), // Not stored, defaults to createdAt
+  confirmationCount: z.number().int().nonnegative(), // Not stored, defaults to 1
 });
 
 /**

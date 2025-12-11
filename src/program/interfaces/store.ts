@@ -56,6 +56,9 @@ import type {
   CreateCorrection,
   UpdateCorrection,
   MemoryTier,
+  Task,
+  CreateTask,
+  UpdateTask,
 } from '../types';
 
 // ============================================================================
@@ -283,6 +286,22 @@ export interface ICorrectionStore
 }
 
 // ============================================================================
+// Task Store
+// ============================================================================
+
+export interface ITaskStore extends IBaseStore<Task, CreateTask, UpdateTask> {
+  getPending(): Promise<Task[]>;
+  getRetryable(): Promise<Task[]>;
+  getByStatus(status: string): Promise<Task[]>;
+  getBySessionId(sessionId: string): Promise<Task[]>;
+  markStarted(id: string): Promise<void>;
+  markCompleted(id: string): Promise<void>;
+  markFailed(id: string, error: string): Promise<void>;
+  updateCheckpoint(id: string, checkpoint: string): Promise<void>;
+  subscribe(callback: SubscriptionCallback<Task>): Unsubscribe;
+}
+
+// ============================================================================
 // Combined Store Interface
 // ============================================================================
 
@@ -302,6 +321,7 @@ export interface IProgramStore {
   extractionPrograms: IExtractionProgramStore;
   observerPrograms: IObserverProgramStore;
   corrections: ICorrectionStore;
+  tasks: ITaskStore;
 
   /**
    * Initialize the store (load from IndexedDB)

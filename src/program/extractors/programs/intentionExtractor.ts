@@ -42,12 +42,12 @@ class IntentionExtractor extends BaseExtractor {
       { id: 'thinking_about', type: 'regex', pattern: 'thinking\\s+(?:about|of)', weight: 0.6 },
       { id: 'considering', type: 'keyword', pattern: 'considering', weight: 0.6 },
     ],
-    llm_tier: 'small',
-    llm_options: {
+    llmTier: 'small',
+    llmOptions: {
       temperature: 0.3,
-      max_tokens: 800,
+      maxTokens: 800,
     },
-    min_confidence: 0.6,
+    minConfidence: 0.6,
     priority: 85,
   };
 
@@ -81,9 +81,9 @@ For intentions, use these claimTypes:
 - "decision" for choices that have been made
 
 Set temporality:
-- "point_in_time" for one-time actions
-- "fast_decaying" for short-term plans
-- "slowly_decaying" for long-term commitments`;
+- "pointInTime" for one-time actions
+- "fastDecaying" for short-term plans
+- "slowlyDecaying" for long-term commitments`;
   }
 }
 

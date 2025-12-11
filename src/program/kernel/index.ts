@@ -12,3 +12,6 @@ export {
   type KernelState,
   type KernelStats,
 } from './kernel';
+
+// Re-export search service types
+export { type SearchResult, type ReplaceResult } from './searchService';

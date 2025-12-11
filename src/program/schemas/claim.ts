@@ -39,9 +39,9 @@ export const ClaimTypeSchema = z.enum([
  */
 export const TemporalitySchema = z.enum([
   'eternal', // Always true (math facts, etc.)
-  'slowly_decaying', // Changes over years
-  'fast_decaying', // Changes over days/weeks
-  'point_in_time', // True only at a specific moment
+  'slowlyDecaying', // Changes over years
+  'fastDecaying', // Changes over days/weeks
+  'pointInTime', // True only at a specific moment
 ]);
 
 /**
@@ -104,7 +104,7 @@ export const ClaimSchema = z.object({
   elaborates: z.string().nullable(), // Links to another claim this elaborates
 
   // Memory system fields
-  memoryTier: MemoryTierSchema,        // 'working' | 'long_term'
+  memoryTier: MemoryTierSchema,        // 'working' | 'longTerm'
   salience: z.number().min(0).max(1),   // Computed salience score
   promotedAt: z.number().nullable(),   // When promoted to LTM
   lastAccessed: z.number(),            // When last viewed in UI (for salience boost)
@@ -112,6 +112,7 @@ export const ClaimSchema = z.object({
 
 /**
  * Schema for creating a new claim
+ * Uses .optional().default() pattern for TypeScript to recognize optional fields
  */
 export const CreateClaimSchema = ClaimSchema.omit({
   id: true,
@@ -126,12 +127,12 @@ export const CreateClaimSchema = ClaimSchema.omit({
   promotedAt: true,
   lastAccessed: true,
 }).extend({
-  state: ClaimStateSchema.default('active'),
-  confirmationCount: z.number().int().nonnegative().default(1),
-  supersededBy: z.string().nullable().default(null),
-  memoryTier: MemoryTierSchema.default('working'),
-  salience: z.number().min(0).max(1).default(0),
-  promotedAt: z.number().nullable().default(null),
+  state: ClaimStateSchema.optional().default('active'),
+  confirmationCount: z.number().int().nonnegative().optional().default(1),
+  supersededBy: z.string().nullable().optional().default(null),
+  memoryTier: MemoryTierSchema.optional().default('working'),
+  salience: z.number().min(0).max(1).optional().default(0),
+  promotedAt: z.number().nullable().optional().default(null),
 });
 
 /**

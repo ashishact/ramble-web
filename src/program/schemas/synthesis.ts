@@ -18,19 +18,19 @@ export const SynthesisCacheSchema = z.object({
   cacheKey: z.string(), // Unique key for cache lookup
   contentJson: z.string(), // Serialized synthesis content
   sourceClaimsJson: z.string(), // JSON array of claim IDs used to generate this
-  generatedAt: z.number(),
+  createdAt: z.number(), // When this cache entry was created
   stale: z.boolean(),
   ttlSeconds: z.number(), // Time-to-live in seconds
 });
 
 export const CreateSynthesisCacheSchema = SynthesisCacheSchema.omit({
   id: true,
-  generatedAt: true,
+  createdAt: true,
 }).partial({
   stale: true,
 });
 
 export const UpdateSynthesisCacheSchema = SynthesisCacheSchema.omit({
   id: true,
-  generatedAt: true,
+  createdAt: true,
 }).partial();

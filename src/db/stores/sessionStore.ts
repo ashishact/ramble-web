@@ -33,11 +33,11 @@ export function createSessionStore(db: Database): ISessionStore {
     async create(data: CreateSession): Promise<Session> {
       const model = await db.write(() =>
         collection.create((session) => {
-          session.startedAt = data.startedAt
-          session.endedAt = data.endedAt
-          session.unitCount = data.unitCount
-          session.summary = data.summary
-          session.moodTrajectoryJson = data.moodTrajectoryJson
+          session.startedAt = data.startedAt ?? null
+          session.endedAt = data.endedAt ?? null
+          session.unitCount = data.unitCount ?? null
+          session.summary = data.summary ?? null
+          session.moodTrajectoryJson = data.moodTrajectoryJson ?? null
         })
       )
       return modelToSession(model)
@@ -46,12 +46,14 @@ export function createSessionStore(db: Database): ISessionStore {
     async update(id: string, data: UpdateSession): Promise<Session | null> {
       try {
         const model = await collection.find(id)
-        const updated = await model.update((session) => {
-          if (data.endedAt !== undefined) session.endedAt = data.endedAt
-          if (data.unitCount !== undefined) session.unitCount = data.unitCount
-          if (data.summary !== undefined) session.summary = data.summary
-          if (data.moodTrajectoryJson !== undefined) session.moodTrajectoryJson = data.moodTrajectoryJson
-        })
+        const updated = await db.write(() =>
+          model.update((session) => {
+            if (data.endedAt !== undefined) session.endedAt = data.endedAt ?? null
+            if (data.unitCount !== undefined) session.unitCount = data.unitCount ?? null
+            if (data.summary !== undefined) session.summary = data.summary ?? null
+            if (data.moodTrajectoryJson !== undefined) session.moodTrajectoryJson = data.moodTrajectoryJson ?? null
+          })
+        )
         return modelToSession(updated)
       } catch {
         return null
@@ -61,7 +63,7 @@ export function createSessionStore(db: Database): ISessionStore {
     async delete(id: string): Promise<boolean> {
       try {
         const model = await collection.find(id)
-        await model.destroyPermanently()
+        await db.write(() => model.destroyPermanently())
         return true
       } catch {
         return false
@@ -78,9 +80,11 @@ export function createSessionStore(db: Database): ISessionStore {
     async endSession(id: string): Promise<Session | null> {
       try {
         const model = await collection.find(id)
-        const updated = await model.update((session) => {
-          session.endedAt = Date.now()
-        })
+        const updated = await db.write(() =>
+          model.update((session) => {
+            session.endedAt = Date.now()
+          })
+        )
         return modelToSession(updated)
       } catch {
         return null
@@ -90,9 +94,11 @@ export function createSessionStore(db: Database): ISessionStore {
     async incrementUnitCount(id: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((session) => {
-          session.unitCount = (session.unitCount || 0) + 1
-        })
+        await db.write(() =>
+          model.update((session) => {
+            session.unitCount = (session.unitCount || 0) + 1
+          })
+        )
       } catch {
         // Ignore errors
       }

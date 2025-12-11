@@ -17,7 +17,7 @@ interface LongTermMemoryPanelProps {
 export function LongTermMemoryPanel({ claims, onClaimClick }: LongTermMemoryPanelProps) {
   // Filter long-term memory claims and sort by promoted date (most recent first)
   const ltmClaims = claims
-    .filter((c) => c.memoryTier === 'long_term' && c.state === 'active')
+    .filter((c) => c.memoryTier === 'longTerm' && c.state === 'active')
     .sort((a, b) => (b.promotedAt || 0) - (a.promotedAt || 0));
 
   // Group by recency

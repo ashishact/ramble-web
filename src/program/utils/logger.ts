@@ -31,7 +31,12 @@ export type LogModule =
   | 'MemoryService'
   | 'DecayHandler'
   | 'Migration'
-  | 'Sync';
+  | 'Sync'
+  | 'TinyBaseExport'
+  | 'WatermelonImport'
+  | 'ConversationProcessor'
+  | 'SearchService'
+  | 'SessionManager';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -71,6 +76,11 @@ const MODULE_COLORS: Record<LogModule, string> = {
   DecayHandler: '#607D8B',
   Migration: '#9E9E9E',
   Sync: '#00BCD4',
+  TinyBaseExport: '#9E9E9E',
+  WatermelonImport: '#9E9E9E',
+  ConversationProcessor: '#9C27B0',
+  SearchService: '#2196F3',
+  SessionManager: '#607D8B',
 };
 
 interface LogConfig {

@@ -14,7 +14,7 @@ import {
   LLM_TIER_INFO,
   type LLMTier,
   type LLMTierSettings,
-  type LLMProvider,
+  type ConcreteProvider as LLMProvider,
 } from '../../program';
 
 const AVAILABLE_PROVIDERS: Array<{ value: LLMProvider; label: string }> = [

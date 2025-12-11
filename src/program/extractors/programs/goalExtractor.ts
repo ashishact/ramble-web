@@ -51,12 +51,12 @@ class GoalExtractor extends BaseExtractor {
       { id: 'someday', type: 'keyword', pattern: 'someday', weight: 0.4 },
       { id: 'eventually', type: 'keyword', pattern: 'eventually', weight: 0.4 },
     ],
-    llm_tier: 'small',
-    llm_options: {
+    llmTier: 'small',
+    llmOptions: {
       temperature: 0.3,
-      max_tokens: 1000,
+      maxTokens: 1000,
     },
-    min_confidence: 0.6,
+    minConfidence: 0.6,
     priority: 90, // High priority - goals are important
   };
 
@@ -87,7 +87,7 @@ ${inputSection}
 ${outputInstructions}
 
 For goals, consider:
-- temporality: "slowly_decaying" for long-term goals, "fast_decaying" for short-term
+- temporality: "slowlyDecaying" for long-term goals, "fastDecaying" for short-term
 - stakes: Based on how important this goal seems to the person
 - abstraction: "specific" for concrete goals, "general" for life aspirations`;
   }

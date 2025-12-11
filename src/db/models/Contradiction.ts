@@ -10,10 +10,9 @@ export default class Contradiction extends Model {
 
   @text('claimAId') claimAId!: string
   @text('claimBId') claimBId!: string
-  @field('detectedAt') detectedAt!: number
-  @text('contradictionType') contradictionType!: string
-  @field('resolved') resolved!: boolean
   @text('resolutionType') resolutionType!: string | null
-  @text('resolutionNotes') resolutionNotes!: string | null
+  @text('resolutionExplanation') resolutionExplanation!: string | null
+  @field('resolved') resolved!: boolean
+  @field('createdAt') createdAt!: number
   @field('resolvedAt') resolvedAt!: number | null
 }

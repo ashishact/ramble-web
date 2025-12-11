@@ -33,9 +33,9 @@ class LearningExtractor extends BaseExtractor {
       // Growth
       { id: 'growth', type: 'keyword', pattern: 'grew|developed|improved|got better at', weight: 0.6 },
     ],
-    llm_tier: 'small',
-    llm_options: { temperature: 0.2, max_tokens: 1500 },
-    min_confidence: 0.5,
+    llmTier: 'small',
+    llmOptions: { temperature: 0.2, maxTokens: 1500 },
+    minConfidence: 0.5,
     priority: 65,
   };
 
@@ -78,19 +78,20 @@ If no learnings found, respond: []`;
     for (const item of parsed) {
       const obj = item as Record<string, unknown>;
       if (obj.statement) {
-        const learningType = obj.learning_type as string;
+        // Handle both camelCase and snake_case from LLM response
+        const learningType = (obj.learningType || obj.learning_type) as string;
         const significance = (obj.significance as number) || 0.5;
 
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || 'learning',
           claimType: 'learning',
-          temporality: 'slowly_decaying',
+          temporality: 'slowlyDecaying',
           abstraction: learningType === 'wisdom' ? 'general' : 'specific',
-          source_type: 'direct',
+          sourceType: 'direct',
           confidence: (obj.confidence as number) || 0.7,
-          emotional_valence: 0.4,
-          emotional_intensity: significance,
+          emotionalValence: 0.4,
+          emotionalIntensity: significance,
           stakes: significance > 0.7 ? 'medium' : 'low',
         });
       }
@@ -99,7 +100,7 @@ If no learnings found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processingTimeMs: 0 },
     };
   }
 }

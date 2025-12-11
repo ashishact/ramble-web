@@ -46,12 +46,12 @@ class RelationshipExtractor extends BaseExtractor {
       { id: 'got_together', type: 'regex', pattern: 'got\\s+together', weight: 0.8 },
       { id: 'met', type: 'regex', pattern: '(?:met|meeting)\\s+(?:with)?', weight: 0.5 },
     ],
-    llm_tier: 'small',
-    llm_options: {
+    llmTier: 'small',
+    llmOptions: {
       temperature: 0.3,
-      max_tokens: 1000,
+      maxTokens: 1000,
     },
-    min_confidence: 0.6,
+    minConfidence: 0.6,
     priority: 75,
   };
 
@@ -87,7 +87,7 @@ ${outputInstructions}
 For relationships:
 - subject: The primary person in the relationship (often "I" or the speaker)
 - statement: Describe the relationship clearly
-- temporality: "slowly_decaying" for ongoing relationships, "point_in_time" for events
+- temporality: "slowlyDecaying" for ongoing relationships, "pointInTime" for events
 - stakes: Based on importance of the relationship`;
   }
 }

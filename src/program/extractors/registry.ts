@@ -41,7 +41,7 @@ class ExtractorRegistryImpl implements ExtractorRegistry {
    * Register a new extractor
    */
   register(extractor: ExtractionProgram): void {
-    const { id, claim_types } = extractor.config;
+    const { id, claimTypes } = extractor.config;
 
     // Store by ID
     if (this.extractors.has(id)) {
@@ -50,14 +50,14 @@ class ExtractorRegistryImpl implements ExtractorRegistry {
     this.extractors.set(id, extractor);
 
     // Index by claim type
-    for (const claimType of claim_types) {
+    for (const claimType of claimTypes) {
       if (!this.byClaimType.has(claimType)) {
         this.byClaimType.set(claimType, []);
       }
       this.byClaimType.get(claimType)!.push(extractor);
     }
 
-    console.log(`[ExtractorRegistry] Registered extractor: ${id} (${claim_types.join(', ')})`);
+    console.log(`[ExtractorRegistry] Registered extractor: ${id} (${claimTypes.join(', ')})`);
   }
 
   /**

@@ -49,29 +49,29 @@ export function createClaimStore(db: Database): IClaimStore {
       const now = Date.now()
       const model = await db.write(() =>
         collection.create((claim) => {
-          claim.statement = data.statement
-          claim.subject = data.subject
-          claim.claimType = data.claimType
-          claim.temporality = data.temporality
-          claim.abstraction = data.abstraction
-          claim.sourceType = data.sourceType
-          claim.initialConfidence = data.initialConfidence
+          claim.statement = data.statement ?? null
+          claim.subject = data.subject ?? null
+          claim.claimType = data.claimType ?? null
+          claim.temporality = data.temporality ?? null
+          claim.abstraction = data.abstraction ?? null
+          claim.sourceType = data.sourceType ?? null
+          claim.initialConfidence = data.initialConfidence ?? null
           claim.currentConfidence = data.initialConfidence // Not in CreateClaim, use initial
           claim.state = data.state || 'active'
-          claim.emotionalValence = data.emotionalValence
-          claim.emotionalIntensity = data.emotionalIntensity
-          claim.stakes = data.stakes
-          claim.validFrom = data.validFrom
-          claim.validUntil = data.validUntil ?? undefined
+          claim.emotionalValence = data.emotionalValence ?? null
+          claim.emotionalIntensity = data.emotionalIntensity ?? null
+          claim.stakes = data.stakes ?? null
+          claim.validFrom = data.validFrom ?? null
+          claim.validUntil = data.validUntil ?? null
           claim.createdAt = now
           claim.lastConfirmed = now
           claim.confirmationCount = data.confirmationCount || 1
-          claim.extractionProgramId = data.extractionProgramId
-          claim.supersededBy = data.supersededBy ?? undefined
-          claim.elaborates = data.elaborates ?? undefined
+          claim.extractionProgramId = data.extractionProgramId ?? null
+          claim.supersededBy = data.supersededBy ?? null
+          claim.elaborates = data.elaborates ?? null
           claim.memoryTier = data.memoryTier || 'working'
           claim.salience = data.salience || 0
-          claim.promotedAt = data.promotedAt ?? undefined
+          claim.promotedAt = data.promotedAt ?? null
           claim.lastAccessed = now
         })
       )
@@ -81,21 +81,23 @@ export function createClaimStore(db: Database): IClaimStore {
     async update(id: string, data: UpdateClaim): Promise<Claim | null> {
       try {
         const model = await collection.find(id)
-        const updated = await model.update((claim) => {
-          if (data.statement !== undefined) claim.statement = data.statement
-          if (data.currentConfidence !== undefined) claim.currentConfidence = data.currentConfidence
-          if (data.state !== undefined) claim.state = data.state
-          if (data.emotionalValence !== undefined) claim.emotionalValence = data.emotionalValence
-          if (data.emotionalIntensity !== undefined) claim.emotionalIntensity = data.emotionalIntensity
-          if (data.validUntil !== undefined) claim.validUntil = data.validUntil ?? undefined
-          if (data.lastConfirmed !== undefined) claim.lastConfirmed = data.lastConfirmed
-          if (data.confirmationCount !== undefined) claim.confirmationCount = data.confirmationCount
-          if (data.supersededBy !== undefined) claim.supersededBy = data.supersededBy ?? undefined
-          if (data.memoryTier !== undefined) claim.memoryTier = data.memoryTier
-          if (data.salience !== undefined) claim.salience = data.salience
-          if (data.promotedAt !== undefined) claim.promotedAt = data.promotedAt ?? undefined
-          if (data.lastAccessed !== undefined) claim.lastAccessed = data.lastAccessed
-        })
+        const updated = await db.write(() =>
+          model.update((claim) => {
+            if (data.statement !== undefined) claim.statement = data.statement ?? null
+            if (data.currentConfidence !== undefined) claim.currentConfidence = data.currentConfidence ?? null
+            if (data.state !== undefined) claim.state = data.state ?? null
+            if (data.emotionalValence !== undefined) claim.emotionalValence = data.emotionalValence ?? null
+            if (data.emotionalIntensity !== undefined) claim.emotionalIntensity = data.emotionalIntensity ?? null
+            if (data.validUntil !== undefined) claim.validUntil = data.validUntil ?? null
+            if (data.lastConfirmed !== undefined) claim.lastConfirmed = data.lastConfirmed ?? null
+            if (data.confirmationCount !== undefined) claim.confirmationCount = data.confirmationCount ?? null
+            if (data.supersededBy !== undefined) claim.supersededBy = data.supersededBy ?? null
+            if (data.memoryTier !== undefined) claim.memoryTier = data.memoryTier ?? null
+            if (data.salience !== undefined) claim.salience = data.salience ?? null
+            if (data.promotedAt !== undefined) claim.promotedAt = data.promotedAt ?? null
+            if (data.lastAccessed !== undefined) claim.lastAccessed = data.lastAccessed ?? null
+          })
+        )
         return modelToClaim(updated)
       } catch {
         return null
@@ -105,7 +107,7 @@ export function createClaimStore(db: Database): IClaimStore {
     async delete(id: string): Promise<boolean> {
       try {
         const model = await collection.find(id)
-        await model.destroyPermanently()
+        await db.write(() => model.destroyPermanently())
         return true
       } catch {
         return false
@@ -158,11 +160,13 @@ export function createClaimStore(db: Database): IClaimStore {
     async confirmClaim(id: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((claim) => {
-          claim.lastConfirmed = Date.now()
-          claim.confirmationCount = (claim.confirmationCount || 0) + 1
-          claim.currentConfidence = Math.min(1.0, claim.currentConfidence + 0.1)
-        })
+        await db.write(() =>
+          model.update((claim) => {
+            claim.lastConfirmed = Date.now()
+            claim.confirmationCount = (claim.confirmationCount || 0) + 1
+            claim.currentConfidence = Math.min(1.0, claim.currentConfidence + 0.1)
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -171,10 +175,12 @@ export function createClaimStore(db: Database): IClaimStore {
     async supersedeClaim(id: string, newClaimId: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((claim) => {
-          claim.supersededBy = newClaimId
-          claim.state = 'superseded'
-        })
+        await db.write(() =>
+          model.update((claim) => {
+            claim.supersededBy = newClaimId
+            claim.state = 'superseded'
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -183,9 +189,11 @@ export function createClaimStore(db: Database): IClaimStore {
     async decayConfidence(id: string, factor: number): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((claim) => {
-          claim.currentConfidence = Math.max(0, claim.currentConfidence * factor)
-        })
+        await db.write(() =>
+          model.update((claim) => {
+            claim.currentConfidence = Math.max(0, claim.currentConfidence * factor)
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -208,8 +216,8 @@ export function createClaimStore(db: Database): IClaimStore {
     async addSource(data: CreateClaimSource): Promise<ClaimSource> {
       const model = await db.write(() =>
         claimSourcesCollection.create((cs: any) => {
-          cs.claimId = data.claimId
-          cs.unitId = data.unitId
+          cs.claimId = data.claimId ?? null
+          cs.unitId = data.unitId ?? null
         })
       )
       return {
@@ -253,9 +261,11 @@ export function createClaimStore(db: Database): IClaimStore {
     async updateSalience(id: string, salience: number): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((claim) => {
-          claim.salience = salience
-        })
+        await db.write(() =>
+          model.update((claim) => {
+            claim.salience = salience
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -264,9 +274,11 @@ export function createClaimStore(db: Database): IClaimStore {
     async updateLastAccessed(id: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((claim) => {
-          claim.lastAccessed = Date.now()
-        })
+        await db.write(() =>
+          model.update((claim) => {
+            claim.lastAccessed = Date.now()
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -275,10 +287,12 @@ export function createClaimStore(db: Database): IClaimStore {
     async promoteToLongTerm(id: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((claim) => {
-          claim.memoryTier = 'long_term'
-          claim.promotedAt = Date.now()
-        })
+        await db.write(() =>
+          model.update((claim) => {
+            claim.memoryTier = 'longTerm'
+            claim.promotedAt = Date.now()
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -287,9 +301,11 @@ export function createClaimStore(db: Database): IClaimStore {
     async markStale(id: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((claim) => {
-          claim.state = 'stale'
-        })
+        await db.write(() =>
+          model.update((claim) => {
+            claim.state = 'stale'
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -298,9 +314,11 @@ export function createClaimStore(db: Database): IClaimStore {
     async markDormant(id: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((claim) => {
-          claim.state = 'dormant'
-        })
+        await db.write(() =>
+          model.update((claim) => {
+            claim.state = 'dormant'
+          })
+        )
       } catch {
         // Ignore errors
       }

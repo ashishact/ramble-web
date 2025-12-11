@@ -38,7 +38,7 @@ export function createEntityStore(db: Database): IEntityStore {
           entity.aliases = data.aliases
           entity.createdAt = Date.now()
           entity.lastReferenced = Date.now()
-          entity.mentionCount = data.mentionCount
+          entity.mentionCount = data.mentionCount ?? 0
         })
       )
       return modelToEntity(model)
@@ -47,13 +47,15 @@ export function createEntityStore(db: Database): IEntityStore {
     async update(id: string, data: UpdateEntity): Promise<Entity | null> {
       try {
         const model = await collection.find(id)
-        const updated = await model.update((entity) => {
-          if (data.canonicalName !== undefined) entity.canonicalName = data.canonicalName
-          if (data.entityType !== undefined) entity.entityType = data.entityType
-          if (data.aliases !== undefined) entity.aliases = data.aliases
-          if (Date.now() !== undefined) entity.lastReferenced = Date.now()
-          if (data.mentionCount !== undefined) entity.mentionCount = data.mentionCount
-        })
+        const updated = await db.write(() =>
+          model.update((entity) => {
+            if (data.canonicalName !== undefined) entity.canonicalName = data.canonicalName
+            if (data.entityType !== undefined) entity.entityType = data.entityType
+            if (data.aliases !== undefined) entity.aliases = data.aliases
+            if (Date.now() !== undefined) entity.lastReferenced = Date.now()
+            if (data.mentionCount !== undefined) entity.mentionCount = data.mentionCount
+          })
+        )
         return modelToEntity(updated)
       } catch {
         return null
@@ -63,7 +65,7 @@ export function createEntityStore(db: Database): IEntityStore {
     async delete(id: string): Promise<boolean> {
       try {
         const model = await collection.find(id)
-        await model.destroyPermanently()
+        await db.write(() => model.destroyPermanently())
         return true
       } catch {
         return false
@@ -95,9 +97,11 @@ export function createEntityStore(db: Database): IEntityStore {
     async incrementMentionCount(id: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((entity) => {
-          entity.mentionCount = (entity.mentionCount || 0) + 1
-        })
+        await db.write(() =>
+          model.update((entity) => {
+            entity.mentionCount = (entity.mentionCount || 0) + 1
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -106,9 +110,11 @@ export function createEntityStore(db: Database): IEntityStore {
     async updateLastReferenced(id: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((entity) => {
-          entity.lastReferenced = Date.now()
-        })
+        await db.write(() =>
+          model.update((entity) => {
+            entity.lastReferenced = Date.now()
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -122,17 +128,20 @@ export function createEntityStore(db: Database): IEntityStore {
         const keepAliases = JSON.parse(keepModel.aliases || '[]')
         const deleteAliases = JSON.parse(deleteModel.aliases || '[]')
 
-        const merged = await keepModel.update((entity) => {
-          // Merge aliases
-          const allAliases = [...new Set([...keepAliases, deleteModel.canonicalName, ...deleteAliases])]
-          entity.aliases = JSON.stringify(allAliases)
-          // Combine mention counts
-          entity.mentionCount = (entity.mentionCount || 0) + (deleteModel.mentionCount || 0)
-          // Update last referenced
-          entity.lastReferenced = Math.max(entity.lastReferenced, deleteModel.lastReferenced)
+        const merged = await db.write(async () => {
+          const updatedModel = await keepModel.update((entity) => {
+            // Merge aliases
+            const allAliases = [...new Set([...keepAliases, deleteModel.canonicalName, ...deleteAliases])]
+            entity.aliases = JSON.stringify(allAliases)
+            // Combine mention counts
+            entity.mentionCount = (entity.mentionCount || 0) + (deleteModel.mentionCount || 0)
+            // Update last referenced
+            entity.lastReferenced = Math.max(entity.lastReferenced, deleteModel.lastReferenced)
+          })
+          await deleteModel.destroyPermanently()
+          return updatedModel
         })
 
-        await deleteModel.destroyPermanently()
         return modelToEntity(merged)
       } catch {
         return null

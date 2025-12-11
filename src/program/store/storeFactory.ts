@@ -58,5 +58,5 @@ export async function createProgramStore(config?: Partial<StoreConfig>): Promise
  */
 export function getConfiguredBackend(): StoreBackend {
   // Could read from env var or config file
-  return (process.env.VITE_STORE_BACKEND as StoreBackend) || 'watermelon'
+  return (import.meta.env?.VITE_STORE_BACKEND as StoreBackend) || 'watermelon'
 }

@@ -36,9 +36,9 @@ class CausalExtractor extends BaseExtractor {
       // Reason-giving
       { id: 'reason', type: 'keyword', pattern: 'the reason|the cause|what makes|what causes', weight: 0.8 },
     ],
-    llm_tier: 'small',
-    llm_options: { temperature: 0.2, max_tokens: 1500 },
-    min_confidence: 0.5,
+    llmTier: 'small',
+    llmOptions: { temperature: 0.2, maxTokens: 1500 },
+    minConfidence: 0.5,
     priority: 75,
   };
 
@@ -80,16 +80,18 @@ If no causal beliefs found, respond: []`;
     for (const item of parsed) {
       const obj = item as Record<string, unknown>;
       if (obj.statement && obj.cause && obj.effect) {
+        // Handle both camelCase and snake_case from LLM response
+        const isPersonal = obj.isPersonal ?? obj.is_personal;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || (obj.cause as string),
           claimType: 'causal',
-          temporality: 'slowly_decaying',
-          abstraction: obj.is_personal ? 'specific' : 'general',
-          source_type: 'direct',
+          temporality: 'slowlyDecaying',
+          abstraction: isPersonal ? 'specific' : 'general',
+          sourceType: 'direct',
           confidence: (obj.confidence as number) || 0.7,
-          emotional_valence: 0,
-          emotional_intensity: 0,
+          emotionalValence: 0,
+          emotionalIntensity: 0,
           stakes: 'medium',
         });
       }
@@ -98,7 +100,7 @@ If no causal beliefs found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processingTimeMs: 0 },
     };
   }
 }

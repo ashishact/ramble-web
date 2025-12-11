@@ -4,7 +4,7 @@
  * Handles database schema migrations with versioning
  */
 
-import type { ProgramStoreInstance } from '../store/programStore';
+import type { ProgramStoreInstance } from '../store';
 import type { Migration, MigrationResult, MigrationStatus, MigrationRecord } from './types';
 import { createLogger } from '../utils/logger';
 

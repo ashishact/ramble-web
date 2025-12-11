@@ -60,7 +60,7 @@ export class ConsolidationObserver extends BaseObserver {
         if (score >= CONSOLIDATION_THRESHOLD) {
           const factors = this.getConsolidationFactors(claim);
 
-          const output = this.createOutput(
+          const output = await this.createOutput(
             context,
             'consolidate_to_long_term',
             {
@@ -80,7 +80,7 @@ export class ConsolidationObserver extends BaseObserver {
 
       // Create session summary output
       if (sessionClaims.length > 0) {
-        const summaryOutput = this.createOutput(
+        const summaryOutput = await this.createOutput(
           context,
           'consolidation_summary',
           {

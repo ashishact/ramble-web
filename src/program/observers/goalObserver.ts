@@ -37,14 +37,14 @@ export class GoalObserver extends BaseObserver {
       const goalClaims = this.findGoalClaims(context);
 
       for (const claim of goalClaims) {
-        const existingGoal = this.findExistingGoal(context, claim);
+        const existingGoal = await this.findExistingGoal(context, claim);
 
         if (existingGoal) {
           // Check for progress or status change
           const statusUpdate = this.detectStatusChange(context, existingGoal, claim);
 
           if (statusUpdate) {
-            const output = this.createOutput(
+            const output = await this.createOutput(
               context,
               'goal_progress',
               {
@@ -61,7 +61,7 @@ export class GoalObserver extends BaseObserver {
           }
         } else if (claim.claimType === 'goal') {
           // New goal detected - create one
-          const output = this.createOutput(
+          const output = await this.createOutput(
             context,
             'goal_new',
             {
@@ -78,7 +78,7 @@ export class GoalObserver extends BaseObserver {
 
       // On session end, check for stalled or blocked goals
       if (context.triggeringClaims.length === 0) {
-        const stalledOutputs = this.checkStalledGoals(context);
+        const stalledOutputs = await this.checkStalledGoals(context);
         outputs.push(...stalledOutputs);
       }
 
@@ -117,11 +117,11 @@ export class GoalObserver extends BaseObserver {
   /**
    * Find existing goal that matches this claim
    */
-  private findExistingGoal(
+  private async findExistingGoal(
     context: ObserverContext,
     claim: Claim
-  ): ReturnType<typeof context.store.goals.getAll>[number] | null {
-    const goals = context.store.goals.getAll();
+  ): Promise<Awaited<ReturnType<typeof context.store.goals.getAll>>[number] | null> {
+    const goals = await context.store.goals.getAll();
 
     // Look for goal with matching subject or statement
     for (const goal of goals) {
@@ -141,7 +141,7 @@ export class GoalObserver extends BaseObserver {
    */
   private detectStatusChange(
     _context: ObserverContext,
-    goal: ReturnType<typeof _context.store.goals.getAll>[number],
+    goal: Awaited<ReturnType<typeof _context.store.goals.getAll>>[number],
     claim: Claim
   ): { status: string; progressChange: number } | null {
     const statement = claim.statement.toLowerCase();
@@ -192,15 +192,16 @@ export class GoalObserver extends BaseObserver {
   /**
    * Check for goals that haven't been mentioned recently
    */
-  private checkStalledGoals(context: ObserverContext): ObserverOutput[] {
+  private async checkStalledGoals(context: ObserverContext): Promise<ObserverOutput[]> {
     const outputs: ObserverOutput[] = [];
-    const goals = context.store.goals.getAll().filter((g) => g.status === 'active');
+    const allGoals = await context.store.goals.getAll();
+    const goals = allGoals.filter((g) => g.status === 'active');
 
     const oneWeekAgo = now() - 7 * 24 * 60 * 60 * 1000;
 
     for (const goal of goals) {
       if (goal.lastReferenced < oneWeekAgo) {
-        const output = this.createOutput(
+        const output = await this.createOutput(
           context,
           'goal_stalled',
           {

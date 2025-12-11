@@ -49,12 +49,12 @@ class ConcernExtractor extends BaseExtractor {
       { id: 'lose', type: 'regex', pattern: '(?:might|could|will)\\s+lose', weight: 0.8 },
       { id: 'miss', type: 'regex', pattern: '(?:might|could|will)\\s+miss', weight: 0.7 },
     ],
-    llm_tier: 'small',
-    llm_options: {
+    llmTier: 'small',
+    llmOptions: {
       temperature: 0.3,
-      max_tokens: 800,
+      maxTokens: 800,
     },
-    min_confidence: 0.5,
+    minConfidence: 0.5,
     priority: 85, // High priority - concerns need attention
   };
 
@@ -85,10 +85,10 @@ ${inputSection}
 ${outputInstructions}
 
 For concerns:
-- emotional_valence: Usually negative (-0.3 to -1.0)
-- emotional_intensity: Based on how worried they seem
+- emotionalValence: Usually negative (-0.3 to -1.0)
+- emotionalIntensity: Based on how worried they seem
 - stakes: How serious the potential problem is
-- temporality: "fast_decaying" for immediate concerns, "slowly_decaying" for ongoing worries`;
+- temporality: "fastDecaying" for immediate concerns, "slowlyDecaying" for ongoing worries`;
   }
 }
 

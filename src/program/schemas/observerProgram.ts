@@ -57,10 +57,10 @@ export const ObserverProgramSchema = z.object({
 });
 
 export const CreateObserverProgramSchema = ObserverProgramSchema.omit({
-  id: true,
   createdAt: true,
   updatedAt: true,
 }).partial({
+  id: true,  // Optional - if provided, uses this ID; otherwise auto-generated
   active: true,
   version: true,
   isCore: true,
@@ -74,3 +74,38 @@ export const UpdateObserverProgramSchema = ObserverProgramSchema.omit({
   createdAt: true,
   type: true, // Cannot change type after creation
 }).partial();
+
+// ============================================================================
+// JSON Serialization Helpers (for WatermelonDB string storage)
+// ============================================================================
+
+/**
+ * Schema for parsing triggers from JSON string
+ */
+const TriggersArraySchema = z.array(TriggerTypeSchema);
+
+/**
+ * Safely parse triggers from JSON string with Zod validation
+ * Returns empty array if parsing fails
+ */
+export function parseTriggers(json: string): z.infer<typeof TriggersArraySchema> {
+  try {
+    const parsed = JSON.parse(json);
+    const result = TriggersArraySchema.safeParse(parsed);
+    if (result.success) {
+      return result.data;
+    }
+    console.warn('Invalid triggers data:', result.error.message);
+    return [];
+  } catch {
+    console.warn('Failed to parse triggers JSON:', json);
+    return [];
+  }
+}
+
+/**
+ * Serialize triggers array to JSON string for storage
+ */
+export function serializeTriggers(triggers: z.infer<typeof TriggersArraySchema>): string {
+  return JSON.stringify(triggers);
+}

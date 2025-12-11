@@ -17,8 +17,8 @@ import type { PatternDef, PatternMatch, ExtractionProgram, PatternMatchResult } 
 function matchKeyword(text: string, pattern: PatternDef): PatternMatch[] {
   const matches: PatternMatch[] = [];
   const keyword = pattern.pattern as string;
-  const searchText = pattern.case_sensitive ? text : text.toLowerCase();
-  const searchKeyword = pattern.case_sensitive ? keyword : keyword.toLowerCase();
+  const searchText = pattern.caseSensitive ? text : text.toLowerCase();
+  const searchKeyword = pattern.caseSensitive ? keyword : keyword.toLowerCase();
 
   let pos = 0;
   while (true) {
@@ -55,7 +55,7 @@ function matchRegex(text: string, pattern: PatternDef): PatternMatch[] {
     // Clone with global flag
     regex = new RegExp(pattern.pattern.source, pattern.pattern.flags + (pattern.pattern.flags.includes('g') ? '' : 'g'));
   } else {
-    const flags = pattern.case_sensitive ? 'g' : 'gi';
+    const flags = pattern.caseSensitive ? 'g' : 'gi';
     regex = new RegExp(pattern.pattern as string, flags);
   }
 
@@ -118,9 +118,9 @@ function matchPattern(text: string, pattern: PatternDef): PatternMatch[] {
 
 export interface PatternMatcherOptions {
   /** Minimum total relevance to consider a match */
-  min_relevance?: number;
+  minRelevance?: number;
   /** Maximum matches per pattern */
-  max_matches_per_pattern?: number;
+  maxMatchesPerPattern?: number;
 }
 
 const DEFAULT_OPTIONS: Required<PatternMatcherOptions> = {
@@ -155,7 +155,7 @@ export function findPatternMatches(
     for (const pattern of extractor.config.patterns) {
       const matches = matchPattern(text, pattern);
       // Limit matches per pattern
-      allMatches.push(...matches.slice(0, opts.max_matches_per_pattern));
+      allMatches.push(...matches.slice(0, opts.maxMatchesPerPattern));
     }
 
     if (allMatches.length === 0) continue;
@@ -164,7 +164,7 @@ export function findPatternMatches(
     const uniqueMatches = deduplicateMatches(allMatches);
     const totalRelevance = uniqueMatches.reduce((sum, m) => sum + m.relevanceScore, 0);
 
-    if (totalRelevance >= opts.min_relevance) {
+    if (totalRelevance >= opts.minRelevance) {
       results.push({
         extractorId: extractor.config.id,
         matches: uniqueMatches,

@@ -31,9 +31,9 @@ class PreferenceExtractor extends BaseExtractor {
       // Taste
       { id: 'taste', type: 'keyword', pattern: 'my taste|my style|my type|my kind of', weight: 0.7 },
     ],
-    llm_tier: 'small',
-    llm_options: { temperature: 0.2, max_tokens: 1200 },
-    min_confidence: 0.5,
+    llmTier: 'small',
+    llmOptions: { temperature: 0.2, maxTokens: 1200 },
+    minConfidence: 0.5,
     priority: 55,
   };
 
@@ -79,19 +79,20 @@ If no preferences found, respond: []`;
     for (const item of parsed) {
       const obj = item as Record<string, unknown>;
       if (obj.statement) {
-        const preferenceType = obj.preference_type as string;
-        const strength = obj.strength as string;
+        // Handle both camelCase and snake_case from LLM response
+        const preferenceType = (obj.preferenceType || obj.preference_type) as string;
+        const strength = (obj.strength as string) || 'moderate';
 
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || (obj.domain as string) || 'preference',
           claimType: 'preference',
-          temporality: 'slowly_decaying',
+          temporality: 'slowlyDecaying',
           abstraction: 'specific',
-          source_type: 'direct',
+          sourceType: 'direct',
           confidence: (obj.confidence as number) || 0.7,
-          emotional_valence: valenceMap[preferenceType] || 0,
-          emotional_intensity: strength === 'strong' ? 0.8 : strength === 'mild' ? 0.3 : 0.5,
+          emotionalValence: valenceMap[preferenceType] || 0,
+          emotionalIntensity: strength === 'strong' ? 0.8 : strength === 'mild' ? 0.3 : 0.5,
           stakes: 'low',
         });
       }
@@ -100,7 +101,7 @@ If no preferences found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processingTimeMs: 0 },
     };
   }
 }

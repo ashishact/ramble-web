@@ -93,7 +93,7 @@ Respond with a JSON object in this exact format:
       "statement": "The claim as a clear, standalone statement",
       "subject": "The main entity this claim is about",
       "claim_type": "one of the valid claim types",
-      "temporality": "eternal|slowly_decaying|fast_decaying|point_in_time",
+      "temporality": "eternal|slowlyDecaying|fastDecaying|pointInTime",
       "abstraction": "specific|general|universal",
       "source_type": "direct|inferred|corrected",
       "confidence": 0.0-1.0,
@@ -179,7 +179,7 @@ export function parseJSONResponse(
     const claims: ExtractedClaim[] = [];
     if (Array.isArray(parsed.claims)) {
       for (const claim of parsed.claims) {
-        const normalized = normalizeClaim(claim, config);
+        const normalized = normalizeClaim(claim as Record<string, unknown>, config);
         if (normalized && normalized.confidence >= config.minConfidence) {
           claims.push(normalized);
         }
@@ -190,7 +190,7 @@ export function parseJSONResponse(
     const entities: ExtractedEntity[] = [];
     if (Array.isArray(parsed.entities)) {
       for (const entity of parsed.entities) {
-        const normalized = normalizeEntity(entity);
+        const normalized = normalizeEntity(entity as Record<string, unknown>);
         if (normalized) {
           entities.push(normalized);
         }
@@ -224,10 +224,26 @@ export function parseJSONResponse(
 
 /**
  * Normalize and validate a claim from LLM output
+ * Handles both camelCase and snake_case property names from LLM responses
  */
-function normalizeClaim(claim: Partial<ExtractedClaim>, config: ExtractorConfig): ExtractedClaim | null {
-  if (!claim.statement || typeof claim.statement !== 'string') return null;
-  if (!claim.subject || typeof claim.subject !== 'string') return null;
+function normalizeClaim(claim: Record<string, unknown>, config: ExtractorConfig): ExtractedClaim | null {
+  // Handle both camelCase and snake_case from LLM response
+  const statement = (claim.statement as string | undefined);
+  const subject = (claim.subject as string | undefined);
+  const rawClaimType = (claim.claimType || claim.claim_type) as string | undefined;
+  const rawTemporality = (claim.temporality) as string | undefined;
+  const rawAbstraction = (claim.abstraction) as string | undefined;
+  const rawSourceType = (claim.sourceType || claim.source_type) as string | undefined;
+  const rawStakes = (claim.stakes) as string | undefined;
+  const rawConfidence = (claim.confidence) as number | undefined;
+  const rawEmotionalValence = (claim.emotionalValence ?? claim.emotional_valence) as number | undefined;
+  const rawEmotionalIntensity = (claim.emotionalIntensity ?? claim.emotional_intensity) as number | undefined;
+  const rawValidFrom = (claim.validFrom || claim.valid_from) as number | undefined;
+  const rawValidUntil = (claim.validUntil || claim.valid_until) as number | undefined;
+  const rawElaborates = (claim.elaborates) as string | undefined;
+
+  if (!statement || typeof statement !== 'string') return null;
+  if (!subject || typeof subject !== 'string') return null;
 
   // Validate claim type
   const validClaimTypes = [
@@ -237,80 +253,86 @@ function normalizeClaim(claim: Partial<ExtractedClaim>, config: ExtractorConfig)
     'change_marker', 'hypothetical', 'commitment',
   ];
 
-  const claimType = claim.claimType && validClaimTypes.includes(claim.claimType)
-    ? claim.claimType
+  const claimType = rawClaimType && validClaimTypes.includes(rawClaimType)
+    ? rawClaimType
     : config.claimTypes[0]; // Default to first claim type of extractor
 
   // Validate temporality
-  const validTemporalities = ['eternal', 'slowly_decaying', 'fast_decaying', 'point_in_time'];
-  const temporality = claim.temporality && validTemporalities.includes(claim.temporality)
-    ? claim.temporality
-    : 'fast_decaying';
+  const validTemporalities = ['eternal', 'slowlyDecaying', 'fastDecaying', 'pointInTime'];
+  const temporality = rawTemporality && validTemporalities.includes(rawTemporality)
+    ? rawTemporality
+    : 'fastDecaying';
 
   // Validate abstraction
   const validAbstractions = ['specific', 'general', 'universal'];
-  const abstraction = claim.abstraction && validAbstractions.includes(claim.abstraction)
-    ? claim.abstraction
+  const abstraction = rawAbstraction && validAbstractions.includes(rawAbstraction)
+    ? rawAbstraction
     : 'specific';
 
   // Validate source type
   const validSourceTypes = ['direct', 'inferred', 'corrected'];
-  const sourceType = claim.sourceType && validSourceTypes.includes(claim.sourceType)
-    ? claim.sourceType
+  const sourceType = rawSourceType && validSourceTypes.includes(rawSourceType)
+    ? rawSourceType
     : 'direct';
 
   // Validate stakes
   const validStakes = ['low', 'medium', 'high', 'existential'];
-  const stakes = claim.stakes && validStakes.includes(claim.stakes)
-    ? claim.stakes
+  const stakes = rawStakes && validStakes.includes(rawStakes)
+    ? rawStakes
     : 'medium';
 
   // Normalize numbers
-  const confidence = typeof claim.confidence === 'number'
-    ? Math.max(0, Math.min(1, claim.confidence))
+  const confidence = typeof rawConfidence === 'number'
+    ? Math.max(0, Math.min(1, rawConfidence))
     : 0.7;
 
-  const emotionalValence = typeof claim.emotionalValence === 'number'
-    ? Math.max(-1, Math.min(1, claim.emotionalValence))
+  const emotionalValence = typeof rawEmotionalValence === 'number'
+    ? Math.max(-1, Math.min(1, rawEmotionalValence))
     : 0;
 
-  const emotionalIntensity = typeof claim.emotionalIntensity === 'number'
-    ? Math.max(0, Math.min(1, claim.emotionalIntensity))
+  const emotionalIntensity = typeof rawEmotionalIntensity === 'number'
+    ? Math.max(0, Math.min(1, rawEmotionalIntensity))
     : 0.3;
 
   return {
-    statement: claim.statement.trim(),
-    subject: claim.subject.trim(),
-    claimType: claimType as ExtractedClaim['claim_type'],
+    statement: statement.trim(),
+    subject: subject.trim(),
+    claimType: claimType as ExtractedClaim['claimType'],
     temporality: temporality as ExtractedClaim['temporality'],
     abstraction: abstraction as ExtractedClaim['abstraction'],
-    sourceType: sourceType as ExtractedClaim['source_type'],
+    sourceType: sourceType as ExtractedClaim['sourceType'],
     confidence,
     emotionalValence: emotionalValence,
     emotionalIntensity: emotionalIntensity,
     stakes: stakes as ExtractedClaim['stakes'],
-    validFrom: claim.validFrom,
-    validUntil: claim.validUntil,
-    elaborates: claim.elaborates,
+    validFrom: rawValidFrom,
+    validUntil: rawValidUntil,
+    elaborates: rawElaborates,
   };
 }
 
 /**
  * Normalize and validate an entity from LLM output
+ * Handles both camelCase and snake_case property names from LLM responses
  */
-function normalizeEntity(entity: Partial<ExtractedEntity>): ExtractedEntity | null {
-  if (!entity.canonicalName || typeof entity.canonicalName !== 'string') return null;
+function normalizeEntity(entity: Record<string, unknown>): ExtractedEntity | null {
+  // Handle both camelCase and snake_case from LLM response
+  const canonicalName = (entity.canonicalName || entity.canonical_name) as string | undefined;
+  const rawEntityType = (entity.entityType || entity.entity_type) as string | undefined;
+  const aliases = entity.aliases as unknown[] | undefined;
+
+  if (!canonicalName || typeof canonicalName !== 'string') return null;
 
   const validEntityTypes = ['person', 'organization', 'product', 'place', 'project', 'role', 'event', 'concept'];
-  const entityType = entity.entityType && validEntityTypes.includes(entity.entityType)
-    ? entity.entityType
+  const entityType = rawEntityType && validEntityTypes.includes(rawEntityType)
+    ? rawEntityType
     : 'concept';
 
   return {
-    canonicalName: entity.canonicalName.trim(),
-    entityType: entityType as ExtractedEntity['entity_type'],
-    aliases: Array.isArray(entity.aliases)
-      ? entity.aliases.filter((a): a is string => typeof a === 'string').map((a) => a.trim())
+    canonicalName: canonicalName.trim(),
+    entityType: entityType as ExtractedEntity['entityType'],
+    aliases: Array.isArray(aliases)
+      ? aliases.filter((a): a is string => typeof a === 'string').map((a) => a.trim())
       : [],
   };
 }

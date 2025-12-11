@@ -168,7 +168,7 @@ export class ProgramKernel {
       })
 
       // Sync extractors and observers
-      const syncResult = syncAll(this.store, this.dispatcher.getObservers())
+      const syncResult = await syncAll(this.store, this.dispatcher.getObservers())
       logger.info('Synced extractors and observers to database', syncResult)
 
       // Initialize correction service
@@ -215,11 +215,14 @@ export class ProgramKernel {
       // Check for active session
       this.state.activeSession = this.sessionManager.getActiveSession()
 
-      // Resume queue if there's an active session
+      // Always start queue runner for durable execution
+      // It will process any pending tasks from previous sessions
+      logger.info('Starting queue runner for durable execution...')
+      this.queueRunner.start()
+      this.state.queueRunning = true
+
       if (this.state.activeSession) {
-        logger.info('Found active session, starting queue runner...')
-        this.queueRunner.start()
-        this.state.queueRunning = true
+        logger.info('Found active session:', this.state.activeSession.id)
       }
 
       this.state.initialized = true
@@ -412,12 +415,12 @@ export class ProgramKernel {
 
   async updateGoalProgress(goalId: string, value: number, reason: string) {
     this.ensureInitialized()
-    return this.goalManager!.updateProgress(goalId, value, reason)
+    return await this.goalManager!.updateProgress(goalId, value, reason)
   }
 
   async addMilestone(goalId: string, description: string) {
     this.ensureInitialized()
-    return this.goalManager!.addMilestone(goalId, description)
+    return await this.goalManager!.addMilestone(goalId, description)
   }
 
   // ==========================================================================
@@ -426,22 +429,22 @@ export class ProgramKernel {
 
   async getCorrections() {
     this.ensureInitialized()
-    return this.correctionService!.getAllCorrections()
+    return await this.correctionService!.getAllCorrections()
   }
 
   async getFrequentCorrections(limit = 10) {
     this.ensureInitialized()
-    return this.correctionService!.getFrequentCorrections(limit)
+    return await this.correctionService!.getFrequentCorrections(limit)
   }
 
   async addCorrection(wrongText: string, correctText: string) {
     this.ensureInitialized()
-    return this.correctionService!.addCorrection(wrongText, correctText)
+    return await this.correctionService!.addCorrection(wrongText, correctText)
   }
 
   async removeCorrection(id: string) {
     this.ensureInitialized()
-    return this.correctionService!.removeCorrection(id)
+    return await this.correctionService!.removeCorrection(id)
   }
 
   getCorrectionService() {
@@ -455,42 +458,42 @@ export class ProgramKernel {
 
   async getWorkingMemory(): Promise<Claim[]> {
     this.ensureInitialized()
-    return this.memoryService!.getWorkingMemory()
+    return await this.memoryService!.getWorkingMemory()
   }
 
   async getLongTermMemory(): Promise<Claim[]> {
     this.ensureInitialized()
-    return this.memoryService!.getLongTermMemory()
+    return await this.memoryService!.getLongTermMemory()
   }
 
   async getTopOfMind(): Promise<TopOfMind> {
     this.ensureInitialized()
-    return this.memoryService!.getTopOfMind()
+    return await this.memoryService!.getTopOfMind()
   }
 
   async getMemoryStats(): Promise<MemoryStats> {
     this.ensureInitialized()
-    return this.memoryService!.getStats()
+    return await this.memoryService!.getStats()
   }
 
   async recordMemoryAccess(claimId: string): Promise<void> {
     this.ensureInitialized()
-    this.memoryService!.recordAccess(claimId)
+    await this.memoryService!.recordAccess(claimId)
   }
 
   async promoteToLongTerm(claimId: string, reason?: string): Promise<boolean> {
     this.ensureInitialized()
-    return this.memoryService!.promoteToLongTerm(claimId, reason)
+    return await this.memoryService!.promoteToLongTerm(claimId, reason)
   }
 
   async runDecay(): Promise<DecayResult> {
     this.ensureInitialized()
-    return this.memoryService!.runDecay()
+    return await this.memoryService!.runDecay()
   }
 
   async updateAllSalience(): Promise<void> {
     this.ensureInitialized()
-    this.memoryService!.updateAllSalience()
+    await this.memoryService!.updateAllSalience()
   }
 
   getMemoryService() {
@@ -504,7 +507,7 @@ export class ProgramKernel {
 
   async toggleExtractor(id: string, active: boolean): Promise<ExtractionProgramRecord | null> {
     this.ensureInitialized()
-    return this.store!.extractionPrograms.update(id, { active })
+    return await this.store!.extractionPrograms.update(id, { active })
   }
 
   getRegisteredObservers(): Array<{
@@ -555,26 +558,26 @@ export class ProgramKernel {
 
   async runMigration(version: number): Promise<MigrationResult> {
     this.ensureInitialized()
-    return this.migrationManager!.runMigration(version)
+    return await this.migrationManager!.runMigration(version)
   }
 
   async runAllPendingMigrations(): Promise<MigrationResult[]> {
     this.ensureInitialized()
-    return this.migrationManager!.runAllPending()
+    return await this.migrationManager!.runAllPending()
   }
 
   async rollbackMigration(version: number): Promise<MigrationResult> {
     this.ensureInitialized()
-    return this.migrationManager!.rollbackMigration(version)
+    return await this.migrationManager!.rollbackMigration(version)
   }
 
   // ==========================================================================
   // Sync
   // ==========================================================================
 
-  syncPrograms(): SyncResult {
+  async syncPrograms(): Promise<SyncResult> {
     this.ensureInitialized()
-    const result = syncAll(this.store!, this.dispatcher!.getObservers())
+    const result = await syncAll(this.store!, this.dispatcher!.getObservers())
     logger.info('Synced programs', result)
     return result
   }
@@ -583,8 +586,11 @@ export class ProgramKernel {
   // State & Status
   // ==========================================================================
 
-  getQueueStatus() {
-    return this.queueRunner?.getStatus() || {
+  async getQueueStatus() {
+    if (this.queueRunner) {
+      return await this.queueRunner.getStatus()
+    }
+    return {
       isRunning: false,
       activeTasks: 0,
       pendingTasks: 0,
@@ -620,7 +626,7 @@ export class ProgramKernel {
 
     this.queueRunner!.registerHandler<Record<string, never>, DecayResult>('decay_claims', {
       execute: async () => {
-        return this.memoryService!.runDecay()
+        return await this.memoryService!.runDecay()
       },
     })
   }
@@ -699,11 +705,10 @@ export class ProgramKernel {
         statement: extractedClaim.statement,
         subject: extractedClaim.subject,
         claimType: extractedClaim.claimType,
-        temporality: extractedClaim.temporality || 'slowly_decaying',
+        temporality: extractedClaim.temporality || 'slowlyDecaying',
         abstraction: extractedClaim.abstraction || 'specific',
         sourceType: extractedClaim.sourceType || 'direct',
         initialConfidence: extractedClaim.confidence,
-        currentConfidence: extractedClaim.confidence,
         emotionalValence: extractedClaim.emotionalValence || 0,
         emotionalIntensity: extractedClaim.emotionalIntensity || 0,
         stakes: extractedClaim.stakes || 'medium',
@@ -711,15 +716,6 @@ export class ProgramKernel {
         validUntil: extractedClaim.validUntil || null,
         extractionProgramId: extractorIds[0] || 'unknown',
         elaborates: extractedClaim.elaborates || null,
-        state: 'active',
-        confirmationCount: 1,
-        lastConfirmed: now(),
-        createdAt: now(),
-        supersededBy: null,
-        memoryTier: 'working',
-        salience: 0,
-        promotedAt: null,
-        lastAccessed: now(),
       })
 
       // Save source tracking
@@ -734,7 +730,6 @@ export class ProgramKernel {
           patternId: extractedClaim.sourceTracking.patternId,
           llmPrompt: extractedClaim.sourceTracking.llmPrompt || '',
           llmResponse: extractedClaim.sourceTracking.llmResponse || '',
-          createdAt: now(),
         })
       }
 
@@ -759,9 +754,6 @@ export class ProgramKernel {
           canonicalName: extractedEntity.canonicalName,
           entityType: extractedEntity.entityType,
           aliases: JSON.stringify(extractedEntity.aliases),
-          mentionCount: 1,
-          createdAt: now(),
-          lastReferenced: now(),
         })
       }
     }

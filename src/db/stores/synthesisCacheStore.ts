@@ -39,7 +39,7 @@ export function createSynthesisCacheStore(db: Database): ISynthesisCacheStore {
           cache.sourceClaimsJson = data.sourceClaimsJson
           cache.ttlSeconds = data.ttlSeconds
           cache.createdAt = Date.now()
-          cache.stale = data.stale
+          cache.stale = data.stale ?? false
         })
       )
       return modelToSynthesisCache(model)
@@ -48,11 +48,13 @@ export function createSynthesisCacheStore(db: Database): ISynthesisCacheStore {
     async update(id: string, data: UpdateSynthesisCache): Promise<SynthesisCache | null> {
       try {
         const model = await collection.find(id)
-        const updated = await model.update((cache) => {
-          if (data.contentJson !== undefined) cache.contentJson = data.contentJson
-          if (data.sourceClaimsJson !== undefined) cache.sourceClaimsJson = data.sourceClaimsJson
-          if (data.stale !== undefined) cache.stale = data.stale
-        })
+        const updated = await db.write(() =>
+          model.update((cache) => {
+            if (data.contentJson !== undefined) cache.contentJson = data.contentJson
+            if (data.sourceClaimsJson !== undefined) cache.sourceClaimsJson = data.sourceClaimsJson
+            if (data.stale !== undefined) cache.stale = data.stale
+          })
+        )
         return modelToSynthesisCache(updated)
       } catch {
         return null
@@ -62,7 +64,7 @@ export function createSynthesisCacheStore(db: Database): ISynthesisCacheStore {
     async delete(id: string): Promise<boolean> {
       try {
         const model = await collection.find(id)
-        await model.destroyPermanently()
+        await db.write(() => model.destroyPermanently())
         return true
       } catch {
         return false
@@ -95,9 +97,11 @@ export function createSynthesisCacheStore(db: Database): ISynthesisCacheStore {
     async markStale(id: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((cache) => {
-          cache.stale = true
-        })
+        await db.write(() =>
+          model.update((cache) => {
+            cache.stale = true
+          })
+        )
       } catch {
         // Ignore errors
       }

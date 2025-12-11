@@ -53,7 +53,7 @@ export interface PatternDef {
   /** Weight for this pattern (default 1.0) */
   weight?: number;
   /** Whether pattern is case-sensitive */
-  case_sensitive?: boolean;
+  caseSensitive?: boolean;
 }
 
 // ============================================================================
@@ -113,7 +113,7 @@ export interface ExtractedClaim {
   /** Optional: elaborates on another claim */
   elaborates?: string | null;
   /** Source tracking for debugging (attached by pipeline) */
-  source_tracking?: {
+  sourceTracking?: {
     unitId: string;
     unitText: string;
     textExcerpt: string;
@@ -158,9 +158,9 @@ export interface ExtractorConfig {
   /** LLM tier to use (small/medium/large) - Settings determine actual provider */
   llmTier: LLMTier;
   /** Model-specific options */
-  llm_options?: {
+  llmOptions?: {
     temperature?: number;
-    max_tokens?: number;
+    maxTokens?: number;
   };
   /** Minimum confidence to accept a claim */
   minConfidence: number;

@@ -5,7 +5,7 @@
 import type { Database } from '@nozbe/watermelondb'
 import { Q } from '@nozbe/watermelondb'
 import type { IGoalStore, SubscriptionCallback, Unsubscribe } from '../../program/interfaces/store'
-import type { Goal, CreateGoal, UpdateGoal, GoalStatus } from '../../program/types'
+import type { Goal, CreateGoal, UpdateGoal, GoalStatus, GoalType, GoalTimeframe, ProgressType } from '../../program/types'
 import GoalModel from '../models/Goal'
 
 export function createGoalStore(db: Database): IGoalStore {
@@ -31,17 +31,25 @@ export function createGoalStore(db: Database): IGoalStore {
     },
 
     async create(data: CreateGoal): Promise<Goal> {
+      const now = Date.now()
       const model = await db.write(() =>
         collection.create((goal) => {
           goal.statement = data.statement
           goal.goalType = data.goalType
           goal.timeframe = data.timeframe
-          goal.status = data.status
-          goal.progressValue = data.progressValue
+          goal.status = data.status ?? 'active'
+          goal.parentGoalId = data.parentGoalId ?? null
+          goal.createdAt = now
+          goal.lastReferenced = now
+          goal.achievedAt = data.achievedAt ?? null
           goal.priority = data.priority
-          goal.createdAt = Date.now()
-          goal.achievedAt = data.achievedAt
-          goal.parentGoalId = data.parentGoalId
+          goal.progressType = data.progressType
+          goal.progressValue = data.progressValue ?? 0
+          goal.progressIndicatorsJson = data.progressIndicatorsJson ?? '[]'
+          goal.blockersJson = data.blockersJson ?? '[]'
+          goal.sourceClaimId = data.sourceClaimId
+          goal.motivation = data.motivation ?? null
+          goal.deadline = data.deadline ?? null
         })
       )
       return modelToGoal(model)
@@ -50,13 +58,20 @@ export function createGoalStore(db: Database): IGoalStore {
     async update(id: string, data: UpdateGoal): Promise<Goal | null> {
       try {
         const model = await collection.find(id)
-        const updated = await model.update((goal) => {
-          if (data.statement !== undefined) goal.statement = data.statement
-          if (data.status !== undefined) goal.status = data.status
-          if (data.progressValue !== undefined) goal.progressValue = data.progressValue
-          if (data.priority !== undefined) goal.priority = data.priority
-          if (data.achievedAt !== undefined) goal.achievedAt = data.achievedAt
-        })
+        const updated = await db.write(() =>
+          model.update((goal) => {
+            if (data.statement !== undefined) goal.statement = data.statement
+            if (data.status !== undefined) goal.status = data.status
+            if (data.progressValue !== undefined) goal.progressValue = data.progressValue
+            if (data.priority !== undefined) goal.priority = data.priority
+            if (data.achievedAt !== undefined) goal.achievedAt = data.achievedAt
+            if (data.motivation !== undefined) goal.motivation = data.motivation
+            if (data.deadline !== undefined) goal.deadline = data.deadline
+            if (data.progressIndicatorsJson !== undefined) goal.progressIndicatorsJson = data.progressIndicatorsJson
+            if (data.blockersJson !== undefined) goal.blockersJson = data.blockersJson
+            goal.lastReferenced = Date.now()
+          })
+        )
         return modelToGoal(updated)
       } catch {
         return null
@@ -66,7 +81,7 @@ export function createGoalStore(db: Database): IGoalStore {
     async delete(id: string): Promise<boolean> {
       try {
         const model = await collection.find(id)
-        await model.destroyPermanently()
+        await db.write(() => model.destroyPermanently())
         return true
       } catch {
         return false
@@ -106,9 +121,11 @@ export function createGoalStore(db: Database): IGoalStore {
     async updateProgress(id: string, value: number): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((goal) => {
-          goal.progressValue = value
-        })
+        await db.write(() =>
+          model.update((goal) => {
+            goal.progressValue = value
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -117,20 +134,30 @@ export function createGoalStore(db: Database): IGoalStore {
     async updateStatus(id: string, status: GoalStatus): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((goal) => {
-          goal.status = status
-          if (status === 'achieved') {
-            goal.achievedAt = Date.now()
-          }
-        })
+        await db.write(() =>
+          model.update((goal) => {
+            goal.status = status
+            if (status === 'achieved') {
+              goal.achievedAt = Date.now()
+            }
+          })
+        )
       } catch {
         // Ignore errors
       }
     },
 
     async updateLastReferenced(id: string): Promise<void> {
-      // Note: Goals don't have lastReferenced field in schema
-      // This is a no-op for now
+      try {
+        const model = await collection.find(id)
+        await db.write(() =>
+          model.update((goal) => {
+            goal.lastReferenced = Date.now()
+          })
+        )
+      } catch {
+        // Ignore errors
+      }
     },
 
     subscribe(callback: SubscriptionCallback<Goal>): Unsubscribe {
@@ -150,13 +177,20 @@ function modelToGoal(model: GoalModel): Goal {
   return {
     id: model.id,
     statement: model.statement,
-    goalType: model.goalType,
-    timeframe: model.timeframe,
+    goalType: model.goalType as GoalType,
+    timeframe: model.timeframe as GoalTimeframe,
     status: model.status as GoalStatus,
-    progressValue: model.progressValue,
-    priority: model.priority,
-    createdAt: model.createdAt,
-    achievedAt: model.achievedAt || null,
     parentGoalId: model.parentGoalId || null,
+    createdAt: model.createdAt,
+    lastReferenced: model.lastReferenced,
+    achievedAt: model.achievedAt || null,
+    priority: model.priority,
+    progressType: model.progressType as ProgressType,
+    progressValue: model.progressValue,
+    progressIndicatorsJson: model.progressIndicatorsJson,
+    blockersJson: model.blockersJson,
+    sourceClaimId: model.sourceClaimId,
+    motivation: model.motivation || null,
+    deadline: model.deadline || null,
   }
 }

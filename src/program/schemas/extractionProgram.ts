@@ -54,10 +54,10 @@ export const ExtractionProgramSchema = z.object({
 });
 
 export const CreateExtractionProgramSchema = ExtractionProgramSchema.omit({
-  id: true,
   createdAt: true,
   updatedAt: true,
 }).partial({
+  id: true,  // Optional - if provided, uses this ID; otherwise auto-generated
   version: true,
   active: true,
   isCore: true,

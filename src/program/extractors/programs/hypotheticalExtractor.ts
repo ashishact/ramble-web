@@ -34,9 +34,9 @@ class HypotheticalExtractor extends BaseExtractor {
       // Future conditional
       { id: 'future_if', type: 'keyword', pattern: 'if this happens|when this happens|in case', weight: 0.7 },
     ],
-    llm_tier: 'small',
-    llm_options: { temperature: 0.2, max_tokens: 1500 },
-    min_confidence: 0.5,
+    llmTier: 'small',
+    llmOptions: { temperature: 0.2, maxTokens: 1500 },
+    minConfidence: 0.5,
     priority: 45,
   };
 
@@ -96,19 +96,20 @@ If no hypotheticals found, respond: []`;
     for (const item of parsed) {
       const obj = item as Record<string, unknown>;
       if (obj.statement) {
-        const hypotheticalType = obj.hypothetical_type as string;
-        const emotionalCharge = obj.emotionalCharge as string;
+        // Handle both camelCase and snake_case from LLM response
+        const hypotheticalType = (obj.hypotheticalType || obj.hypothetical_type) as string;
+        const emotionalCharge = (obj.emotionalCharge || obj.emotional_charge) as string;
 
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || 'hypothetical',
           claimType: 'hypothetical',
-          temporality: hypotheticalType === 'counterfactual' ? 'point_in_time' : 'fast_decaying',
+          temporality: hypotheticalType === 'counterfactual' ? 'pointInTime' : 'fastDecaying',
           abstraction: 'specific',
-          source_type: 'direct',
+          sourceType: 'direct',
           confidence: (obj.confidence as number) || 0.6,
-          emotional_valence: emotionValence[emotionalCharge] ?? typeValence[hypotheticalType] ?? 0,
-          emotional_intensity: 0.5,
+          emotionalValence: emotionValence[emotionalCharge] ?? typeValence[hypotheticalType] ?? 0,
+          emotionalIntensity: 0.5,
           stakes: hypotheticalType === 'fear' ? 'high' : 'medium',
         });
       }
@@ -117,7 +118,7 @@ If no hypotheticals found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processingTimeMs: 0 },
     };
   }
 }

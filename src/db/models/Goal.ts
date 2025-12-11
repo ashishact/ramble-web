@@ -12,9 +12,16 @@ export default class Goal extends Model {
   @text('goalType') goalType!: string
   @text('timeframe') timeframe!: string
   @text('status') status!: string
-  @field('progressValue') progressValue!: number
-  @text('priority') priority!: string
-  @field('createdAt') createdAt!: number
-  @field('achievedAt') achievedAt!: number | null
   @text('parentGoalId') parentGoalId!: string | null
+  @field('createdAt') createdAt!: number
+  @field('lastReferenced') lastReferenced!: number
+  @field('achievedAt') achievedAt!: number | null
+  @field('priority') priority!: number
+  @text('progressType') progressType!: string
+  @field('progressValue') progressValue!: number
+  @text('progressIndicatorsJson') progressIndicatorsJson!: string
+  @text('blockersJson') blockersJson!: string
+  @text('sourceClaimId') sourceClaimId!: string
+  @text('motivation') motivation!: string | null
+  @field('deadline') deadline!: number | null
 }

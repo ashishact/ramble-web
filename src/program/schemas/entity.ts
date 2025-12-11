@@ -35,6 +35,7 @@ export const EntitySchema = z.object({
 
 /**
  * Schema for creating a new entity
+ * Uses .optional().default() pattern for TypeScript to recognize optional fields
  */
 export const CreateEntitySchema = EntitySchema.omit({
   id: true,
@@ -42,7 +43,7 @@ export const CreateEntitySchema = EntitySchema.omit({
   lastReferenced: true,
   mentionCount: true,
 }).extend({
-  mentionCount: z.number().int().nonnegative().default(1),
+  mentionCount: z.number().int().nonnegative().optional().default(1),
 });
 
 /**

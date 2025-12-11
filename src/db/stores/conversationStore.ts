@@ -34,12 +34,12 @@ export function createConversationStore(db: Database): IConversationStore {
       const now = Date.now()
       const model = await db.write(() =>
         collection.create((conversation) => {
-          conversation.sessionId = data.sessionId
-          conversation.timestamp = data.timestamp
-          conversation.rawText = data.rawText
-          conversation.sanitizedText = data.sanitizedText
-          conversation.source = data.source
-          conversation.precedingContextSummary = data.precedingContextSummary
+          conversation.sessionId = data.sessionId ?? null
+          conversation.timestamp = data.timestamp ?? null
+          conversation.rawText = data.rawText ?? null
+          conversation.sanitizedText = data.sanitizedText ?? null
+          conversation.source = data.source ?? null
+          conversation.precedingContextSummary = data.precedingContextSummary ?? null
           conversation.createdAt = now
           conversation.processed = data.processed || false
         })
@@ -50,12 +50,14 @@ export function createConversationStore(db: Database): IConversationStore {
     async update(id: string, data: UpdateConversationUnit): Promise<ConversationUnit | null> {
       try {
         const model = await collection.find(id)
-        const updated = await model.update((conversation) => {
-          if (data.sanitizedText !== undefined) conversation.sanitizedText = data.sanitizedText
-          if (data.precedingContextSummary !== undefined)
-            conversation.precedingContextSummary = data.precedingContextSummary
-          if (data.processed !== undefined) conversation.processed = data.processed
-        })
+        const updated = await db.write(() =>
+          model.update((conversation) => {
+            if (data.sanitizedText !== undefined) conversation.sanitizedText = data.sanitizedText ?? null
+            if (data.precedingContextSummary !== undefined)
+              conversation.precedingContextSummary = data.precedingContextSummary ?? null
+            if (data.processed !== undefined) conversation.processed = data.processed ?? null
+          })
+        )
         return modelToConversation(updated)
       } catch {
         return null
@@ -65,7 +67,7 @@ export function createConversationStore(db: Database): IConversationStore {
     async delete(id: string): Promise<boolean> {
       try {
         const model = await collection.find(id)
-        await model.destroyPermanently()
+        await db.write(() => model.destroyPermanently())
         return true
       } catch {
         return false
@@ -89,9 +91,11 @@ export function createConversationStore(db: Database): IConversationStore {
     async markProcessed(id: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((conversation) => {
-          conversation.processed = true
-        })
+        await db.write(() =>
+          model.update((conversation) => {
+            conversation.processed = true
+          })
+        )
       } catch {
         // Ignore errors
       }

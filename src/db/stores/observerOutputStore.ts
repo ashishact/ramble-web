@@ -68,10 +68,12 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
     async update(id: string, data: UpdateObserverOutput): Promise<ObserverOutput | null> {
       try {
         const model = await collection.find(id)
-        const updated = await model.update((output) => {
-          if (data.contentJson !== undefined) output.contentJson = data.contentJson
-          if (data.sourceClaimsJson !== undefined) output.sourceClaimsJson = data.sourceClaimsJson
-        })
+        const updated = await db.write(() =>
+          model.update((output) => {
+            if (data.contentJson !== undefined) output.contentJson = data.contentJson
+            if (data.sourceClaimsJson !== undefined) output.sourceClaimsJson = data.sourceClaimsJson
+          })
+        )
         return modelToObserverOutput(updated)
       } catch {
         return null
@@ -81,7 +83,7 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
     async delete(id: string): Promise<boolean> {
       try {
         const model = await collection.find(id)
-        await model.destroyPermanently()
+        await db.write(() => model.destroyPermanently())
         return true
       } catch {
         return false
@@ -100,7 +102,7 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
       return models.map(modelToObserverOutput)
     },
 
-    async markStale(id: string): Promise<void> {
+    async markStale(_id: string): Promise<void> {
       // Note: ObserverOutput doesn't have stale field in schema
       // This is a no-op for now
     },
@@ -122,12 +124,11 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
         contradictionsCollection.create((contradiction) => {
           contradiction.claimAId = data.claimAId
           contradiction.claimBId = data.claimBId
-          contradiction.detectedAt = Date.now()
-          contradiction.contradictionType = data.contradictionType
-          contradiction.resolved = data.resolved
-          contradiction.resolutionType = data.resolutionType ?? undefined
-          contradiction.resolutionNotes = data.resolutionNotes ?? undefined
-          contradiction.resolvedAt = data.resolvedAt ?? undefined
+          contradiction.createdAt = Date.now()
+          contradiction.resolved = data.resolved ?? false
+          contradiction.resolutionType = data.resolutionType ?? null
+          contradiction.resolutionExplanation = data.resolutionNotes ?? null
+          contradiction.resolvedAt = data.resolvedAt ?? null
         })
       )
       return modelToContradiction(model)
@@ -150,12 +151,14 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
     ): Promise<Contradiction | null> {
       try {
         const model = await contradictionsCollection.find(id)
-        const updated = await model.update((contradiction) => {
-          contradiction.resolutionType = resolutionType
-          contradiction.resolutionNotes = notes || undefined
-          contradiction.resolved = true
-          contradiction.resolvedAt = Date.now()
-        })
+        const updated = await db.write(() =>
+          model.update((contradiction) => {
+            contradiction.resolutionType = resolutionType
+            contradiction.resolutionExplanation = notes || null
+            contradiction.resolved = true
+            contradiction.resolvedAt = Date.now()
+          })
+        )
         return modelToContradiction(updated)
       } catch {
         return null
@@ -164,14 +167,15 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
 
     // Patterns sub-store
     async addPattern(data: CreatePattern): Promise<Pattern> {
+      const now = Date.now()
       const model = await db.write(() =>
         patternsCollection.create((pattern) => {
           pattern.patternType = data.patternType
           pattern.description = data.description
           pattern.evidenceClaimsJson = data.evidenceClaimsJson
-          pattern.firstDetected = Date.now()
-          pattern.lastDetected = Date.now()
-          pattern.occurrenceCount = data.occurrenceCount
+          pattern.createdAt = now
+          pattern.lastObserved = now
+          pattern.occurrenceCount = data.occurrenceCount ?? 1
           pattern.confidence = data.confidence
         })
       )
@@ -186,11 +190,13 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
     async reinforcePattern(id: string): Promise<void> {
       try {
         const model = await patternsCollection.find(id)
-        await model.update((pattern) => {
-          pattern.occurrenceCount = (pattern.occurrenceCount || 0) + 1
-          pattern.confidence = Math.min(1.0, pattern.confidence + 0.05)
-          pattern.lastDetected = Date.now()
-        })
+        await db.write(() =>
+          model.update((pattern) => {
+            pattern.occurrenceCount = (pattern.occurrenceCount || 0) + 1
+            pattern.confidence = Math.min(1.0, pattern.confidence + 0.05)
+            pattern.lastObserved = Date.now()
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -198,15 +204,14 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
 
     // Values sub-store
     async addValue(data: CreateValue): Promise<Value> {
+      const now = Date.now()
       const model = await db.write(() =>
         valuesCollection.create((value) => {
           value.statement = data.statement
           value.domain = data.domain
           value.importance = data.importance
           value.sourceClaimId = data.sourceClaimId
-          value.firstExpressed = Date.now()
-          value.lastConfirmed = Date.now()
-          value.confirmationCount = 0
+          value.createdAt = now
         })
       )
       return modelToValue(model)
@@ -220,9 +225,11 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
     async confirmValue(id: string): Promise<void> {
       try {
         const model = await valuesCollection.find(id)
-        await model.update((value) => {
-          value.importance = Math.min(1.0, value.importance + 0.1)
-        })
+        await db.write(() =>
+          model.update((value) => {
+            value.importance = Math.min(1.0, value.importance + 0.1)
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -233,7 +240,7 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
 function modelToObserverOutput(model: ObserverOutputModel): ObserverOutput {
   return {
     id: model.id,
-    observerType: model.observerType,
+    observerType: model.observerType as ObserverOutput['observerType'],
     outputType: model.outputType,
     contentJson: model.contentJson,
     sourceClaimsJson: model.sourceClaimsJson,
@@ -247,11 +254,11 @@ function modelToContradiction(model: ContradictionModel): Contradiction {
     id: model.id,
     claimAId: model.claimAId,
     claimBId: model.claimBId,
-    detectedAt: model.detectedAt,
-    contradictionType: model.contradictionType as 'direct' | 'temporal' | 'implication',
+    detectedAt: model.createdAt, // Map createdAt -> detectedAt
+    contradictionType: 'direct', // Default, not stored in DB
     resolved: model.resolved,
     resolutionType: model.resolutionType || null,
-    resolutionNotes: model.resolutionNotes || null,
+    resolutionNotes: model.resolutionExplanation || null, // Map resolutionExplanation -> resolutionNotes
     resolvedAt: model.resolvedAt || null,
   }
 }
@@ -262,8 +269,8 @@ function modelToPattern(model: PatternModel): Pattern {
     patternType: model.patternType,
     description: model.description,
     evidenceClaimsJson: model.evidenceClaimsJson,
-    firstDetected: model.firstDetected,
-    lastDetected: model.lastDetected,
+    firstDetected: model.createdAt, // Map createdAt -> firstDetected
+    lastDetected: model.lastObserved, // Map lastObserved -> lastDetected
     occurrenceCount: model.occurrenceCount,
     confidence: model.confidence,
   }
@@ -276,8 +283,8 @@ function modelToValue(model: ValueModel): Value {
     domain: model.domain,
     importance: model.importance,
     sourceClaimId: model.sourceClaimId,
-    firstExpressed: model.firstExpressed,
-    lastConfirmed: model.lastConfirmed,
-    confirmationCount: model.confirmationCount,
+    firstExpressed: model.createdAt, // Map createdAt -> firstExpressed
+    lastConfirmed: model.createdAt, // Default to createdAt (not stored)
+    confirmationCount: 1, // Default (not stored in DB)
   }
 }

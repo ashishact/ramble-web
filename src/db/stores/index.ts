@@ -16,5 +16,6 @@ export { createObserverOutputStore } from './observerOutputStore'
 export { createExtensionStore } from './extensionStore'
 export { createSynthesisCacheStore } from './synthesisCacheStore'
 export { createCorrectionStore } from './correctionStore'
+export { createTaskStore } from './taskStore'
 
-// All 12 stores implemented ✅
+// All 13 stores implemented ✅

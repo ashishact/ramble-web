@@ -5,7 +5,7 @@
  * Detects new concerns, ongoing concerns, and possibly resolved concerns.
  */
 
-import type { ObserverOutput, Claim } from '../types';
+import type { ObserverOutput, Claim, Pattern } from '../types';
 import type { ObserverConfig, ObserverContext, ObserverResult } from './types';
 import { BaseObserver } from './baseObserver';
 import { createLogger } from '../utils/logger';
@@ -42,11 +42,11 @@ export class ConcernObserver extends BaseObserver {
 
       for (const claim of concernClaims) {
         // Check if this relates to an existing concern pattern
-        const existingConcern = this.findExistingConcern(context, claim);
+        const existingConcern = await this.findExistingConcern(context, claim);
 
         if (existingConcern) {
           // Concern continues
-          const output = this.createOutput(
+          const output = await this.createOutput(
             context,
             'concern_continued',
             {
@@ -60,7 +60,7 @@ export class ConcernObserver extends BaseObserver {
           outputs.push(output);
         } else {
           // New concern detected
-          const output = this.createOutput(
+          const output = await this.createOutput(
             context,
             'concern_new',
             {
@@ -117,12 +117,12 @@ export class ConcernObserver extends BaseObserver {
   /**
    * Find existing concern pattern that matches this claim
    */
-  private findExistingConcern(
+  private async findExistingConcern(
     context: ObserverContext,
     claim: Claim
-  ): { id: string } | null {
+  ): Promise<{ id: string } | null> {
     // Look for existing patterns about the same subject
-    const patterns = context.store.patterns.getAll();
+    const patterns = await context.store.observerOutputs.getPatterns();
 
     for (const pattern of patterns) {
       if (
@@ -145,9 +145,8 @@ export class ConcernObserver extends BaseObserver {
     const outputs: ObserverOutput[] = [];
 
     // Get all concern patterns
-    const concernPatterns = context.store.patterns
-      .getAll()
-      .filter((p) => p.patternType === 'concern');
+    const allPatterns = await context.store.observerOutputs.getPatterns();
+    const concernPatterns = allPatterns.filter((p: Pattern) => p.patternType === 'concern');
 
     for (const pattern of concernPatterns) {
       // Get recent claims about this concern's subject
@@ -168,18 +167,18 @@ export class ConcernObserver extends BaseObserver {
       );
 
       if (resolutionIndicators.length > 0) {
-        const output = this.createOutput(
+        const output = await this.createOutput(
           context,
           'concern_possibly_resolved',
           {
             patternId: pattern.id,
             description: pattern.description,
-            evidence: resolutionIndicators.map((c) => ({
+            evidence: resolutionIndicators.map((c: Claim) => ({
               id: c.id,
               statement: c.statement,
             })),
           },
-          [pattern.id, ...resolutionIndicators.map((c) => c.id)]
+          [pattern.id, ...resolutionIndicators.map((c: Claim) => c.id)]
         );
         outputs.push(output);
       }

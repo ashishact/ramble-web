@@ -67,7 +67,7 @@ export class PatternObserver extends BaseObserver {
 
       // Save or reinforce patterns
       const outputs = [];
-      const existingPatterns = context.store.observerOutputs.getPatterns();
+      const existingPatterns = await context.store.observerOutputs.getPatterns();
 
       for (const candidate of patterns) {
         // Check if pattern already exists
@@ -79,25 +79,25 @@ export class PatternObserver extends BaseObserver {
 
         if (existing) {
           // Reinforce existing pattern
-          context.store.observerOutputs.reinforcePattern(existing.id);
+          await context.store.observerOutputs.reinforcePattern(existing.id);
           logger.debug('Reinforced pattern', { patternId: existing.id });
         } else if (candidate.confidence > 0.5) {
           // Create new pattern
           const data: CreatePattern = {
-            pattern_type: candidate.patternType,
+            patternType: candidate.patternType,
             description: candidate.description,
-            evidence_claims_json: JSON.stringify(candidate.evidenceClaimIds),
+            evidenceClaimsJson: JSON.stringify(candidate.evidenceClaimIds),
             confidence: candidate.confidence,
-            occurrence_count: 1,
+            occurrenceCount: 1,
           };
 
-          context.store.observerOutputs.addPattern(data);
+          await context.store.observerOutputs.addPattern(data);
 
-          const output = this.createOutput(
+          const output = await this.createOutput(
             context,
             'pattern_detected',
             {
-              pattern_type: candidate.patternType,
+              patternType: candidate.patternType,
               description: candidate.description,
               confidence: candidate.confidence,
             },
@@ -166,7 +166,7 @@ export class PatternObserver extends BaseObserver {
         patterns.push({
           patternType: PatternObserver.PATTERN_TYPES.EMOTIONAL_PATTERN,
           description: `Recurring ${emotion} emotions`,
-          evidenceClaimIds: matches.map((c) => c.id),
+          evidenceClaimIds: matches.map((c: Claim) => c.id),
           confidence: Math.min(0.4 + matches.length * 0.15, 0.9),
         });
       }
@@ -190,13 +190,13 @@ export class PatternObserver extends BaseObserver {
     for (const concern of concernClaims) {
       if (processed.has(concern.id)) continue;
 
-      const similar = concernClaims.filter((c) => {
+      const similar = concernClaims.filter((c: Claim) => {
         if (c.id === concern.id) return false;
         return this.hasKeywordOverlap(concern.statement, c.statement);
       });
 
       if (similar.length >= 1) {
-        const allIds = [concern.id, ...similar.map((c) => c.id)];
+        const allIds = [concern.id, ...similar.map((c: Claim) => c.id)];
         allIds.forEach((id) => processed.add(id));
 
         patterns.push({

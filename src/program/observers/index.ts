@@ -34,7 +34,7 @@ export { RelationshipObserver } from './relationshipObserver';
 export { ConsolidationObserver } from './consolidationObserver';
 
 // Registry - creates a dispatcher with all observers registered
-import type { ProgramStoreInstance } from '../store/programStore';
+import type { ProgramStoreInstance } from '../store';
 import { ObserverDispatcher, type DispatcherConfig } from './dispatcher';
 import { ContradictionObserver } from './contradictionObserver';
 import { PatternObserver } from './patternObserver';

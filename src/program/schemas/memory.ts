@@ -14,8 +14,8 @@ import { z } from 'zod';
  * Memory tier - where a claim lives in the memory hierarchy
  */
 export const MemoryTierSchema = z.enum([
-  'working',   // In working memory, subject to decay, high salience
-  'long_term', // Promoted to long-term, more stable, slower decay
+  'working',  // In working memory, subject to decay, high salience
+  'longTerm', // Promoted to long-term, more stable, slower decay
 ]);
 
 // ============================================================================

@@ -33,9 +33,9 @@ class ChangeMarkerExtractor extends BaseExtractor {
       // New vs old
       { id: 'new_old', type: 'keyword', pattern: 'new|old|previous|former|current|now', weight: 0.5 },
     ],
-    llm_tier: 'small',
-    llm_options: { temperature: 0.2, max_tokens: 1500 },
-    min_confidence: 0.5,
+    llmTier: 'small',
+    llmOptions: { temperature: 0.2, maxTokens: 1500 },
+    minConfidence: 0.5,
     priority: 58,
   };
 
@@ -91,14 +91,15 @@ If no change markers found, respond: []`;
           'transformative': 1.0,
         };
 
-        const temporalityMap: Record<string, 'point_in_time' | 'slowly_decaying' | 'fast_decaying'> = {
-          'completed': 'point_in_time',
-          'ongoing': 'fast_decaying',
-          'planned': 'fast_decaying',
-          'wished': 'slowly_decaying',
+        const temporalityMap: Record<string, 'pointInTime' | 'slowlyDecaying' | 'fastDecaying'> = {
+          'completed': 'pointInTime',
+          'ongoing': 'fastDecaying',
+          'planned': 'fastDecaying',
+          'wished': 'slowlyDecaying',
         };
 
-        const changeType = obj.changeType as string;
+        // Handle both camelCase and snake_case from LLM response
+        const changeType = (obj.changeType || obj.change_type) as string;
         const direction = obj.direction as string;
         const magnitude = obj.magnitude as string;
 
@@ -106,12 +107,12 @@ If no change markers found, respond: []`;
           statement: obj.statement as string,
           subject: (obj.subject as string) || (obj.domain as string) || 'change',
           claimType: 'change_marker',
-          temporality: temporalityMap[changeType] || 'point_in_time',
+          temporality: temporalityMap[changeType] || 'pointInTime',
           abstraction: 'specific',
-          source_type: 'direct',
+          sourceType: 'direct',
           confidence: (obj.confidence as number) || 0.7,
-          emotional_valence: directionMap[direction] || 0,
-          emotional_intensity: magnitudeMap[magnitude] || 0.5,
+          emotionalValence: directionMap[direction] || 0,
+          emotionalIntensity: magnitudeMap[magnitude] || 0.5,
           stakes: magnitude === 'transformative' || magnitude === 'major' ? 'high' : 'medium',
         });
       }
@@ -120,7 +121,7 @@ If no change markers found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processingTimeMs: 0 },
     };
   }
 }

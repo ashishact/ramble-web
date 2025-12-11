@@ -59,7 +59,7 @@ export function MemoryClaimCard({
             </span>
             <span className="badge badge-xs badge-outline">{claim.subject}</span>
 
-            {claim.memoryTier === 'long_term' && (
+            {claim.memoryTier === 'longTerm' && (
               <span className="badge badge-xs badge-success">LTM</span>
             )}
 

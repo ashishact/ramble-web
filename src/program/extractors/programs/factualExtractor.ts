@@ -40,14 +40,14 @@ class FactualExtractor extends BaseExtractor {
       // Existence statements
       { id: 'there_is', type: 'regex', pattern: '\\bthere\\s+(?:is|are|was|were)\\b', weight: 0.3 },
     ],
-    llm_tier: 'small',
-    llm_options: {
+    llmTier: 'small',
+    llmOptions: {
       temperature: 0.2,
-      max_tokens: 800,
+      maxTokens: 800,
     },
-    min_confidence: 0.7, // Higher threshold for facts
+    minConfidence: 0.7, // Higher threshold for facts
     priority: 70,
-    always_run: true, // Facts are fundamental
+    alwaysRun: true, // Facts are fundamental
   };
 
   buildPrompt(context: ExtractorContext): string {
@@ -81,8 +81,8 @@ ${inputSection}
 ${outputInstructions}
 
 For facts:
-- temporality: "eternal" for unchanging facts, "slowly_decaying" for things that might change
-- source_type: "direct" if explicitly stated, "inferred" if derived from context
+- temporality: "eternal" for unchanging facts, "slowlyDecaying" for things that might change
+- sourceType: "direct" if explicitly stated, "inferred" if derived from context
 - stakes: Usually "low" unless the fact is particularly significant`;
   }
 }

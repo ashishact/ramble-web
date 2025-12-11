@@ -56,9 +56,10 @@ export class ContradictionObserver extends BaseObserver {
       }
 
       // Get existing claims to compare against
-      const existingClaims = context.store.claims
-        .getRecent(100)
-        .filter((c) => !newClaims.some((nc) => nc.id === c.id));
+      const recentClaims = await context.store.claims.getRecent(100);
+      const existingClaims = recentClaims.filter(
+        (c: Claim) => !newClaims.some((nc) => nc.id === c.id)
+      );
 
       // Find potential contradictions
       const candidates = this.findCandidates(newClaims, existingClaims);
@@ -85,10 +86,10 @@ export class ContradictionObserver extends BaseObserver {
           resolvedAt: null,
         };
 
-        context.store.observerOutputs.addContradiction(data);
+        await context.store.observerOutputs.addContradiction(data);
 
         // Also create an observer output for the contradiction
-        const output = this.createOutput(
+        const output = await this.createOutput(
           context,
           'contradiction_detected',
           {

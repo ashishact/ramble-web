@@ -44,14 +44,14 @@ class EmotionExtractor extends BaseExtractor {
       { id: 'conflicted', type: 'keyword', pattern: 'conflicted', weight: 0.8 },
       { id: 'torn', type: 'keyword', pattern: 'torn', weight: 0.7 },
     ],
-    llm_tier: 'small',
-    llm_options: {
+    llmTier: 'small',
+    llmOptions: {
       temperature: 0.4,
-      max_tokens: 800,
+      maxTokens: 800,
     },
-    min_confidence: 0.5,
+    minConfidence: 0.5,
     priority: 75,
-    always_run: true, // Emotions are important to catch even without explicit keywords
+    alwaysRun: true, // Emotions are important to catch even without explicit keywords
   };
 
   buildPrompt(context: ExtractorContext): string {
@@ -68,9 +68,9 @@ Extract EMOTIONS - subjective feeling states expressed or implied. Look for:
 - Emotional intensity and valence
 
 For each emotion claim:
-- emotional_valence: -1 (negative) to 1 (positive)
-- emotional_intensity: 0 (mild) to 1 (intense)
-- temporality: "point_in_time" for momentary feelings, "fast_decaying" for moods
+- emotionalValence: -1 (negative) to 1 (positive)
+- emotionalIntensity: 0 (mild) to 1 (intense)
+- temporality: "pointInTime" for momentary feelings, "fastDecaying" for moods
 
 ${contextSection}
 
@@ -113,9 +113,9 @@ Focus on:
 
       return {
         ...claim,
-        emotional_valence: valence,
-        emotional_intensity: intensity,
-        temporality: 'point_in_time' as const,
+        emotionalValence: valence,
+        emotionalIntensity: intensity,
+        temporality: 'pointInTime' as const,
       };
     });
   }

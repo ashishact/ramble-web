@@ -5,7 +5,7 @@
  */
 
 import type { ObserverType, TriggerType, Claim, ObserverOutput } from '../types';
-import type { ProgramStoreInstance } from '../store/programStore';
+import type { ProgramStoreInstance } from '../store';
 
 // ============================================================================
 // Observer Context Types
@@ -91,7 +91,7 @@ export interface Observer {
   /**
    * Check if this observer should run given the context
    */
-  shouldRun(context: ObserverContext): boolean;
+  shouldRun(context: ObserverContext): boolean | Promise<boolean>;
 
   /**
    * Run the observer and produce outputs

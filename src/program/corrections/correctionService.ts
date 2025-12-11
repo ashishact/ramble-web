@@ -66,7 +66,7 @@ export class CorrectionService {
    * @param sourceUnitId Optional conversation unit ID where this text came from
    * @returns Processed result with corrected text and metadata
    */
-  processText(text: string, sourceUnitId?: string): ProcessTextResult {
+  async processText(text: string, sourceUnitId?: string): Promise<ProcessTextResult> {
     // Quick check to avoid unnecessary processing
     const mightHaveCorrection = mightContainCorrection(text);
 
@@ -86,7 +86,7 @@ export class CorrectionService {
     if (parseResult.isCorrection && this.config.autoLearn) {
       for (const parsed of parseResult.corrections) {
         if (parsed.confidence >= this.config.minConfidence) {
-          const correction = this.learnCorrection(
+          const correction = await this.learnCorrection(
             parsed.wrongText,
             parsed.correctText,
             parsed.originalCase,
@@ -107,7 +107,7 @@ export class CorrectionService {
     };
 
     if (this.config.autoApply) {
-      applyResult = applyCorrections(parseResult.remainingText, this.store);
+      applyResult = await applyCorrections(parseResult.remainingText, this.store);
     }
 
     logger.debug('Processed text', {
@@ -129,12 +129,12 @@ export class CorrectionService {
   /**
    * Learn a new correction or update an existing one
    */
-  learnCorrection(
+  async learnCorrection(
     wrongText: string,
     correctText: string,
     originalCase: string,
     sourceUnitId?: string
-  ): Correction | null {
+  ): Promise<Correction | null> {
     const normalizedWrong = wrongText.toLowerCase().trim();
     const normalizedCorrect = correctText.toLowerCase().trim();
 
@@ -182,14 +182,14 @@ export class CorrectionService {
   /**
    * Manually add a correction
    */
-  addCorrection(wrongText: string, correctText: string, sourceUnitId?: string): Correction | null {
-    return this.learnCorrection(wrongText, correctText, correctText, sourceUnitId);
+  async addCorrection(wrongText: string, correctText: string, sourceUnitId?: string): Promise<Correction | null> {
+    return await this.learnCorrection(wrongText, correctText, correctText, sourceUnitId);
   }
 
   /**
    * Remove a correction
    */
-  removeCorrection(id: string): boolean {
+  async removeCorrection(id: string): Promise<boolean> {
     const correction = await this.store.getById(id);
     if (correction) {
       logger.info('Removing correction', { id, wrong: correction.wrongText, correct: correction.correctText });
@@ -201,14 +201,14 @@ export class CorrectionService {
   /**
    * Get all corrections
    */
-  getAllCorrections(): Correction[] {
+  async getAllCorrections(): Promise<Correction[]> {
     return await this.store.getAll();
   }
 
   /**
    * Get frequently used corrections
    */
-  getFrequentCorrections(limit = 10): Correction[] {
+  async getFrequentCorrections(limit = 10): Promise<Correction[]> {
     return await this.store.getFrequentlyUsed(limit);
   }
 

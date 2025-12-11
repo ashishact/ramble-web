@@ -29,9 +29,9 @@ export class NarrativeObserver extends BaseObserver {
   };
 
   // Only run weekly-ish (after many claims)
-  shouldRun(context: ObserverContext): boolean {
+  async shouldRun(context: ObserverContext): Promise<boolean> {
     // Check if we have enough claims to analyze
-    const allClaims = context.store.claims.getAll();
+    const allClaims = await context.store.claims.getAll();
     const selfClaims = allClaims.filter(
       (c) => c.claimType === 'self_perception' || c.claimType === 'memory_reference'
     );
@@ -46,7 +46,7 @@ export class NarrativeObserver extends BaseObserver {
 
     try {
       // Get self-perception claims
-      const allClaims = context.store.claims.getAll();
+      const allClaims = await context.store.claims.getAll();
       const selfClaims = allClaims
         .filter((c) => c.claimType === 'self_perception')
         .slice(-50);
@@ -69,7 +69,7 @@ export class NarrativeObserver extends BaseObserver {
           ...memoryClaims.map((c) => c.id),
         ].slice(0, 20);
 
-        const output = this.createOutput(
+        const output = await this.createOutput(
           context,
           'narrative_analysis',
           {

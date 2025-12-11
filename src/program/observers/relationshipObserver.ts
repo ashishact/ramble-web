@@ -48,7 +48,7 @@ export class RelationshipObserver extends BaseObserver {
       );
 
       for (const claim of relationshipClaims) {
-        const output = this.createOutput(
+        const output = await this.createOutput(
           context,
           'relationship_update',
           {
@@ -65,13 +65,13 @@ export class RelationshipObserver extends BaseObserver {
 
       // For schedule triggers, generate relationship report
       if (context.triggeringClaims.length === 0) {
-        const report = this.generateRelationshipReport(context);
+        const report = await this.generateRelationshipReport(context);
         if (report) {
-          const output = this.createOutput(
+          const output = await this.createOutput(
             context,
             'relationship_report',
             report,
-            report.relationships.flatMap((r) => r.recentClaims.map((c) => c.id))
+            report.relationships.flatMap((r: RelationshipData) => r.recentClaims.map((c) => c.id))
           );
           outputs.push(output);
         }
@@ -94,7 +94,7 @@ export class RelationshipObserver extends BaseObserver {
   /**
    * Generate a comprehensive relationship report
    */
-  private generateRelationshipReport(context: ObserverContext): {
+  private async generateRelationshipReport(context: ObserverContext): Promise<{
     relationships: RelationshipData[];
     dynamics: {
       positive: string[];
@@ -102,18 +102,17 @@ export class RelationshipObserver extends BaseObserver {
       changed: string[];
     };
     timestamp: number;
-  } | null {
+  } | null> {
     // Get all person entities
-    const entities = context.store.entities
-      .getAll()
-      .filter((e) => e.entityType === 'person');
+    const allEntities = await context.store.entities.getAll();
+    const entities = allEntities.filter((e) => e.entityType === 'person');
 
     if (entities.length === 0) {
       return null;
     }
 
     // Get all relationship claims
-    const allClaims = context.store.claims.getAll();
+    const allClaims = await context.store.claims.getAll();
     const relationshipClaims = allClaims.filter(
       (c) => c.claimType === 'relationship'
     );

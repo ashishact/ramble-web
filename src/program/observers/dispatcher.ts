@@ -6,7 +6,7 @@
  */
 
 import type { Claim } from '../types';
-import type { ProgramStoreInstance } from '../store/programStore';
+import type { ProgramStoreInstance } from '../store';
 import type {
   Observer,
   ObserverContext,
@@ -148,7 +148,7 @@ export class ObserverDispatcher {
 
     try {
       // Get observers that should run for this event
-      const observersToRun = this.selectObservers(event);
+      const observersToRun = await this.selectObservers(event);
 
       if (observersToRun.length === 0) {
         return results;
@@ -199,38 +199,41 @@ export class ObserverDispatcher {
   /**
    * Select observers that should run for an event
    */
-  private selectObservers(event: ObserverEvent): Observer[] {
+  private async selectObservers(event: ObserverEvent): Promise<Observer[]> {
     const timestamp = now();
 
-    return Array.from(this.observers.values())
-      .filter((observer) => {
-        // Check if observer is active in database
-        const dbRecord = this.store.observerPrograms.getByType(observer.config.type);
-        if (dbRecord && !dbRecord.active) {
-          return false;
-        }
+    const observers = Array.from(this.observers.values());
+    const filtered: Observer[] = [];
 
-        // Check if observer listens to this event type
-        if (!observer.config.triggers.includes(event.type)) {
-          return false;
-        }
+    for (const observer of observers) {
+      // Check if observer is active in database
+      const dbRecord = await this.store.observerPrograms.getByType(observer.config.type);
+      if (dbRecord && !dbRecord.active) {
+        continue;
+      }
 
-        // Check rate limiting
-        const lastRun = this.lastRunTimes.get(observer.config.type) || 0;
-        if (timestamp - lastRun < this.config.minRunInterval) {
-          return false;
-        }
+      // Check if observer listens to this event type
+      if (!observer.config.triggers.includes(event.type)) {
+        continue;
+      }
 
-        return true;
-      })
-      .sort((a, b) => b.config.priority - a.config.priority);
+      // Check rate limiting
+      const lastRun = this.lastRunTimes.get(observer.config.type) || 0;
+      if (timestamp - lastRun < this.config.minRunInterval) {
+        continue;
+      }
+
+      filtered.push(observer);
+    }
+
+    return filtered.sort((a, b) => b.config.priority - a.config.priority);
   }
 
   /**
    * Build context for observer execution
    */
   private async buildContext(event: ObserverEvent): Promise<ObserverContext> {
-    const recentClaims = this.store.claims.getRecent(50);
+    const recentClaims = await this.store.claims.getRecent(50);
 
     return {
       store: this.store,
@@ -252,7 +255,8 @@ export class ObserverDispatcher {
 
     try {
       // Check if observer should run
-      if (!observer.shouldRun(context)) {
+      const shouldRun = await observer.shouldRun(context);
+      if (!shouldRun) {
         return {
           observerType,
           hasOutput: false,

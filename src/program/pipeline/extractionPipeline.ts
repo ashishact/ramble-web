@@ -17,7 +17,7 @@ import type {
   PatternMatch,
   TokenBudget,
 } from '../extractors/types';
-import type { ProgramStoreInstance } from '../store/programStore';
+import type { ProgramStoreInstance } from '../store';
 import { extractorRegistry } from '../extractors/registry';
 import { findPatternMatches } from '../extractors/patternMatcher';
 import { callLLM } from './llmClient';
@@ -38,7 +38,7 @@ export interface PipelineInput {
   /** Recent claims for context */
   recentClaims: Array<{
     statement: string;
-    claim_type: ClaimType;
+    claimType: ClaimType;
     subject: string;
   }>;
   /** Active thought chains (deprecated, kept for backward compatibility) */
@@ -48,8 +48,8 @@ export interface PipelineInput {
   }>;
   /** Known entities */
   knownEntities: Array<{
-    canonical_name: string;
-    entity_type: string;
+    canonicalName: string;
+    entityType: string;
   }>;
   /** Optional: specific extractors to run (otherwise runs all matching) */
   extractorIds?: string[];
@@ -88,7 +88,7 @@ export async function runExtractionPipeline(input: PipelineInput): Promise<Pipel
   });
 
   // Step 1: Determine which extractors to run
-  const extractorsToRun = selectExtractors(input);
+  const extractorsToRun = await selectExtractors(input);
 
   if (extractorsToRun.length === 0) {
     console.log('[Pipeline] No extractors matched!');
@@ -168,19 +168,22 @@ export async function runExtractionPipeline(input: PipelineInput): Promise<Pipel
 /**
  * Select which extractors should run based on pattern matching
  */
-function selectExtractors(input: PipelineInput): Array<{
+async function selectExtractors(input: PipelineInput): Promise<Array<{
   extractor: ExtractionProgram;
   matches: PatternMatch[];
-}> {
+}>> {
   const allExtractors = extractorRegistry.getAllSortedByPriority();
 
   // Filter by active flag from database
-  const activeExtractors = allExtractors.filter((e) => {
-    const dbRecord = input.store.extractionPrograms.getById(e.config.id);
+  const activeExtractors: typeof allExtractors = [];
+  for (const e of allExtractors) {
+    const dbRecord = await input.store.extractionPrograms.getById(e.config.id);
     // If no DB record, treat as active (shouldn't happen after sync)
     // If DB record exists, check active flag
-    return !dbRecord || dbRecord.active;
-  });
+    if (!dbRecord || dbRecord.active) {
+      activeExtractors.push(e);
+    }
+  }
 
   // If specific extractors requested, filter to those
   let candidates = activeExtractors;
@@ -242,15 +245,15 @@ async function runSingleExtractor(
     const context: ExtractorContext = {
       unit: {
         id: input.unit.id,
-        raw_text: input.unit.rawText,
-        sanitized_text: input.unit.sanitizedText,
+        rawText: input.unit.rawText,
+        sanitizedText: input.unit.sanitizedText,
         source: input.unit.source,
-        preceding_context_summary: input.precedingContext,
+        precedingContextSummary: input.precedingContext,
       },
       matches,
-      recent_claims: input.recentClaims,
-      active_chains: input.activeChains || [],
-      known_entities: input.knownEntities,
+      recentClaims: input.recentClaims,
+      activeChains: input.activeChains || [],
+      knownEntities: input.knownEntities,
     };
 
     // Build prompt
@@ -260,7 +263,7 @@ async function runSingleExtractor(
     const response = await callLLM({
       tier: config.llmTier,
       prompt,
-      options: config.llm_options,
+      options: config.llmOptions,
     });
 
     // Parse response
@@ -272,8 +275,8 @@ async function runSingleExtractor(
     }
 
     // Update metadata
-    result.metadata.tokens_used = response.tokens_used.total;
-    result.metadata.processing_time_ms = response.processing_time_ms;
+    result.metadata.tokensUsed = response.tokens_used.total;
+    result.metadata.processingTimeMs = response.processing_time_ms;
 
     logger.debug('Extractor completed', {
       extractorId: config.id,
@@ -429,7 +432,7 @@ export function buildBudgetedContext(
   }
 
   // Limit claims
-  const maxClaims = Math.min(budget.max_claims, recentClaims.length);
+  const maxClaims = Math.min(budget.maxClaims, recentClaims.length);
   recentClaims = recentClaims.slice(0, maxClaims);
 
   // Limit chains and entities

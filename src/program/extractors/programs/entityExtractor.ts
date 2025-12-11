@@ -32,11 +32,11 @@ class EntityExtractor extends BaseExtractor {
       // Named references
       { id: 'named', type: 'keyword', pattern: 'called|named|known as', weight: 0.9 },
     ],
-    llm_tier: 'small',
-    llm_options: { temperature: 0.1, max_tokens: 1500 },
-    min_confidence: 0.5,
+    llmTier: 'small',
+    llmOptions: { temperature: 0.1, maxTokens: 1500 },
+    minConfidence: 0.5,
     priority: 100, // Highest priority - runs first
-    always_run: true, // Always extract entities
+    alwaysRun: true, // Always extract entities
   };
 
   buildPrompt(context: ExtractorContext): string {
@@ -47,8 +47,8 @@ class EntityExtractor extends BaseExtractor {
 ${inputSection}
 
 For each entity found, provide:
-- canonical_name: The full/standard name
-- entity_type: One of: person, organization, product, place, project, role, event, concept
+- canonicalName: The full/standard name
+- entityType: One of: person, organization, product, place, project, role, event, concept
 - aliases: Any nicknames, abbreviations, or alternative names mentioned
 
 Focus on entities that are specific and meaningful - ignore generic words.
@@ -76,15 +76,18 @@ If no entities are found, respond with an empty array: []`;
 
     for (const item of parsed) {
       const obj = item as Record<string, unknown>;
-      if (obj.canonicalName && obj.entityType) {
-        const rawType = obj.entityType as string;
-        const entityType = validEntityTypes.includes(rawType as EntityType)
-          ? (rawType as EntityType)
+      // Handle both camelCase and snake_case from LLM response
+      const canonicalName = (obj.canonicalName || obj.canonical_name) as string | undefined;
+      const entityType = (obj.entityType || obj.entity_type) as string | undefined;
+
+      if (canonicalName && entityType) {
+        const normalizedType = validEntityTypes.includes(entityType as EntityType)
+          ? (entityType as EntityType)
           : 'concept';
 
         entities.push({
-          canonical_name: obj.canonicalName as string,
-          entity_type: entityType,
+          canonicalName: canonicalName,
+          entityType: normalizedType,
           aliases: Array.isArray(obj.aliases) ? (obj.aliases as string[]) : [],
         });
       }
@@ -96,7 +99,7 @@ If no entities are found, respond with an empty array: []`;
       metadata: {
         model: '',
         tokensUsed: 0,
-        processing_time_ms: 0,
+        processingTimeMs: 0,
       },
     };
   }

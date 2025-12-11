@@ -22,7 +22,7 @@ export abstract class BaseObserver implements Observer {
   /**
    * Check if observer should run - can be overridden by subclasses
    */
-  shouldRun(context: ObserverContext): boolean {
+  shouldRun(context: ObserverContext): boolean | Promise<boolean> {
     // Check if we have triggering claims and they match our filter
     if (this.config.claimTypeFilter && this.config.claimTypeFilter.length > 0) {
       if (context.triggeringClaims.length === 0) {
@@ -49,21 +49,21 @@ export abstract class BaseObserver implements Observer {
   /**
    * Create an observer output and save it to the store
    */
-  protected createOutput(
+  protected async createOutput(
     context: ObserverContext,
     outputType: string,
     content: unknown,
     sourceClaimIds: string[]
-  ): ObserverOutput {
+  ): Promise<ObserverOutput> {
     const data: CreateObserverOutput = {
       observerType: this.config.type,
       outputType: outputType,
-      content_json: JSON.stringify(content),
-      source_claims_json: JSON.stringify(sourceClaimIds),
-      stale: false,
+      contentJson: JSON.stringify(content),
+      sourceClaimsJson: JSON.stringify(sourceClaimIds),
+      sessionId: context.sessionId || null,
     };
 
-    const output = context.store.observerOutputs.create(data);
+    const output = await context.store.observerOutputs.create(data);
 
     logger.debug('Created observer output', {
       observerType: this.config.type,

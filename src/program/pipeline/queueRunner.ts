@@ -9,7 +9,7 @@
  */
 
 import type { Task, CreateTask, TaskCheckpoint } from '../types';
-import type { ProgramStoreInstance } from '../store/programStore';
+import type { ProgramStoreInstance } from '../store';
 import { calculateNextRetryTime, parseBackoffConfig, parseCheckpoint, serializeCheckpoint } from '../schemas/task';
 import { createLogger } from '../utils/logger';
 import { now } from '../utils/time';
@@ -57,6 +57,7 @@ export class QueueRunner {
   private isRunning = false;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private activeTasks: Set<string> = new Set();
+  private _hasRunRecovery = false;
 
   constructor(store: ProgramStoreInstance, config?: Partial<QueueRunnerConfig>) {
     this.store = store;
@@ -118,7 +119,7 @@ export class QueueRunner {
    * Enqueue a new task
    */
   async enqueue(data: CreateTask): Promise<string> {
-    const task = this.store.tasks.create(data);
+    const task = await this.store.tasks.create(data);
     logger.debug('Enqueued task', { id: task.id, type: task.taskType });
     return task.id;
   }
@@ -133,8 +134,15 @@ export class QueueRunner {
     if (this.activeTasks.size >= this.config.maxConcurrent) return;
 
     // Get pending and retryable tasks
-    const pending = this.store.tasks.getPending();
-    const retryable = this.store.tasks.getRetryable();
+    const pending = await this.store.tasks.getPending();
+    const retryable = await this.store.tasks.getRetryable();
+
+    // Recovery: Mark conversations as processed if their extraction task completed
+    // This handles cases where markProcessed failed during original extraction
+    if (!this._hasRunRecovery) {
+      this._hasRunRecovery = true;
+      await this.recoverUnprocessedConversations();
+    }
 
     if (pending.length > 0 || retryable.length > 0) {
       console.log('[Queue] Poll: pending:', pending.length, 'retryable:', retryable.length, 'active:', this.activeTasks.size);
@@ -143,7 +151,7 @@ export class QueueRunner {
     // Combine and sort by priority
     const available = [...pending, ...retryable]
       .filter((t) => !this.activeTasks.has(t.id))
-      .sort((a, b) => b.priority_value - a.priority_value);
+      .sort((a, b) => b.priorityValue - a.priorityValue);
 
     // Process up to maxConcurrent - active
     const slotsAvailable = this.config.maxConcurrent - this.activeTasks.size;
@@ -176,9 +184,9 @@ export class QueueRunner {
       }
 
       // Update status to processing
-      this.store.tasks.update(taskId, {
+      await this.store.tasks.update(taskId, {
         status: 'processing',
-        started_at: now(),
+        startedAt: now(),
         attempts: task.attempts + 1,
       });
 
@@ -196,10 +204,10 @@ export class QueueRunner {
       await handler.execute(payload, checkpoint);
 
       // Mark as completed
-      this.store.tasks.update(taskId, {
+      await this.store.tasks.update(taskId, {
         status: 'completed',
-        completed_at: now(),
-        checkpoint_json: null, // Clear checkpoint on success
+        completedAt: now(),
+        checkpointJson: null, // Clear checkpoint on success
       });
 
       logger.info('Task completed', { id: taskId, type: task.taskType });
@@ -231,11 +239,11 @@ export class QueueRunner {
     const newAttempts = task.attempts + 1;
     const isFailed = newAttempts >= task.maxAttempts;
 
-    this.store.tasks.update(task.id, {
+    await this.store.tasks.update(task.id, {
       status: isFailed ? 'failed' : 'pending', // Return to pending for retry
-      last_error: errorMessage,
-      last_error_at: now(),
-      next_retry_at: isFailed ? null : nextRetryAt,
+      lastError: errorMessage,
+      lastErrorAt: now(),
+      nextRetryAt: isFailed ? null : nextRetryAt,
       attempts: newAttempts,
     });
 
@@ -251,8 +259,8 @@ export class QueueRunner {
   /**
    * Recover tasks that were running when the browser closed
    */
-  private recoverStaleTasks(): void {
-    const processingTasks = this.store.tasks.getByStatus('processing');
+  private async recoverStaleTasks(): Promise<void> {
+    const processingTasks = await this.store.tasks.getByStatus('processing');
     const timestamp = now();
     let recovered = 0;
 
@@ -271,11 +279,11 @@ export class QueueRunner {
         const backoffConfig = parseBackoffConfig(task.backoffConfigJson);
         const nextRetryAt = calculateNextRetryTime(task.attempts, backoffConfig);
 
-        this.store.tasks.update(task.id, {
+        await this.store.tasks.update(task.id, {
           status: 'pending',
-          next_retry_at: nextRetryAt,
-          last_error: 'Task stale - recovered after browser reload',
-          last_error_at: timestamp,
+          nextRetryAt: nextRetryAt,
+          lastError: 'Task stale - recovered after browser reload',
+          lastErrorAt: timestamp,
         });
 
         console.log('[Queue] Recovered stale task:', task.id.slice(0, 8));
@@ -289,37 +297,69 @@ export class QueueRunner {
   }
 
   /**
+   * Recover conversations that have completed tasks but weren't marked as processed
+   * This handles edge cases where extraction succeeded but markProcessed failed
+   */
+  private async recoverUnprocessedConversations(): Promise<void> {
+    const allTasks = await this.store.tasks.getAll();
+    const convs = await this.store.conversations.getAll();
+    const unprocessedConvs = convs.filter(c => !c.processed);
+
+    let recovered = 0;
+    for (const conv of unprocessedConvs) {
+      const matchingTask = allTasks.find(t => {
+        if (t.status !== 'completed' || t.taskType !== 'extract_from_unit') return false;
+        try {
+          const payload = JSON.parse(t.payloadJson);
+          return payload.unitId === conv.id;
+        } catch {
+          return false;
+        }
+      });
+
+      if (matchingTask) {
+        await this.store.conversations.markProcessed(conv.id);
+        recovered++;
+      }
+    }
+
+    if (recovered > 0) {
+      logger.info('Recovered unprocessed conversations', { count: recovered });
+    }
+  }
+
+  /**
    * Update checkpoint for a running task
    */
-  updateCheckpoint(taskId: string, checkpoint: TaskCheckpoint): void {
-    this.store.tasks.update(taskId, {
-      checkpoint_json: serializeCheckpoint(checkpoint),
+  async updateCheckpoint(taskId: string, checkpoint: TaskCheckpoint): Promise<void> {
+    await this.store.tasks.update(taskId, {
+      checkpointJson: serializeCheckpoint(checkpoint),
     });
 
     logger.debug('Updated checkpoint', {
       taskId,
       step: checkpoint.step,
-      stepIndex: checkpoint.step_index,
+      stepIndex: checkpoint.stepIndex,
     });
   }
 
   /**
    * Get queue status
    */
-  getStatus(): {
+  async getStatus(): Promise<{
     isRunning: boolean;
     activeTasks: number;
     pendingTasks: number;
     failedTasks: number;
-  } {
-    const pending = this.store.tasks.getByStatus('pending').length;
-    const failed = this.store.tasks.getByStatus('failed').length;
+  }> {
+    const pendingTasks = await this.store.tasks.getByStatus('pending');
+    const failedTasks = await this.store.tasks.getByStatus('failed');
 
     return {
       isRunning: this.isRunning,
       activeTasks: this.activeTasks.size,
-      pendingTasks: pending,
-      failedTasks: failed,
+      pendingTasks: pendingTasks.length,
+      failedTasks: failedTasks.length,
     };
   }
 }

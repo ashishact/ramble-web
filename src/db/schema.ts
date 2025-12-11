@@ -7,7 +7,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb'
 
 export const schema = appSchema({
-  version: 1,
+  version: 3,  // Bumped for Goal schema and timestamp field standardization
   tables: [
     // Sessions - Conversation sessions
     tableSchema({
@@ -115,11 +115,18 @@ export const schema = appSchema({
         { name: 'goalType', type: 'string', isIndexed: true },
         { name: 'timeframe', type: 'string' },
         { name: 'status', type: 'string', isIndexed: true },
-        { name: 'progressValue', type: 'number' },
-        { name: 'priority', type: 'string' },
-        { name: 'createdAt', type: 'number' },
-        { name: 'achievedAt', type: 'number', isOptional: true },
         { name: 'parentGoalId', type: 'string', isOptional: true, isIndexed: true },
+        { name: 'createdAt', type: 'number' },
+        { name: 'lastReferenced', type: 'number', isIndexed: true },
+        { name: 'achievedAt', type: 'number', isOptional: true },
+        { name: 'priority', type: 'number' },
+        { name: 'progressType', type: 'string' },
+        { name: 'progressValue', type: 'number' },
+        { name: 'progressIndicatorsJson', type: 'string' },
+        { name: 'blockersJson', type: 'string' },
+        { name: 'sourceClaimId', type: 'string' },
+        { name: 'motivation', type: 'string', isOptional: true },
+        { name: 'deadline', type: 'number', isOptional: true },
       ]
     }),
 
@@ -186,14 +193,22 @@ export const schema = appSchema({
         { name: 'version', type: 'number' },
         { name: 'active', type: 'boolean', isIndexed: true },
         { name: 'patternsJson', type: 'string', isOptional: true },
+        { name: 'alwaysRun', type: 'boolean' },
         { name: 'promptTemplate', type: 'string', isOptional: true },
         { name: 'outputSchemaJson', type: 'string', isOptional: true },
         { name: 'llmTier', type: 'string', isOptional: true },
+        { name: 'llmTemperature', type: 'number', isOptional: true },
+        { name: 'llmMaxTokens', type: 'number', isOptional: true },
         { name: 'priority', type: 'number' },
+        { name: 'minConfidence', type: 'number' },
+        { name: 'isCore', type: 'boolean' },
+        { name: 'claimTypesJson', type: 'string' },
         { name: 'createdAt', type: 'number' },
+        { name: 'updatedAt', type: 'number' },
         { name: 'lastUsed', type: 'number', isOptional: true },
         { name: 'runCount', type: 'number' },
         { name: 'successRate', type: 'number' },
+        { name: 'avgProcessingTimeMs', type: 'number' },
       ]
     }),
 
@@ -205,11 +220,24 @@ export const schema = appSchema({
         { name: 'type', type: 'string', isIndexed: true },
         { name: 'description', type: 'string' },
         { name: 'active', type: 'boolean', isIndexed: true },
+        { name: 'priority', type: 'number' },
         { name: 'triggers', type: 'string' }, // JSON array
+        { name: 'claimTypeFilter', type: 'string', isOptional: true },
+        { name: 'usesLlm', type: 'boolean' },
         { name: 'llmTier', type: 'string', isOptional: true },
+        { name: 'llmTemperature', type: 'number', isOptional: true },
+        { name: 'llmMaxTokens', type: 'number', isOptional: true },
         { name: 'promptTemplate', type: 'string', isOptional: true },
         { name: 'outputSchemaJson', type: 'string', isOptional: true },
+        { name: 'shouldRunLogic', type: 'string', isOptional: true },
+        { name: 'processLogic', type: 'string', isOptional: true },
+        { name: 'isCore', type: 'boolean' },
+        { name: 'version', type: 'number' },
         { name: 'createdAt', type: 'number' },
+        { name: 'updatedAt', type: 'number' },
+        { name: 'runCount', type: 'number' },
+        { name: 'successRate', type: 'number' },
+        { name: 'avgProcessingTimeMs', type: 'number' },
       ]
     }),
 
@@ -254,28 +282,33 @@ export const schema = appSchema({
         { name: 'usageCount', type: 'number' },
         { name: 'createdAt', type: 'number' },
         { name: 'lastUsed', type: 'number', isOptional: true },
+        { name: 'sourceUnitId', type: 'string', isOptional: true },
       ]
     }),
 
-    // Tasks - Durable task queue
+    // Tasks - Durable task queue (persisted for recovery after browser reload)
     tableSchema({
       name: 'tasks',
       columns: [
         { name: 'taskType', type: 'string', isIndexed: true },
         { name: 'status', type: 'string', isIndexed: true },
-        { name: 'priority', type: 'number', isIndexed: true },
+        { name: 'priority', type: 'string' },  // 'critical' | 'high' | 'normal' | 'low'
+        { name: 'priorityValue', type: 'number', isIndexed: true },  // Numeric for sorting
         { name: 'payloadJson', type: 'string' },
-        { name: 'resultJson', type: 'string', isOptional: true },
-        { name: 'errorMessage', type: 'string', isOptional: true },
         { name: 'attempts', type: 'number' },
         { name: 'maxAttempts', type: 'number' },
+        { name: 'lastError', type: 'string', isOptional: true },
+        { name: 'lastErrorAt', type: 'number', isOptional: true },
         { name: 'backoffConfigJson', type: 'string' },
         { name: 'checkpointJson', type: 'string', isOptional: true },
-        { name: 'sessionId', type: 'string', isOptional: true, isIndexed: true },
         { name: 'createdAt', type: 'number', isIndexed: true },
         { name: 'startedAt', type: 'number', isOptional: true },
         { name: 'completedAt', type: 'number', isOptional: true },
+        { name: 'executeAt', type: 'number', isIndexed: true },
         { name: 'nextRetryAt', type: 'number', isOptional: true, isIndexed: true },
+        { name: 'groupId', type: 'string', isOptional: true, isIndexed: true },
+        { name: 'dependsOn', type: 'string', isOptional: true },
+        { name: 'sessionId', type: 'string', isOptional: true, isIndexed: true },
       ]
     }),
   ]

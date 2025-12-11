@@ -49,8 +49,8 @@ export function createExtractionProgramStore(db: Database): IExtractionProgramSt
           program.promptTemplate = data.promptTemplate
           program.outputSchemaJson = data.outputSchemaJson
           program.llmTier = data.llmTier
-          program.llmTemperature = data.llmTemperature ?? undefined
-          program.llmMaxTokens = data.llmMaxTokens ?? undefined
+          program.llmTemperature = data.llmTemperature ?? null
+          program.llmMaxTokens = data.llmMaxTokens ?? null
           program.priority = data.priority
           program.minConfidence = data.minConfidence
           program.isCore = data.isCore ?? false
@@ -68,19 +68,21 @@ export function createExtractionProgramStore(db: Database): IExtractionProgramSt
     async update(id: string, data: UpdateExtractionProgram): Promise<ExtractionProgram | null> {
       try {
         const model = await collection.find(id)
-        const updated = await model.update((program) => {
-          if (data.name !== undefined) program.name = data.name
-          if (data.description !== undefined) program.description = data.description
-          if (data.active !== undefined) program.active = data.active
-          if (data.patternsJson !== undefined) program.patternsJson = data.patternsJson
-          if (data.promptTemplate !== undefined) program.promptTemplate = data.promptTemplate
-          if (data.outputSchemaJson !== undefined) program.outputSchemaJson = data.outputSchemaJson
-          if (data.llmTier !== undefined) program.llmTier = data.llmTier
-          if (data.priority !== undefined) program.priority = data.priority
-          if (Date.now() !== undefined) program.lastUsed = Date.now()
-          if (data.runCount !== undefined) program.runCount = data.runCount
-          if (data.successRate !== undefined) program.successRate = data.successRate
-        })
+        const updated = await db.write(() =>
+          model.update((program) => {
+            if (data.name !== undefined) program.name = data.name
+            if (data.description !== undefined) program.description = data.description
+            if (data.active !== undefined) program.active = data.active
+            if (data.patternsJson !== undefined) program.patternsJson = data.patternsJson
+            if (data.promptTemplate !== undefined) program.promptTemplate = data.promptTemplate
+            if (data.outputSchemaJson !== undefined) program.outputSchemaJson = data.outputSchemaJson
+            if (data.llmTier !== undefined) program.llmTier = data.llmTier
+            if (data.priority !== undefined) program.priority = data.priority
+            if (Date.now() !== undefined) program.lastUsed = Date.now()
+            if (data.runCount !== undefined) program.runCount = data.runCount
+            if (data.successRate !== undefined) program.successRate = data.successRate
+          })
+        )
         return modelToExtractionProgram(updated)
       } catch {
         return null
@@ -90,7 +92,7 @@ export function createExtractionProgramStore(db: Database): IExtractionProgramSt
     async delete(id: string): Promise<boolean> {
       try {
         const model = await collection.find(id)
-        await model.destroyPermanently()
+        await db.write(() => model.destroyPermanently())
         return true
       } catch {
         return false
@@ -120,10 +122,12 @@ export function createExtractionProgramStore(db: Database): IExtractionProgramSt
     async incrementRunCount(id: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((program) => {
-          program.runCount = (program.runCount || 0) + 1
-          program.lastUsed = Date.now()
-        })
+        await db.write(() =>
+          model.update((program) => {
+            program.runCount = (program.runCount || 0) + 1
+            program.lastUsed = Date.now()
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -132,19 +136,21 @@ export function createExtractionProgramStore(db: Database): IExtractionProgramSt
     async updateSuccessRate(id: string, success: boolean): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((program) => {
-          const totalRuns = program.runCount || 0
-          const currentSuccessRate = program.successRate || 0
-          const successfulRuns = Math.round(currentSuccessRate * totalRuns)
-          const newSuccessfulRuns = success ? successfulRuns + 1 : successfulRuns
-          program.successRate = totalRuns > 0 ? newSuccessfulRuns / (totalRuns + 1) : success ? 1 : 0
-        })
+        await db.write(() =>
+          model.update((program) => {
+            const totalRuns = program.runCount || 0
+            const currentSuccessRate = program.successRate || 0
+            const successfulRuns = Math.round(currentSuccessRate * totalRuns)
+            const newSuccessfulRuns = success ? successfulRuns + 1 : successfulRuns
+            program.successRate = totalRuns > 0 ? newSuccessfulRuns / (totalRuns + 1) : success ? 1 : 0
+          })
+        )
       } catch {
         // Ignore errors
       }
     },
 
-    async updateProcessingTime(id: string, timeMs: number): Promise<void> {
+    async updateProcessingTime(_id: string, _timeMs: number): Promise<void> {
       // Note: Schema doesn't have processingTime field
       // This is a no-op for now
     },

@@ -33,9 +33,9 @@ class QuestionExtractor extends BaseExtractor {
       // Knowledge gaps
       { id: 'need_to', type: 'keyword', pattern: 'need to find out|need to learn|need to figure out', weight: 0.8 },
     ],
-    llm_tier: 'small',
-    llm_options: { temperature: 0.2, max_tokens: 1500 },
-    min_confidence: 0.5,
+    llmTier: 'small',
+    llmOptions: { temperature: 0.2, maxTokens: 1500 },
+    minConfidence: 0.5,
     priority: 70,
   };
 
@@ -75,7 +75,8 @@ If no questions/uncertainties found, respond: []`;
     for (const item of parsed) {
       const obj = item as Record<string, unknown>;
       if (obj.statement) {
-        const importance = obj.importance as string;
+        // Handle both camelCase and snake_case from LLM response - uncertainty_type is used in prompt
+        const importance = (obj.importance as string) || 'medium';
         type Stakes = 'low' | 'medium' | 'high' | 'existential';
         let stakes: Stakes = 'medium';
         if (importance === 'critical') stakes = 'existential';
@@ -86,12 +87,12 @@ If no questions/uncertainties found, respond: []`;
           statement: obj.statement as string,
           subject: (obj.subject as string) || 'unknown',
           claimType: 'question',
-          temporality: 'point_in_time',
+          temporality: 'pointInTime',
           abstraction: 'specific',
-          source_type: 'direct',
+          sourceType: 'direct',
           confidence: (obj.confidence as number) || 0.8,
-          emotional_valence: 0,
-          emotional_intensity: 0.3,
+          emotionalValence: 0,
+          emotionalIntensity: 0.3,
           stakes,
         });
       }
@@ -100,7 +101,7 @@ If no questions/uncertainties found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processingTimeMs: 0 },
     };
   }
 }

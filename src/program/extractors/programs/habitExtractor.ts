@@ -30,9 +30,9 @@ class HabitExtractor extends BaseExtractor {
       // Scheduled
       { id: 'scheduled', type: 'keyword', pattern: 'on mondays|in the morning|after work|before bed', weight: 0.7 },
     ],
-    llm_tier: 'small',
-    llm_options: { temperature: 0.2, max_tokens: 1200 },
-    min_confidence: 0.5,
+    llmTier: 'small',
+    llmOptions: { temperature: 0.2, maxTokens: 1200 },
+    minConfidence: 0.5,
     priority: 50,
   };
 
@@ -71,16 +71,18 @@ If no habits found, respond: []`;
     for (const item of parsed) {
       const obj = item as Record<string, unknown>;
       if (obj.statement) {
+        // Handle both camelCase and snake_case from LLM response
+        const isPositive = obj.isPositive ?? obj.is_positive;
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || (obj.domain as string) || 'habit',
           claimType: 'habit',
-          temporality: 'slowly_decaying',
+          temporality: 'slowlyDecaying',
           abstraction: 'specific',
-          source_type: 'direct',
+          sourceType: 'direct',
           confidence: (obj.confidence as number) || 0.7,
-          emotional_valence: obj.is_positive ? 0.2 : -0.2,
-          emotional_intensity: 0.3,
+          emotionalValence: isPositive ? 0.2 : -0.2,
+          emotionalIntensity: 0.3,
           stakes: 'low',
         });
       }
@@ -89,7 +91,7 @@ If no habits found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processingTimeMs: 0 },
     };
   }
 }

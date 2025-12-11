@@ -56,7 +56,7 @@ export function createSourceTrackingStore(db: Database): ISourceTrackingStore {
     async delete(id: string): Promise<boolean> {
       try {
         const model = await collection.find(id)
-        await model.destroyPermanently()
+        await db.write(() => model.destroyPermanently())
         return true
       } catch {
         return false

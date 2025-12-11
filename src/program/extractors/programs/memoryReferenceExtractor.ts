@@ -33,9 +33,9 @@ class MemoryReferenceExtractor extends BaseExtractor {
       // Nostalgia
       { id: 'nostalgia', type: 'keyword', pattern: 'miss|wish I could|those days|back then', weight: 0.6 },
     ],
-    llm_tier: 'small',
-    llm_options: { temperature: 0.2, max_tokens: 1500 },
-    min_confidence: 0.5,
+    llmTier: 'small',
+    llmOptions: { temperature: 0.2, maxTokens: 1500 },
+    minConfidence: 0.5,
     priority: 60,
   };
 
@@ -85,18 +85,19 @@ If no memory references found, respond: []`;
     for (const item of parsed) {
       const obj = item as Record<string, unknown>;
       if (obj.statement) {
-        const emotionalTone = obj.emotionalTone as string;
+        // Handle both camelCase and snake_case from LLM response
+        const emotionalTone = (obj.emotionalTone || obj.emotional_tone) as string;
 
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || 'memory',
           claimType: 'memory_reference',
-          temporality: 'point_in_time',
+          temporality: 'pointInTime',
           abstraction: 'specific',
-          source_type: 'direct',
+          sourceType: 'direct',
           confidence: (obj.confidence as number) || 0.7,
-          emotional_valence: toneMap[emotionalTone] || 0,
-          emotional_intensity: (obj.vividness as number) || 0.5,
+          emotionalValence: toneMap[emotionalTone] || 0,
+          emotionalIntensity: (obj.vividness as number) || 0.5,
           stakes: 'low',
         });
       }
@@ -105,7 +106,7 @@ If no memory references found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processingTimeMs: 0 },
     };
   }
 }

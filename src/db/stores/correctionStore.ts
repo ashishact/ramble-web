@@ -40,7 +40,7 @@ export function createCorrectionStore(db: Database): ICorrectionStore {
           correction.usageCount = data.usageCount || 0
           correction.createdAt = now
           correction.lastUsed = now
-          correction.sourceUnitId = data.sourceUnitId ?? undefined
+          correction.sourceUnitId = data.sourceUnitId ?? null
         })
       )
       return modelToCorrection(model)
@@ -49,13 +49,15 @@ export function createCorrectionStore(db: Database): ICorrectionStore {
     async update(id: string, data: UpdateCorrection): Promise<Correction | null> {
       try {
         const model = await collection.find(id)
-        const updated = await model.update((correction) => {
-          if (data.wrongText !== undefined) correction.wrongText = data.wrongText
-          if (data.correctText !== undefined) correction.correctText = data.correctText
-          if (data.originalCase !== undefined) correction.originalCase = data.originalCase
-          if (data.usageCount !== undefined) correction.usageCount = data.usageCount
-          if (data.lastUsed !== undefined) correction.lastUsed = data.lastUsed
-        })
+        const updated = await db.write(() =>
+          model.update((correction) => {
+            if (data.wrongText !== undefined) correction.wrongText = data.wrongText
+            if (data.correctText !== undefined) correction.correctText = data.correctText
+            if (data.originalCase !== undefined) correction.originalCase = data.originalCase
+            if (data.usageCount !== undefined) correction.usageCount = data.usageCount
+            if (data.lastUsed !== undefined) correction.lastUsed = data.lastUsed
+          })
+        )
         return modelToCorrection(updated)
       } catch {
         return null
@@ -65,7 +67,7 @@ export function createCorrectionStore(db: Database): ICorrectionStore {
     async delete(id: string): Promise<boolean> {
       try {
         const model = await collection.find(id)
-        await model.destroyPermanently()
+        await db.write(() => model.destroyPermanently())
         return true
       } catch {
         return false
@@ -87,9 +89,11 @@ export function createCorrectionStore(db: Database): ICorrectionStore {
     async incrementUsageCount(id: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((correction) => {
-          correction.usageCount = (correction.usageCount || 0) + 1
-        })
+        await db.write(() =>
+          model.update((correction) => {
+            correction.usageCount = (correction.usageCount || 0) + 1
+          })
+        )
       } catch {
         // Ignore errors
       }
@@ -98,9 +102,11 @@ export function createCorrectionStore(db: Database): ICorrectionStore {
     async updateLastUsed(id: string): Promise<void> {
       try {
         const model = await collection.find(id)
-        await model.update((correction) => {
-          correction.lastUsed = Date.now()
-        })
+        await db.write(() =>
+          model.update((correction) => {
+            correction.lastUsed = Date.now()
+          })
+        )
       } catch {
         // Ignore errors
       }

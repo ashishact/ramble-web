@@ -34,9 +34,9 @@ class CommitmentExtractor extends BaseExtractor {
       // Accountability
       { id: 'accountability', type: 'keyword', pattern: "I'm responsible|counting on me|depending on me|my word", weight: 0.8 },
     ],
-    llm_tier: 'small',
-    llm_options: { temperature: 0.2, max_tokens: 1500 },
-    min_confidence: 0.6,
+    llmTier: 'small',
+    llmOptions: { temperature: 0.2, maxTokens: 1500 },
+    minConfidence: 0.6,
     priority: 75,
   };
 
@@ -93,18 +93,19 @@ If no commitments found, respond: []`;
     for (const item of parsed) {
       const obj = item as Record<string, unknown>;
       if (obj.statement) {
-        const strength = obj.strength as string;
+        // Handle both camelCase and snake_case from LLM response
+        const strength = (obj.strength as string) || 'moderate';
 
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || 'commitment',
           claimType: 'commitment',
-          temporality: 'slowly_decaying',
+          temporality: 'slowlyDecaying',
           abstraction: 'specific',
-          source_type: 'direct',
+          sourceType: 'direct',
           confidence: strengthMap[strength] || 0.7,
-          emotional_valence: 0.1,
-          emotional_intensity: strengthMap[strength] || 0.5,
+          emotionalValence: 0.1,
+          emotionalIntensity: strengthMap[strength] || 0.5,
           stakes: stakesMap[strength] || 'medium',
         });
       }
@@ -113,7 +114,7 @@ If no commitments found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processingTimeMs: 0 },
     };
   }
 }

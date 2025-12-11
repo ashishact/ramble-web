@@ -34,9 +34,9 @@ class ValueExtractor extends BaseExtractor {
       // Non-negotiable
       { id: 'non_neg', type: 'keyword', pattern: 'non-negotiable|always|never compromise', weight: 0.85 },
     ],
-    llm_tier: 'small',
-    llm_options: { temperature: 0.2, max_tokens: 1500 },
-    min_confidence: 0.6,
+    llmTier: 'small',
+    llmOptions: { temperature: 0.2, maxTokens: 1500 },
+    minConfidence: 0.6,
     priority: 85,
   };
 
@@ -78,17 +78,19 @@ If no values found, respond: []`;
       const obj = item as Record<string, unknown>;
       if (obj.statement) {
         const importance = (obj.importance as number) || 0.7;
+        // Handle both camelCase and snake_case from LLM response
+        const isExplicit = obj.isExplicit ?? obj.is_explicit;
 
         claims.push({
           statement: obj.statement as string,
           subject: (obj.subject as string) || (obj.domain as string) || 'values',
           claimType: 'value',
-          temporality: 'slowly_decaying',
+          temporality: 'slowlyDecaying',
           abstraction: 'general',
-          source_type: obj.is_explicit ? 'direct' : 'inferred',
+          sourceType: isExplicit ? 'direct' : 'inferred',
           confidence: (obj.confidence as number) || 0.7,
-          emotional_valence: 0.3,
-          emotional_intensity: importance,
+          emotionalValence: 0.3,
+          emotionalIntensity: importance,
           stakes: importance > 0.8 ? 'high' : 'medium',
         });
       }
@@ -97,7 +99,7 @@ If no values found, respond: []`;
     return {
       claims,
       entities: [],
-      metadata: { model: '', tokensUsed: 0, processing_time_ms: 0 },
+      metadata: { model: '', tokensUsed: 0, processingTimeMs: 0 },
     };
   }
 }

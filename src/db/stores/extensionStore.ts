@@ -45,7 +45,7 @@ export function createExtensionStore(db: Database): IExtensionStore {
           extension.status = data.status ?? 'draft'
           extension.version = data.version ?? 1
           extension.createdAt = now
-          extension.verifiedAt = data.verifiedAt ?? undefined
+          extension.verifiedAt = data.verifiedAt ?? null
         })
       )
       return modelToExtension(model)
@@ -54,18 +54,20 @@ export function createExtensionStore(db: Database): IExtensionStore {
     async update(id: string, data: UpdateExtension): Promise<Extension | null> {
       try {
         const model = await collection.find(id)
-        const updated = await model.update((extension) => {
-          if (data.name !== undefined) extension.name = data.name
-          if (data.description !== undefined) extension.description = data.description
-          if (data.configJson !== undefined) extension.configJson = data.configJson
-          if (data.systemPrompt !== undefined) extension.systemPrompt = data.systemPrompt
-          if (data.userPromptTemplate !== undefined) extension.userPromptTemplate = data.userPromptTemplate
-          if (data.variablesSchemaJson !== undefined) extension.variablesSchemaJson = data.variablesSchemaJson
-          if (data.llmTier !== undefined) extension.llmTier = data.llmTier
-          if (data.status !== undefined) extension.status = data.status
-          if (data.version !== undefined) extension.version = data.version
-          if (data.verifiedAt !== undefined) extension.verifiedAt = data.verifiedAt ?? undefined
-        })
+        const updated = await db.write(() =>
+          model.update((extension) => {
+            if (data.name !== undefined) extension.name = data.name
+            if (data.description !== undefined) extension.description = data.description
+            if (data.configJson !== undefined) extension.configJson = data.configJson
+            if (data.systemPrompt !== undefined) extension.systemPrompt = data.systemPrompt
+            if (data.userPromptTemplate !== undefined) extension.userPromptTemplate = data.userPromptTemplate
+            if (data.variablesSchemaJson !== undefined) extension.variablesSchemaJson = data.variablesSchemaJson
+            if (data.llmTier !== undefined) extension.llmTier = data.llmTier
+            if (data.status !== undefined) extension.status = data.status
+            if (data.version !== undefined) extension.version = data.version
+            if (data.verifiedAt !== undefined) extension.verifiedAt = data.verifiedAt ?? null
+          })
+        )
         return modelToExtension(updated)
       } catch {
         return null
@@ -75,7 +77,7 @@ export function createExtensionStore(db: Database): IExtensionStore {
     async delete(id: string): Promise<boolean> {
       try {
         const model = await collection.find(id)
-        await model.destroyPermanently()
+        await db.write(() => model.destroyPermanently())
         return true
       } catch {
         return false
@@ -100,9 +102,11 @@ export function createExtensionStore(db: Database): IExtensionStore {
     async verify(id: string): Promise<Extension | null> {
       try {
         const model = await collection.find(id)
-        const updated = await model.update((extension) => {
-          extension.status = 'verified'
-        })
+        const updated = await db.write(() =>
+          model.update((extension) => {
+            extension.status = 'verified'
+          })
+        )
         return modelToExtension(updated)
       } catch {
         return null

@@ -20,10 +20,10 @@ import {
   createExtensionStore,
   createSynthesisCacheStore,
   createCorrectionStore,
+  createTaskStore,
 } from './index'
 
 export class WatermelonProgramStore implements IProgramStore {
-  private db: Database
   private ready: boolean = false
 
   // Store instances
@@ -39,10 +39,9 @@ export class WatermelonProgramStore implements IProgramStore {
   public readonly extractionPrograms
   public readonly observerPrograms
   public readonly corrections
+  public readonly tasks
 
   constructor(db: Database = database) {
-    this.db = db
-
     // Initialize all stores
     this.sessions = createSessionStore(db)
     this.conversations = createConversationStore(db)
@@ -56,6 +55,7 @@ export class WatermelonProgramStore implements IProgramStore {
     this.extractionPrograms = createExtractionProgramStore(db)
     this.observerPrograms = createObserverProgramStore(db)
     this.corrections = createCorrectionStore(db)
+    this.tasks = createTaskStore(db)  // Persisted for durability
   }
 
   async initialize(): Promise<void> {

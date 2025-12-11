@@ -17,7 +17,7 @@ import type {
   BlockerType,
   BlockerSeverity,
 } from '../types';
-import type { ProgramStoreInstance } from '../store/programStore';
+import type { ProgramStoreInstance } from '../store';
 import {
   parseMilestones,
   serializeMilestones,
@@ -83,7 +83,7 @@ export class GoalManager {
   /**
    * Create a new goal from a claim
    */
-  createGoal(
+  async createGoal(
     claim: Claim,
     options: {
       goalType: GoalType;
@@ -93,10 +93,10 @@ export class GoalManager {
       deadline?: number;
       priority?: number;
     }
-  ): Goal {
+  ): Promise<Goal> {
     // Validate hierarchy depth if parent specified
     if (options.parentGoalId) {
-      const depth = this.getHierarchyDepth(options.parentGoalId);
+      const depth = await this.getHierarchyDepth(options.parentGoalId);
       if (depth >= this.config.maxHierarchyDepth) {
         throw new Error(`Goal hierarchy too deep (max ${this.config.maxHierarchyDepth} levels)`);
       }
@@ -104,26 +104,27 @@ export class GoalManager {
 
     const data: CreateGoal = {
       statement: claim.statement,
-      goal_type: options.goalType,
+      goalType: options.goalType,
       timeframe: options.timeframe,
       parentGoalId: options.parentGoalId ?? null,
       priority: options.priority ?? this.config.defaultPriority,
-      progress_type: this.inferProgressType(options.goalType, options.timeframe),
-      source_claim_id: claim.id,
+      progressType: this.inferProgressType(options.goalType, options.timeframe),
+      sourceClaimId: claim.id,
       motivation: options.motivation ?? null,
       deadline: options.deadline ?? null,
+      achievedAt: null,
       status: 'active',
-      progress_value: 0,
+      progressValue: 0,
       progressIndicatorsJson: '[]',
       blockersJson: '[]',
     };
 
-    const goal = this.store.goals.create(data);
+    const goal = await this.store.goals.create(data);
 
     logger.info('Created goal', {
       id: goal.id,
       statement: goal.statement.slice(0, 50),
-      type: goal.goal_type,
+      type: goal.goalType,
       timeframe: goal.timeframe,
     });
 
@@ -143,12 +144,12 @@ export class GoalManager {
     }
 
     // Short-term outcome goals are often binary
-    if (goalType === 'outcome' && (timeframe === 'immediate' || timeframe === 'short_term')) {
+    if (goalType === 'outcome' && (timeframe === 'immediate' || timeframe === 'shortTerm')) {
       return 'binary';
     }
 
     // Long-term goals use milestones
-    if (timeframe === 'long_term' || timeframe === 'life') {
+    if (timeframe === 'longTerm' || timeframe === 'life') {
       return 'milestone';
     }
 
@@ -159,13 +160,13 @@ export class GoalManager {
   /**
    * Get depth of a goal in the hierarchy
    */
-  private getHierarchyDepth(goalId: string): number {
+  private async getHierarchyDepth(goalId: string): Promise<number> {
     let depth = 0;
-    let currentGoal = this.store.goals.getById(goalId);
+    let currentGoal = await this.store.goals.getById(goalId);
 
     while (currentGoal && currentGoal.parentGoalId) {
       depth++;
-      currentGoal = this.store.goals.getById(currentGoal.parentGoalId);
+      currentGoal = await this.store.goals.getById(currentGoal.parentGoalId);
 
       // Safety limit
       if (depth > 10) break;
@@ -177,13 +178,13 @@ export class GoalManager {
   /**
    * Update goal progress
    */
-  updateProgress(
+  async updateProgress(
     goalId: string,
     newValue: number,
     reason: string,
     evidenceClaimId?: string
-  ): GoalProgressUpdate {
-    const goal = this.store.goals.getById(goalId);
+  ): Promise<GoalProgressUpdate> {
+    const goal = await this.store.goals.getById(goalId);
     if (!goal) {
       throw new Error(`Goal not found: ${goalId}`);
     }
@@ -191,12 +192,12 @@ export class GoalManager {
     const previousValue = goal.progressValue;
     const clampedValue = Math.max(0, Math.min(100, newValue));
 
-    this.store.goals.updateProgress(goalId, clampedValue);
-    this.store.goals.updateLastReferenced(goalId);
+    await this.store.goals.updateProgress(goalId, clampedValue);
+    await this.store.goals.updateLastReferenced(goalId);
 
     // Auto-transition status if progress reaches 100%
     if (clampedValue >= 100 && goal.status === 'active') {
-      this.store.goals.updateStatus(goalId, 'achieved');
+      await this.store.goals.updateStatus(goalId, 'achieved');
       logger.info('Goal achieved', { goalId, statement: goal.statement.slice(0, 50) });
     }
 
@@ -219,8 +220,8 @@ export class GoalManager {
   /**
    * Add a milestone to a goal
    */
-  addMilestone(goalId: string, description: string): Milestone {
-    const goal = this.store.goals.getById(goalId);
+  async addMilestone(goalId: string, description: string): Promise<Milestone> {
+    const goal = await this.store.goals.getById(goalId);
     if (!goal) {
       throw new Error(`Goal not found: ${goalId}`);
     }
@@ -231,13 +232,13 @@ export class GoalManager {
       id: generateId(),
       description,
       status: 'pending',
-      achieved_at: null,
-      evidence_claim_id: null,
+      achievedAt: null,
+      evidenceClaimId: null,
     };
 
     milestones.push(milestone);
 
-    this.store.goals.update(goalId, {
+    await this.store.goals.update(goalId, {
       progressIndicatorsJson: serializeMilestones(milestones),
     });
 
@@ -249,12 +250,12 @@ export class GoalManager {
   /**
    * Mark a milestone as achieved
    */
-  achieveMilestone(
+  async achieveMilestone(
     goalId: string,
     milestoneId: string,
     evidenceClaimId?: string
-  ): Milestone | null {
-    const goal = this.store.goals.getById(goalId);
+  ): Promise<Milestone | null> {
+    const goal = await this.store.goals.getById(goalId);
     if (!goal) return null;
 
     const milestones = parseMilestones(goal.progressIndicatorsJson);
@@ -266,7 +267,7 @@ export class GoalManager {
     milestone.achievedAt = now();
     milestone.evidenceClaimId = evidenceClaimId ?? null;
 
-    this.store.goals.update(goalId, {
+    await this.store.goals.update(goalId, {
       progressIndicatorsJson: serializeMilestones(milestones),
     });
 
@@ -275,7 +276,7 @@ export class GoalManager {
       const achieved = milestones.filter((m) => m.status === 'achieved').length;
       const total = milestones.length;
       const progress = total > 0 ? Math.round((achieved / total) * 100) : 0;
-      this.store.goals.updateProgress(goalId, progress);
+      await this.store.goals.updateProgress(goalId, progress);
     }
 
     logger.debug('Achieved milestone', { goalId, milestoneId });
@@ -286,14 +287,14 @@ export class GoalManager {
   /**
    * Add a blocker to a goal
    */
-  addBlocker(
+  async addBlocker(
     goalId: string,
     description: string,
     blockerType: BlockerType,
     severity: BlockerSeverity,
     resolutionPath?: string
-  ): Blocker {
-    const goal = this.store.goals.getById(goalId);
+  ): Promise<Blocker> {
+    const goal = await this.store.goals.getById(goalId);
     if (!goal) {
       throw new Error(`Goal not found: ${goalId}`);
     }
@@ -303,21 +304,21 @@ export class GoalManager {
     const blocker: Blocker = {
       id: generateId(),
       description,
-      blocker_type: blockerType,
+      blockerType: blockerType,
       severity,
       status: 'active',
-      resolution_path: resolutionPath ?? null,
+      resolutionPath: resolutionPath ?? null,
     };
 
     blockers.push(blocker);
 
-    this.store.goals.update(goalId, {
+    await this.store.goals.update(goalId, {
       blockersJson: serializeBlockers(blockers),
     });
 
     // Update goal status if blocker is severe
     if (severity === 'blocking' && goal.status === 'active') {
-      this.store.goals.updateStatus(goalId, 'blocked');
+      await this.store.goals.updateStatus(goalId, 'blocked');
     }
 
     logger.debug('Added blocker', { goalId, blockerId: blocker.id, severity });
@@ -328,8 +329,8 @@ export class GoalManager {
   /**
    * Resolve a blocker
    */
-  resolveBlocker(goalId: string, blockerId: string): Blocker | null {
-    const goal = this.store.goals.getById(goalId);
+  async resolveBlocker(goalId: string, blockerId: string): Promise<Blocker | null> {
+    const goal = await this.store.goals.getById(goalId);
     if (!goal) return null;
 
     const blockers = parseBlockers(goal.blockersJson);
@@ -339,7 +340,7 @@ export class GoalManager {
 
     blocker.status = 'resolved';
 
-    this.store.goals.update(goalId, {
+    await this.store.goals.update(goalId, {
       blockersJson: serializeBlockers(blockers),
     });
 
@@ -349,7 +350,7 @@ export class GoalManager {
     );
 
     if (activeBlockers.length === 0 && goal.status === 'blocked') {
-      this.store.goals.updateStatus(goalId, 'active');
+      await this.store.goals.updateStatus(goalId, 'active');
       logger.info('Goal unblocked', { goalId });
     }
 
@@ -361,16 +362,17 @@ export class GoalManager {
   /**
    * Get goal with full context
    */
-  getGoalWithContext(goalId: string): GoalWithContext | null {
-    const goal = this.store.goals.getById(goalId);
+  async getGoalWithContext(goalId: string): Promise<GoalWithContext | null> {
+    const goal = await this.store.goals.getById(goalId);
     if (!goal) return null;
 
     const milestones = parseMilestones(goal.progressIndicatorsJson);
     const blockers = parseBlockers(goal.blockersJson);
-    const children = this.store.goals.getChildren(goalId);
+    const children = await this.store.goals.getChildren(goalId);
 
     // Count claims related to this goal
-    const claims = this.store.claims.getAll().filter(
+    const allClaims = await this.store.claims.getAll();
+    const claims = allClaims.filter(
       (c) => c.id === goal.sourceClaimId || c.subject.toLowerCase().includes(goal.statement.toLowerCase().slice(0, 20))
     );
 
@@ -386,20 +388,20 @@ export class GoalManager {
   /**
    * Build goal tree from roots
    */
-  buildGoalTree(): GoalTreeNode[] {
-    const roots = this.store.goals.getRoots();
-    return roots.map((goal) => this.buildTreeNode(goal, 0));
+  async buildGoalTree(): Promise<GoalTreeNode[]> {
+    const roots = await this.store.goals.getRoots();
+    return Promise.all(roots.map((goal) => this.buildTreeNode(goal, 0)));
   }
 
   /**
    * Build a tree node recursively
    */
-  private buildTreeNode(goal: Goal, depth: number): GoalTreeNode {
-    const children = this.store.goals.getChildren(goal.id);
+  private async buildTreeNode(goal: Goal, depth: number): Promise<GoalTreeNode> {
+    const children = await this.store.goals.getChildren(goal.id);
 
     return {
       goal,
-      children: children.map((child) => this.buildTreeNode(child, depth + 1)),
+      children: await Promise.all(children.map((child) => this.buildTreeNode(child, depth + 1))),
       depth,
     };
   }
@@ -407,8 +409,8 @@ export class GoalManager {
   /**
    * Find potential parent goals for a claim
    */
-  findRelatedGoals(claim: Claim): Goal[] {
-    const activeGoals = this.store.goals.getActive();
+  async findRelatedGoals(claim: Claim): Promise<Goal[]> {
+    const activeGoals = await this.store.goals.getActive();
 
     // Simple keyword matching - could be enhanced with embeddings
     const claimWords = claim.statement.toLowerCase().split(/\s+/);
@@ -425,20 +427,21 @@ export class GoalManager {
   /**
    * Infer goal hierarchy from claim relationships
    */
-  inferHierarchy(goalId: string): { potentialParents: Goal[]; potentialChildren: Goal[] } {
-    const goal = this.store.goals.getById(goalId);
+  async inferHierarchy(goalId: string): Promise<{ potentialParents: Goal[]; potentialChildren: Goal[] }> {
+    const goal = await this.store.goals.getById(goalId);
     if (!goal) {
       return { potentialParents: [], potentialChildren: [] };
     }
 
-    const allGoals = this.store.goals.getAll().filter((g) => g.id !== goalId);
+    const allGoalsTemp = await this.store.goals.getAll();
+    const allGoals = allGoalsTemp.filter((g) => g.id !== goalId);
 
     // Goals that could be parents (higher-level, longer timeframe)
     const timeframeRank: Record<GoalTimeframe, number> = {
       immediate: 1,
-      short_term: 2,
-      medium_term: 3,
-      long_term: 4,
+      shortTerm: 2,
+      mediumTerm: 3,
+      longTerm: 4,
       life: 5,
     };
 
@@ -483,21 +486,21 @@ export class GoalManager {
   /**
    * Set parent-child relationship
    */
-  setParent(childGoalId: string, parentGoalId: string | null): void {
+  async setParent(childGoalId: string, parentGoalId: string | null): Promise<void> {
     if (parentGoalId) {
       // Validate parent exists
-      const parent = this.store.goals.getById(parentGoalId);
+      const parent = await this.store.goals.getById(parentGoalId);
       if (!parent) {
         throw new Error(`Parent goal not found: ${parentGoalId}`);
       }
 
       // Check for cycles
-      if (this.wouldCreateCycle(childGoalId, parentGoalId)) {
+      if (await this.wouldCreateCycle(childGoalId, parentGoalId)) {
         throw new Error('Setting this parent would create a cycle');
       }
     }
 
-    this.store.goals.update(childGoalId, {
+    await this.store.goals.update(childGoalId, {
       parentGoalId: parentGoalId,
     });
 
@@ -507,7 +510,7 @@ export class GoalManager {
   /**
    * Check if setting a parent would create a cycle
    */
-  private wouldCreateCycle(childId: string, proposedParentId: string): boolean {
+  private async wouldCreateCycle(childId: string, proposedParentId: string): Promise<boolean> {
     let current = proposedParentId;
     const visited = new Set<string>();
 
@@ -516,7 +519,7 @@ export class GoalManager {
       if (visited.has(current)) return false;
       visited.add(current);
 
-      const goal = this.store.goals.getById(current);
+      const goal = await this.store.goals.getById(current);
       current = goal?.parentGoalId ?? '';
     }
 
@@ -526,9 +529,9 @@ export class GoalManager {
   /**
    * Update goal status
    */
-  updateStatus(goalId: string, status: GoalStatus): void {
-    this.store.goals.updateStatus(goalId, status);
-    this.store.goals.updateLastReferenced(goalId);
+  async updateStatus(goalId: string, status: GoalStatus): Promise<void> {
+    await this.store.goals.updateStatus(goalId, status);
+    await this.store.goals.updateLastReferenced(goalId);
 
     logger.info('Updated goal status', { goalId, status });
   }
@@ -536,7 +539,7 @@ export class GoalManager {
   /**
    * Get summary of all goals grouped by status
    */
-  getGoalsSummary(): Record<GoalStatus, Goal[]> {
+  async getGoalsSummary(): Promise<Record<GoalStatus, Goal[]>> {
     const statuses: GoalStatus[] = ['active', 'achieved', 'abandoned', 'blocked', 'dormant', 'superseded'];
 
     const result: Record<GoalStatus, Goal[]> = {
@@ -549,7 +552,7 @@ export class GoalManager {
     };
 
     for (const status of statuses) {
-      result[status] = this.store.goals.getByStatus(status);
+      result[status] = await this.store.goals.getByStatus(status);
     }
 
     return result;

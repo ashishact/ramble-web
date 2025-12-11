@@ -164,7 +164,7 @@ export type SourceType = z.infer<typeof SourceTypeSchema>;
 export type ClaimState = z.infer<typeof ClaimStateSchema>;
 export type Stakes = z.infer<typeof StakesSchema>;
 export type Claim = z.infer<typeof ClaimSchema>;
-export type CreateClaim = z.infer<typeof CreateClaimSchema>;
+export type CreateClaim = z.input<typeof CreateClaimSchema>;  // Use input for optional fields with defaults
 export type UpdateClaim = z.infer<typeof UpdateClaimSchema>;
 export type ClaimSource = z.infer<typeof ClaimSourceSchema>;
 export type CreateClaimSource = z.infer<typeof CreateClaimSourceSchema>;
@@ -182,7 +182,7 @@ export type CreateSourceTracking = z.infer<typeof CreateSourceTrackingSchema>;
 
 export type EntityType = z.infer<typeof EntityTypeSchema>;
 export type Entity = z.infer<typeof EntitySchema>;
-export type CreateEntity = z.infer<typeof CreateEntitySchema>;
+export type CreateEntity = z.input<typeof CreateEntitySchema>;  // Use input for optional fields with defaults
 export type UpdateEntity = z.infer<typeof UpdateEntitySchema>;
 
 // ============================================================================
