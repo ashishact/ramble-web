@@ -59,7 +59,7 @@ export class GoalObserver extends BaseObserver {
             );
             outputs.push(output);
           }
-        } else if (claim.claim_type === 'goal') {
+        } else if (claim.claimType === 'goal') {
           // New goal detected - create one
           const output = this.createOutput(
             context,
@@ -108,9 +108,9 @@ export class GoalObserver extends BaseObserver {
 
     return allClaims.filter(
       (claim) =>
-        claim.claim_type === 'goal' ||
-        claim.claim_type === 'intention' ||
-        claim.claim_type === 'commitment'
+        claim.claimType === 'goal' ||
+        claim.claimType === 'intention' ||
+        claim.claimType === 'commitment'
     );
   }
 

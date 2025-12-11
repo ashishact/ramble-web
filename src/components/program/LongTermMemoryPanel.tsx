@@ -61,7 +61,7 @@ export function LongTermMemoryPanel({ claims, onClaimClick }: LongTermMemoryPane
         <div className="stat">
           <div className="stat-title text-xs">Avg Confidence</div>
           <div className="stat-value text-2xl">
-            {Math.round((ltmClaims.reduce((sum, c) => sum + c.current_confidence, 0) / ltmClaims.length) * 100)}%
+            {Math.round((ltmClaims.reduce((sum, c) => sum + c.currentConfidence, 0) / ltmClaims.length) * 100)}%
           </div>
           <div className="stat-desc">High stability</div>
         </div>

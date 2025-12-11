@@ -33,7 +33,7 @@ export class NarrativeObserver extends BaseObserver {
     // Check if we have enough claims to analyze
     const allClaims = context.store.claims.getAll();
     const selfClaims = allClaims.filter(
-      (c) => c.claim_type === 'self_perception' || c.claim_type === 'memory_reference'
+      (c) => c.claimType === 'self_perception' || c.claimType === 'memory_reference'
     );
 
     // Need at least 10 self/memory claims to analyze narratives
@@ -48,12 +48,12 @@ export class NarrativeObserver extends BaseObserver {
       // Get self-perception claims
       const allClaims = context.store.claims.getAll();
       const selfClaims = allClaims
-        .filter((c) => c.claim_type === 'self_perception')
+        .filter((c) => c.claimType === 'self_perception')
         .slice(-50);
 
       // Get memory references
       const memoryClaims = allClaims
-        .filter((c) => c.claim_type === 'memory_reference')
+        .filter((c) => c.claimType === 'memory_reference')
         .slice(-50);
 
       if (selfClaims.length === 0 && memoryClaims.length === 0) {

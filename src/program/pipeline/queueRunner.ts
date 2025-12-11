@@ -119,7 +119,7 @@ export class QueueRunner {
    */
   async enqueue(data: CreateTask): Promise<string> {
     const task = this.store.tasks.create(data);
-    logger.debug('Enqueued task', { id: task.id, type: task.task_type });
+    logger.debug('Enqueued task', { id: task.id, type: task.taskType });
     return task.id;
   }
 
@@ -170,9 +170,9 @@ export class QueueRunner {
 
     try {
       // Get handler
-      const handler = this.handlers.get(task.task_type);
+      const handler = this.handlers.get(task.taskType);
       if (!handler) {
-        throw new Error(`No handler registered for task type: ${task.task_type}`);
+        throw new Error(`No handler registered for task type: ${task.taskType}`);
       }
 
       // Update status to processing
@@ -184,7 +184,7 @@ export class QueueRunner {
 
       logger.info('Processing task', {
         id: taskId,
-        type: task.task_type,
+        type: task.taskType,
         attempt: task.attempts + 1,
       });
 
@@ -202,7 +202,7 @@ export class QueueRunner {
         checkpoint_json: null, // Clear checkpoint on success
       });
 
-      logger.info('Task completed', { id: taskId, type: task.task_type });
+      logger.info('Task completed', { id: taskId, type: task.taskType });
     } catch (error) {
       await this.handleTaskError(task, error);
     } finally {
@@ -218,7 +218,7 @@ export class QueueRunner {
 
     logger.warn('Task failed', {
       id: task.id,
-      type: task.task_type,
+      type: task.taskType,
       attempt: task.attempts + 1,
       error: errorMessage,
     });
@@ -242,7 +242,7 @@ export class QueueRunner {
     if (isFailed) {
       logger.error('Task permanently failed', {
         id: task.id,
-        type: task.task_type,
+        type: task.taskType,
         attempts: newAttempts,
       });
     }

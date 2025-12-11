@@ -522,7 +522,7 @@ export class ProgramKernel {
       const claim = this.store!.claims.create({
         statement: extractedClaim.statement,
         subject: extractedClaim.subject,
-        claim_type: extractedClaim.claim_type,
+        claim_type: extractedClaim.claimType,
         temporality: extractedClaim.temporality || 'slowly_decaying',
         abstraction: extractedClaim.abstraction || 'specific',
         source_type: extractedClaim.sourceType || 'direct',
@@ -622,7 +622,7 @@ export class ProgramKernel {
     const claims = this.store!.claims.getRecent(10);
     return claims.map((c) => ({
       statement: c.statement,
-      claim_type: c.claim_type,
+      claim_type: c.claimType,
       subject: c.subject,
     }));
   }

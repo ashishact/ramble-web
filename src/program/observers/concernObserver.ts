@@ -109,7 +109,7 @@ export class ConcernObserver extends BaseObserver {
 
     return allClaims.filter(
       (claim) =>
-        claim.claim_type === 'concern' ||
+        claim.claimType === 'concern' ||
         (claim.emotionalValence < -0.3 && claim.emotionalIntensity > 0.5)
     );
   }

@@ -59,7 +59,7 @@ export function syncExtractors(store: ProgramStoreInstance): SyncResult {
       store.getStore().setRow('extraction_programs', config.id, {
         name: config.name,
         description: config.description,
-        type: config.claim_types[0] || 'general', // Use first claim type as type
+        type: config.claimTypes[0] || 'general', // Use first claim type as type
         version: 1,
         patterns_json: JSON.stringify(config.patterns),
         always_run: config.alwaysRun || false,
@@ -72,7 +72,7 @@ export function syncExtractors(store: ProgramStoreInstance): SyncResult {
         active: true, // New extractors start active
         min_confidence: config.minConfidence,
         is_core: true, // Code-based extractors are core
-        claim_types_json: JSON.stringify(config.claim_types),
+        claim_types_json: JSON.stringify(config.claimTypes),
         success_rate: 0,
         run_count: 0,
         avg_processing_time_ms: 0,

@@ -154,10 +154,10 @@ export class ConsolidationObserver extends BaseObserver {
     }
 
     // Claim type bonuses
-    if (claim.claim_type === 'value' || claim.claim_type === 'goal') {
+    if (claim.claimType === 'value' || claim.claimType === 'goal') {
       score += 0.1;
     }
-    if (claim.claim_type === 'commitment' || claim.claim_type === 'decision') {
+    if (claim.claimType === 'commitment' || claim.claimType === 'decision') {
       score += 0.1;
     }
 

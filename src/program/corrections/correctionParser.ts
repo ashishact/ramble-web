@@ -16,9 +16,9 @@ import { createLogger } from '../utils/logger';
 const logger = createLogger('CorrectionParser');
 
 export interface ParsedCorrection {
-  wrong_text: string;
-  correct_text: string;
-  original_case: string; // Preserves original casing of correct_text
+  wrongText: string;
+  correctText: string;
+  originalCase: string; // Preserves original casing of correct_text
   confidence: number; // 0-1 confidence in the detection
 }
 
@@ -114,9 +114,9 @@ export function parseCorrections(text: string): CorrectionParseResult {
 
         if (!overlaps) {
           corrections.push({
-            wrong_text: wrongText,
-            correct_text: correctText,
-            original_case: correctText,
+            wrongText: wrongText,
+            correctText: correctText,
+            originalCase: correctText,
             confidence: pattern.confidence,
           });
           matchedSpans.push({ start, end });

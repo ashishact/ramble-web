@@ -14,13 +14,13 @@ import { z } from 'zod';
 
 export const SynthesisCacheSchema = z.object({
   id: z.string(),
-  synthesis_type: z.string(), // e.g., 'daily_summary', 'goal_report', 'concern_analysis'
+  synthesisType: z.string(), // e.g., 'daily_summary', 'goal_report', 'concern_analysis'
   cacheKey: z.string(), // Unique key for cache lookup
   contentJson: z.string(), // Serialized synthesis content
-  source_claims_json: z.string(), // JSON array of claim IDs used to generate this
+  sourceClaimsJson: z.string(), // JSON array of claim IDs used to generate this
   generatedAt: z.number(),
   stale: z.boolean(),
-  ttl_seconds: z.number(), // Time-to-live in seconds
+  ttlSeconds: z.number(), // Time-to-live in seconds
 });
 
 export const CreateSynthesisCacheSchema = SynthesisCacheSchema.omit({

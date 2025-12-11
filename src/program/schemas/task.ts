@@ -71,8 +71,8 @@ export const PRIORITY_VALUES: Record<z.infer<typeof TaskPrioritySchema>, number>
  * Backoff configuration
  */
 export const BackoffConfigSchema = z.object({
-  base_delay_ms: z.number().int().positive().default(1000), // 1 second
-  max_delay_ms: z.number().int().positive().default(60000), // 1 minute max
+  baseDelayMs: z.number().int().positive().default(1000), // 1 second
+  maxDelayMs: z.number().int().positive().default(60000), // 1 minute max
   multiplier: z.number().positive().default(2), // Double each time
   jitter: z.boolean().default(true), // Add randomness to prevent thundering herd
 });
@@ -83,10 +83,10 @@ export const BackoffConfigSchema = z.object({
  */
 export const TaskCheckpointSchema = z.object({
   step: z.string(), // Current step identifier
-  step_index: z.number().int().nonnegative(), // Numeric step for ordering
-  total_steps: z.number().int().positive().optional(), // Total steps if known
-  intermediate_data: z.string().nullable(), // JSON serialized intermediate results
-  completed_steps: z.array(z.string()), // List of completed step IDs
+  stepIndex: z.number().int().nonnegative(), // Numeric step for ordering
+  totalSteps: z.number().int().positive().optional(), // Total steps if known
+  intermediateData: z.string().nullable(), // JSON serialized intermediate results
+  completedSteps: z.array(z.string()), // List of completed step IDs
 });
 
 /**
@@ -94,22 +94,22 @@ export const TaskCheckpointSchema = z.object({
  */
 export const TaskSchema = z.object({
   id: z.string(),
-  task_type: TaskTypeSchema,
+  taskType: TaskTypeSchema,
   payloadJson: z.string(), // JSON serialized payload
   status: TaskStatusSchema,
   priority: TaskPrioritySchema,
-  priority_value: z.number().int(), // Numeric priority for sorting
+  priorityValue: z.number().int(), // Numeric priority for sorting
 
   // Retry/backoff tracking
   attempts: z.number().int().nonnegative(),
   maxAttempts: z.number().int().positive(),
   lastError: z.string().nullable(),
   lastErrorAt: z.number().nullable(),
-  next_retry_at: z.number().nullable(), // When to retry (with backoff)
+  nextRetryAt: z.number().nullable(), // When to retry (with backoff)
   backoffConfigJson: z.string(), // JSON BackoffConfig
 
   // Checkpoint for resumability
-  checkpoint_json: z.string().nullable(), // JSON TaskCheckpoint
+  checkpointJson: z.string().nullable(), // JSON TaskCheckpoint
 
   // Timestamps
   createdAt: z.number(),
@@ -117,7 +117,7 @@ export const TaskSchema = z.object({
   completedAt: z.number().nullable(),
 
   // Scheduling
-  execute_at: z.number(), // Scheduled execution time (now for immediate)
+  executeAt: z.number(), // Scheduled execution time (now for immediate)
 
   // Grouping/dependencies
   groupId: z.string().nullable(), // Group related tasks
@@ -129,12 +129,12 @@ export const TaskSchema = z.object({
  * Schema for creating a new task
  */
 export const CreateTaskSchema = z.object({
-  task_type: TaskTypeSchema,
+  taskType: TaskTypeSchema,
   payloadJson: z.string(),
   priority: TaskPrioritySchema.default('normal'),
   maxAttempts: z.number().int().positive().default(5),
   backoffConfigJson: z.string().optional(),
-  execute_at: z.number().optional(), // Defaults to now
+  executeAt: z.number().optional(), // Defaults to now
   groupId: z.string().nullable().optional(),
   dependsOn: z.string().nullable().optional(),
   sessionId: z.string().nullable().optional(),
@@ -152,13 +152,13 @@ export function calculateNextRetryTime(
   attempts: number,
   config: z.infer<typeof BackoffConfigSchema>
 ): number {
-  const { base_delay_ms, max_delay_ms, multiplier, jitter } = config;
+  const { baseDelayMs, maxDelayMs, multiplier, jitter } = config;
 
   // Exponential delay: base * multiplier^attempts
-  let delay = base_delay_ms * Math.pow(multiplier, attempts);
+  let delay = baseDelayMs * Math.pow(multiplier, attempts);
 
   // Cap at max delay
-  delay = Math.min(delay, max_delay_ms);
+  delay = Math.min(delay, maxDelayMs);
 
   // Add jitter (0-25% random variation)
   if (jitter) {
@@ -173,8 +173,8 @@ export function calculateNextRetryTime(
  * Default backoff configuration
  */
 export const DEFAULT_BACKOFF_CONFIG: z.infer<typeof BackoffConfigSchema> = {
-  base_delay_ms: 1000,
-  max_delay_ms: 60000,
+  baseDelayMs: 1000,
+  maxDelayMs: 60000,
   multiplier: 2,
   jitter: true,
 };
@@ -222,10 +222,10 @@ export function serializeCheckpoint(checkpoint: z.infer<typeof TaskCheckpointSch
 export function createInitialCheckpoint(firstStep: string): z.infer<typeof TaskCheckpointSchema> {
   return {
     step: firstStep,
-    step_index: 0,
-    total_steps: undefined,
-    intermediate_data: null,
-    completed_steps: [],
+    stepIndex: 0,
+    totalSteps: undefined,
+    intermediateData: null,
+    completedSteps: [],
   };
 }
 
@@ -240,9 +240,9 @@ export function advanceCheckpoint(
   return {
     ...current,
     step: nextStep,
-    step_index: current.step_index + 1,
-    intermediate_data: intermediateData ? JSON.stringify(intermediateData) : null,
-    completed_steps: [...current.completed_steps, current.step],
+    stepIndex: current.stepIndex + 1,
+    intermediateData: intermediateData ? JSON.stringify(intermediateData) : null,
+    completedSteps: [...current.completedSteps, current.step],
   };
 }
 
@@ -350,7 +350,7 @@ export function shouldRetryTask(task: z.infer<typeof TaskSchema>): boolean {
   }
 
   // Check if it's time to retry
-  if (task.next_retry_at && Date.now() < task.next_retry_at) {
+  if (task.nextRetryAt && Date.now() < task.nextRetryAt) {
     return false;
   }
 

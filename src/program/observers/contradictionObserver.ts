@@ -48,7 +48,7 @@ export class ContradictionObserver extends BaseObserver {
     try {
       // Get new claims to check
       const newClaims = context.triggeringClaims.filter(
-        (c) => this.config.claimTypeFilter?.includes(c.claim_type)
+        (c) => this.config.claimTypeFilter?.includes(c.claimType)
       );
 
       if (newClaims.length === 0) {
@@ -128,10 +128,10 @@ export class ContradictionObserver extends BaseObserver {
     for (const newClaim of newClaims) {
       for (const existing of existingClaims) {
         // Skip same claim type matching for some types
-        if (newClaim.claim_type !== existing.claim_type) continue;
+        if (newClaim.claimType !== existing.claimType) continue;
 
         // Skip very low confidence claims
-        if (existing.current_confidence < 0.4) continue;
+        if (existing.currentConfidence < 0.4) continue;
 
         // Check for subject overlap
         const similarity = this.calculateSimilarity(newClaim, existing);
@@ -205,8 +205,8 @@ export class ContradictionObserver extends BaseObserver {
     const pairs = candidates
       .map(
         (c, i) => `Pair ${i + 1}:
-  A: "${c.claimA.statement}" (${c.claimA.claim_type})
-  B: "${c.claimB.statement}" (${c.claimB.claim_type})`
+  A: "${c.claimA.statement}" (${c.claimA.claimType})
+  B: "${c.claimB.statement}" (${c.claimB.claimType})`
       )
       .join('\n\n');
 

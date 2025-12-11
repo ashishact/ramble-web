@@ -44,7 +44,7 @@ export class RelationshipObserver extends BaseObserver {
     try {
       // Handle new relationship claims
       const relationshipClaims = context.triggeringClaims.filter(
-        (c) => c.claim_type === 'relationship'
+        (c) => c.claimType === 'relationship'
       );
 
       for (const claim of relationshipClaims) {
@@ -115,7 +115,7 @@ export class RelationshipObserver extends BaseObserver {
     // Get all relationship claims
     const allClaims = context.store.claims.getAll();
     const relationshipClaims = allClaims.filter(
-      (c) => c.claim_type === 'relationship'
+      (c) => c.claimType === 'relationship'
     );
 
     // Build relationship data for each person

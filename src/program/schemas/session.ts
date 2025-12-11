@@ -11,7 +11,7 @@ import { z } from 'zod';
  */
 export const SessionSchema = z.object({
   id: z.string(),
-  started_at: z.number(), // Unix timestamp ms
+  startedAt: z.number(), // Unix timestamp ms
   endedAt: z.number().nullable(),
   unitCount: z.number().int().nonnegative(),
   summary: z.string().nullable(),

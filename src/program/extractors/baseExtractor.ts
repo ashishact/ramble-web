@@ -53,7 +53,7 @@ export abstract class BaseExtractor implements ExtractionProgram {
     if (context.recent_claims.length > 0) {
       const claimsList = context.recent_claims
         .slice(0, 5)
-        .map((c) => `- [${c.claim_type}] ${c.statement}`)
+        .map((c) => `- [${c.claimType}] ${c.statement}`)
         .join('\n');
       parts.push(`<recent_claims>\n${claimsList}\n</recent_claims>`);
     }
@@ -237,9 +237,9 @@ function normalizeClaim(claim: Partial<ExtractedClaim>, config: ExtractorConfig)
     'change_marker', 'hypothetical', 'commitment',
   ];
 
-  const claimType = claim.claim_type && validClaimTypes.includes(claim.claim_type)
-    ? claim.claim_type
-    : config.claim_types[0]; // Default to first claim type of extractor
+  const claimType = claim.claimType && validClaimTypes.includes(claim.claimType)
+    ? claim.claimType
+    : config.claimTypes[0]; // Default to first claim type of extractor
 
   // Validate temporality
   const validTemporalities = ['eternal', 'slowly_decaying', 'fast_decaying', 'point_in_time'];

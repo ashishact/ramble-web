@@ -126,12 +126,12 @@ function rowToClaim(id: string, row: Record<string, unknown>): Claim {
     id,
     statement: row.statement as string,
     subject: row.subject as string,
-    claim_type: row.claim_type as ClaimType,
+    claim_type: row.claimType as ClaimType,
     temporality: row.temporality as Claim['temporality'],
     abstraction: row.abstraction as Claim['abstraction'],
     source_type: row.sourceType as Claim['source_type'],
     initial_confidence: row.initialConfidence as number,
-    current_confidence: row.current_confidence as number,
+    current_confidence: row.currentConfidence as number,
     state: row.state as ClaimState,
     emotional_valence: row.emotionalValence as number,
     emotional_intensity: row.emotionalIntensity as number,
@@ -264,7 +264,7 @@ function rowToValue(id: string, row: Record<string, unknown>): Value {
 function rowToTask(id: string, row: Record<string, unknown>): Task {
   return {
     id,
-    task_type: row.task_type as Task['task_type'],
+    task_type: row.taskType as Task['task_type'],
     payload_json: row.payloadJson as string,
     status: row.status as TaskStatus,
     priority: row.priority as TaskPriority,
@@ -374,9 +374,9 @@ function rowToObserverProgram(id: string, row: Record<string, unknown>): Observe
 function rowToCorrection(id: string, row: Record<string, unknown>): Correction {
   return {
     id,
-    wrong_text: row.wrongText as string,
-    correct_text: row.correctText as string,
-    original_case: row.originalCase as string,
+    wrongText: row.wrongText as string,
+    correctText: row.correctText as string,
+    originalCase: row.originalCase as string,
     usage_count: row.usageCount as number,
     created_at: row.created_at as number,
     last_used: row.lastUsed as number,
@@ -661,7 +661,7 @@ export function createProgramStore(): ProgramStoreInstance {
         id,
         statement: data.statement,
         subject: data.subject,
-        claim_type: data.claim_type,
+        claim_type: data.claimType,
         temporality: data.temporality,
         abstraction: data.abstraction,
         source_type: data.sourceType,
@@ -689,12 +689,12 @@ export function createProgramStore(): ProgramStoreInstance {
       store.setRow('claims', id, {
         statement: claim.statement,
         subject: claim.subject,
-        claim_type: claim.claim_type,
+        claim_type: claim.claimType,
         temporality: claim.temporality,
         abstraction: claim.abstraction,
         source_type: claim.sourceType,
         initial_confidence: claim.initialConfidence,
-        current_confidence: claim.current_confidence,
+        current_confidence: claim.currentConfidence,
         state: claim.state,
         emotional_valence: claim.emotionalValence,
         emotional_intensity: claim.emotionalIntensity,
@@ -714,7 +714,7 @@ export function createProgramStore(): ProgramStoreInstance {
         last_accessed: claim.lastAccessed,
       });
 
-      logger.debug('Created claim', { id, type: claim.claim_type });
+      logger.debug('Created claim', { id, type: claim.claimType });
       return claim;
     },
 
@@ -745,7 +745,7 @@ export function createProgramStore(): ProgramStoreInstance {
     },
 
     getByType(type: ClaimType): Claim[] {
-      return claims.getAll().filter((c) => c.claim_type === type);
+      return claims.getAll().filter((c) => c.claimType === type);
     },
 
     getBySubject(subject: string): Claim[] {
@@ -785,7 +785,7 @@ export function createProgramStore(): ProgramStoreInstance {
     decayConfidence(id: string, factor: number): void {
       const claim = claims.getById(id);
       if (claim) {
-        claims.update(id, { current_confidence: claim.current_confidence * factor });
+        claims.update(id, { current_confidence: claim.currentConfidence * factor });
       }
     },
 
@@ -1486,7 +1486,7 @@ export function createProgramStore(): ProgramStoreInstance {
       const priority = data.priority ?? 'normal';
       const task: Task = {
         id,
-        task_type: data.task_type,
+        task_type: data.taskType,
         payload_json: data.payloadJson,
         status: 'pending',
         priority,
@@ -1508,7 +1508,7 @@ export function createProgramStore(): ProgramStoreInstance {
       };
 
       store.setRow('tasks', id, {
-        task_type: task.task_type,
+        task_type: task.taskType,
         payload_json: task.payloadJson,
         status: task.status,
         priority: task.priority,
@@ -1529,7 +1529,7 @@ export function createProgramStore(): ProgramStoreInstance {
         session_id: task.sessionId ?? '',
       });
 
-      logger.debug('Created task', { id, type: task.task_type });
+      logger.debug('Created task', { id, type: task.taskType });
       return task;
     },
 
@@ -2150,9 +2150,9 @@ export function createProgramStore(): ProgramStoreInstance {
       const timestamp = now();
       const correction: Correction = {
         id,
-        wrong_text: data.wrongText.toLowerCase(), // Normalize to lowercase
-        correct_text: data.correctText,
-        original_case: data.originalCase,
+        wrongText: data.wrongText.toLowerCase(), // Normalize to lowercase
+        correctText: data.correctText,
+        originalCase: data.originalCase,
         usage_count: data.usageCount ?? 0,
         created_at: timestamp,
         last_used: timestamp,
@@ -2160,9 +2160,9 @@ export function createProgramStore(): ProgramStoreInstance {
       };
 
       store.setRow('corrections', id, {
-        wrong_text: correction.wrongText,
-        correct_text: correction.correctText,
-        original_case: correction.originalCase,
+        wrongText: correction.wrongText,
+        correctText: correction.correctText,
+        originalCase: correction.originalCase,
         usage_count: correction.usageCount,
         created_at: correction.created_at,
         last_used: correction.lastUsed,

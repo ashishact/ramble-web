@@ -243,7 +243,7 @@ export class MemoryService {
       // Find claims that might be related to this goal
       const relatedClaims = claims.filter(
         (c) =>
-          c.claim_type === 'goal' &&
+          c.claimType === 'goal' &&
           c.statement.toLowerCase().includes(g.statement.toLowerCase().slice(0, 20))
       );
       const claimSalience =
@@ -270,7 +270,7 @@ export class MemoryService {
     limit: number
   ): SalientConcern[] {
     return claims
-      .filter((c) => c.claim_type === 'concern')
+      .filter((c) => c.claimType === 'concern')
       .sort((a, b) => b.salience - a.salience)
       .slice(0, limit)
       .map((c) => ({
@@ -287,7 +287,7 @@ export class MemoryService {
     limit: number
   ): SalientQuestion[] {
     return claims
-      .filter((c) => c.claim_type === 'question')
+      .filter((c) => c.claimType === 'question')
       .sort((a, b) => b.salience - a.salience)
       .slice(0, limit)
       .map((c) => ({
@@ -399,10 +399,10 @@ export class MemoryService {
     }
 
     // Claim type bonuses
-    if (claim.claim_type === 'value' || claim.claim_type === 'goal') {
+    if (claim.claimType === 'value' || claim.claimType === 'goal') {
       score += 0.1;
     }
-    if (claim.claim_type === 'commitment' || claim.claim_type === 'decision') {
+    if (claim.claimType === 'commitment' || claim.claimType === 'decision') {
       score += 0.1;
     }
 
@@ -430,7 +430,7 @@ export class MemoryService {
     for (const claim of decayableClaims) {
       try {
         const decayFactor = this.getDecayFactor(claim);
-        const newConfidence = claim.current_confidence * decayFactor;
+        const newConfidence = claim.currentConfidence * decayFactor;
 
         // Update confidence
         this.store.claims.decayConfidence(claim.id, decayFactor);

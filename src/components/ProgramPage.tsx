@@ -624,14 +624,14 @@ export function ProgramPage() {
   // Filter claims by type
   const filteredClaims = useMemo(() => {
     if (!selectedClaimType) return claims;
-    return claims.filter((c) => c.claim_type === selectedClaimType);
+    return claims.filter((c) => c.claimType === selectedClaimType);
   }, [claims, selectedClaimType]);
 
   // Count claims by type
   const claimTypeCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const claim of claims) {
-      counts[claim.claim_type] = (counts[claim.claim_type] || 0) + 1;
+      counts[claim.claimType] = (counts[claim.claimType] || 0) + 1;
     }
     return counts;
   }, [claims]);
@@ -1420,7 +1420,7 @@ export function ProgramPage() {
                       <div className="space-y-1 max-h-32 overflow-y-auto">
                         {tasks.slice(-8).reverse().map((task) => (
                           <div key={task.id} className="flex justify-between text-xs bg-base-100 p-1 rounded">
-                            <span className="truncate flex-1 opacity-70">{task.task_type}</span>
+                            <span className="truncate flex-1 opacity-70">{task.taskType}</span>
                             <span className={`badge badge-xs ${
                               task.status === 'completed' ? 'badge-success' :
                               task.status === 'processing' ? 'badge-primary' :

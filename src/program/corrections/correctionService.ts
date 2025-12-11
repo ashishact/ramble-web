@@ -155,8 +155,8 @@ export class CorrectionService {
           newCorrect: correctText,
         });
         this.store.update(existing.id, {
-          correct_text: correctText,
-          original_case: originalCase,
+          correctText: correctText,
+          originalCase: originalCase,
         });
         return await this.store.getById(existing.id);
       }
@@ -167,9 +167,9 @@ export class CorrectionService {
 
     // Create new correction
     const createData: CreateCorrection = {
-      wrong_text: normalizedWrong,
-      correct_text: correctText,
-      original_case: originalCase,
+      wrongText: normalizedWrong,
+      correctText: correctText,
+      originalCase: originalCase,
       source_unit_id: sourceUnitId ?? null,
       usage_count: 0,
     };

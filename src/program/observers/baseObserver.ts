@@ -30,7 +30,7 @@ export abstract class BaseObserver implements Observer {
       }
 
       const hasMatchingClaim = context.triggeringClaims.some((claim) =>
-        this.config.claimTypeFilter!.includes(claim.claim_type)
+        this.config.claimTypeFilter!.includes(claim.claimType)
       );
 
       if (!hasMatchingClaim) {
@@ -114,10 +114,10 @@ export abstract class BaseObserver implements Observer {
     const grouped: Record<string, Claim[]> = {};
 
     for (const claim of claims) {
-      if (!grouped[claim.claim_type]) {
-        grouped[claim.claim_type] = [];
+      if (!grouped[claim.claimType]) {
+        grouped[claim.claimType] = [];
       }
-      grouped[claim.claim_type].push(claim);
+      grouped[claim.claimType].push(claim);
     }
 
     return grouped;
@@ -127,7 +127,7 @@ export abstract class BaseObserver implements Observer {
    * Filter claims by confidence threshold
    */
   protected filterByConfidence(claims: Claim[], minConfidence: number): Claim[] {
-    return claims.filter((c) => c.current_confidence >= minConfidence);
+    return claims.filter((c) => c.currentConfidence >= minConfidence);
   }
 
   /**

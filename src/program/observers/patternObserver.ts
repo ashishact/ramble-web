@@ -150,7 +150,7 @@ export class PatternObserver extends BaseObserver {
    */
   private detectEmotionalPatterns(claims: Claim[]): PatternCandidate[] {
     const patterns: PatternCandidate[] = [];
-    const emotionClaims = claims.filter((c) => c.claim_type === 'emotion');
+    const emotionClaims = claims.filter((c) => c.claimType === 'emotion');
 
     if (emotionClaims.length < 2) return patterns;
 
@@ -180,7 +180,7 @@ export class PatternObserver extends BaseObserver {
    */
   private detectConcernPatterns(claims: Claim[]): PatternCandidate[] {
     const patterns: PatternCandidate[] = [];
-    const concernClaims = claims.filter((c) => c.claim_type === 'concern');
+    const concernClaims = claims.filter((c) => c.claimType === 'concern');
 
     if (concernClaims.length < 2) return patterns;
 
