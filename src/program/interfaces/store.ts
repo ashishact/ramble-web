@@ -64,14 +64,15 @@ import type {
 
 /**
  * Generic store operations
+ * All methods are now async for WatermelonDB compatibility
  */
 export interface IBaseStore<T, TCreate, TUpdate> {
-  getById(id: string): T | null;
-  getAll(): T[];
-  count(): number; // Get total count without loading all items
-  create(data: TCreate): T;
-  update(id: string, data: TUpdate): T | null;
-  delete(id: string): boolean;
+  getById(id: string): Promise<T | null>;
+  getAll(): Promise<T[]>;
+  count(): Promise<number>; // Get total count without loading all items
+  create(data: TCreate): Promise<T>;
+  update(id: string, data: TUpdate): Promise<T | null>;
+  delete(id: string): Promise<boolean>;
 }
 
 /**
@@ -89,9 +90,9 @@ export type Unsubscribe = () => void;
 // ============================================================================
 
 export interface ISessionStore extends IBaseStore<Session, CreateSession, UpdateSession> {
-  getActive(): Session | null;
-  endSession(id: string): Session | null;
-  incrementUnitCount(id: string): void;
+  getActive(): Promise<Session | null>;
+  endSession(id: string): Promise<Session | null>;
+  incrementUnitCount(id: string): Promise<void>;
   subscribe(callback: SubscriptionCallback<Session>): Unsubscribe;
 }
 
@@ -101,10 +102,10 @@ export interface ISessionStore extends IBaseStore<Session, CreateSession, Update
 
 export interface IConversationStore
   extends IBaseStore<ConversationUnit, CreateConversationUnit, UpdateConversationUnit> {
-  getBySession(sessionId: string): ConversationUnit[];
-  getUnprocessed(): ConversationUnit[];
-  markProcessed(id: string): void;
-  getRecent(limit: number): ConversationUnit[];
+  getBySession(sessionId: string): Promise<ConversationUnit[]>;
+  getUnprocessed(): Promise<ConversationUnit[]>;
+  markProcessed(id: string): Promise<void>;
+  getRecent(limit: number): Promise<ConversationUnit[]>;
   subscribe(sessionId: string, callback: SubscriptionCallback<ConversationUnit>): Unsubscribe;
 }
 
@@ -113,29 +114,29 @@ export interface IConversationStore
 // ============================================================================
 
 export interface IClaimStore extends IBaseStore<Claim, CreateClaim, UpdateClaim> {
-  getByState(state: ClaimState): Claim[];
-  getByType(type: ClaimType): Claim[];
-  getBySubject(subject: string): Claim[];
-  getBySession(sessionId: string): Claim[];
-  getRecent(limit: number): Claim[];
-  confirmClaim(id: string): void;
-  supersedeClaim(id: string, newClaimId: string): void;
-  decayConfidence(id: string, factor: number): void;
+  getByState(state: ClaimState): Promise<Claim[]>;
+  getByType(type: ClaimType): Promise<Claim[]>;
+  getBySubject(subject: string): Promise<Claim[]>;
+  getBySession(sessionId: string): Promise<Claim[]>;
+  getRecent(limit: number): Promise<Claim[]>;
+  confirmClaim(id: string): Promise<void>;
+  supersedeClaim(id: string, newClaimId: string): Promise<void>;
+  decayConfidence(id: string, factor: number): Promise<void>;
   subscribe(sessionId: string, callback: SubscriptionCallback<Claim>): Unsubscribe;
 
   // Claim sources (many-to-many with conversation units)
-  addSource(data: CreateClaimSource): ClaimSource;
-  getSourcesForClaim(claimId: string): ClaimSource[];
-  getSourcesForUnit(unitId: string): ClaimSource[];
+  addSource(data: CreateClaimSource): Promise<ClaimSource>;
+  getSourcesForClaim(claimId: string): Promise<ClaimSource[]>;
+  getSourcesForUnit(unitId: string): Promise<ClaimSource[]>;
 
   // Memory system methods
-  getByMemoryTier(tier: MemoryTier): Claim[];
-  getDecayable(): Claim[]; // All non-eternal claims
-  updateSalience(id: string, salience: number): void;
-  updateLastAccessed(id: string): void;
-  promoteToLongTerm(id: string): void;
-  markStale(id: string): void;
-  markDormant(id: string): void;
+  getByMemoryTier(tier: MemoryTier): Promise<Claim[]>;
+  getDecayable(): Promise<Claim[]>; // All non-eternal claims
+  updateSalience(id: string, salience: number): Promise<void>;
+  updateLastAccessed(id: string): Promise<void>;
+  promoteToLongTerm(id: string): Promise<void>;
+  markStale(id: string): Promise<void>;
+  markDormant(id: string): Promise<void>;
 }
 
 // ============================================================================
@@ -144,9 +145,9 @@ export interface IClaimStore extends IBaseStore<Claim, CreateClaim, UpdateClaim>
 
 export interface ISourceTrackingStore
   extends IBaseStore<SourceTracking, CreateSourceTracking, never> {
-  getByClaimId(claimId: string): SourceTracking | null;
-  getByUnitId(unitId: string): SourceTracking[];
-  deleteByClaimId(claimId: string): boolean;
+  getByClaimId(claimId: string): Promise<SourceTracking | null>;
+  getByUnitId(unitId: string): Promise<SourceTracking[]>;
+  deleteByClaimId(claimId: string): Promise<boolean>;
 }
 
 // ============================================================================
@@ -154,12 +155,12 @@ export interface ISourceTrackingStore
 // ============================================================================
 
 export interface IEntityStore extends IBaseStore<Entity, CreateEntity, UpdateEntity> {
-  getByName(name: string): Entity | null;
-  getByType(type: string): Entity[];
-  findByAlias(alias: string): Entity | null;
-  incrementMentionCount(id: string): void;
-  updateLastReferenced(id: string): void;
-  mergeEntities(keepId: string, deleteId: string): Entity | null;
+  getByName(name: string): Promise<Entity | null>;
+  getByType(type: string): Promise<Entity[]>;
+  findByAlias(alias: string): Promise<Entity | null>;
+  incrementMentionCount(id: string): Promise<void>;
+  updateLastReferenced(id: string): Promise<void>;
+  mergeEntities(keepId: string, deleteId: string): Promise<Entity | null>;
   subscribe(callback: SubscriptionCallback<Entity>): Unsubscribe;
 }
 
@@ -168,14 +169,14 @@ export interface IEntityStore extends IBaseStore<Entity, CreateEntity, UpdateEnt
 // ============================================================================
 
 export interface IGoalStore extends IBaseStore<Goal, CreateGoal, UpdateGoal> {
-  getByStatus(status: GoalStatus): Goal[];
-  getActive(): Goal[];
-  getByParent(parentId: string | null): Goal[];
-  getRoots(): Goal[];
-  getChildren(goalId: string): Goal[];
-  updateProgress(id: string, value: number): void;
-  updateStatus(id: string, status: GoalStatus): void;
-  updateLastReferenced(id: string): void;
+  getByStatus(status: GoalStatus): Promise<Goal[]>;
+  getActive(): Promise<Goal[]>;
+  getByParent(parentId: string | null): Promise<Goal[]>;
+  getRoots(): Promise<Goal[]>;
+  getChildren(goalId: string): Promise<Goal[]>;
+  updateProgress(id: string, value: number): Promise<void>;
+  updateStatus(id: string, status: GoalStatus): Promise<void>;
+  updateLastReferenced(id: string): Promise<void>;
   subscribe(callback: SubscriptionCallback<Goal>): Unsubscribe;
 }
 
@@ -185,30 +186,30 @@ export interface IGoalStore extends IBaseStore<Goal, CreateGoal, UpdateGoal> {
 
 export interface IObserverOutputStore
   extends IBaseStore<ObserverOutput, CreateObserverOutput, UpdateObserverOutput> {
-  getByType(type: string): ObserverOutput[];
-  getRecent(limit: number): ObserverOutput[];
-  markStale(id: string): void;
+  getByType(type: string): Promise<ObserverOutput[]>;
+  getRecent(limit: number): Promise<ObserverOutput[]>;
+  markStale(id: string): Promise<void>;
   subscribe(callback: SubscriptionCallback<ObserverOutput>): Unsubscribe;
 
   // Contradictions
-  addContradiction(data: CreateContradiction): Contradiction;
-  getContradictions(): Contradiction[];
-  getUnresolvedContradictions(): Contradiction[];
+  addContradiction(data: CreateContradiction): Promise<Contradiction>;
+  getContradictions(): Promise<Contradiction[]>;
+  getUnresolvedContradictions(): Promise<Contradiction[]>;
   resolveContradiction(
     id: string,
     resolutionType: string,
     notes: string | null
-  ): Contradiction | null;
+  ): Promise<Contradiction | null>;
 
   // Patterns
-  addPattern(data: CreatePattern): Pattern;
-  getPatterns(): Pattern[];
-  reinforcePattern(id: string): void;
+  addPattern(data: CreatePattern): Promise<Pattern>;
+  getPatterns(): Promise<Pattern[]>;
+  reinforcePattern(id: string): Promise<void>;
 
   // Values
-  addValue(data: CreateValue): Value;
-  getValues(): Value[];
-  confirmValue(id: string): void;
+  addValue(data: CreateValue): Promise<Value>;
+  getValues(): Promise<Value[]>;
+  confirmValue(id: string): Promise<void>;
 }
 
 // ============================================================================
@@ -217,10 +218,10 @@ export interface IObserverOutputStore
 
 export interface IExtensionStore
   extends IBaseStore<Extension, CreateExtension, UpdateExtension> {
-  getByType(type: ExtensionType): Extension[];
-  getByStatus(status: ExtensionStatus): Extension[];
-  getProduction(): Extension[];
-  verify(id: string): Extension | null;
+  getByType(type: ExtensionType): Promise<Extension[]>;
+  getByStatus(status: ExtensionStatus): Promise<Extension[]>;
+  getProduction(): Promise<Extension[]>;
+  verify(id: string): Promise<Extension | null>;
   subscribe(callback: SubscriptionCallback<Extension>): Unsubscribe;
 }
 
@@ -230,11 +231,11 @@ export interface IExtensionStore
 
 export interface ISynthesisCacheStore
   extends IBaseStore<SynthesisCache, CreateSynthesisCache, UpdateSynthesisCache> {
-  getByType(type: string): SynthesisCache[];
-  getByCacheKey(key: string): SynthesisCache | null;
-  getValid(type: string): SynthesisCache[];
-  markStale(id: string): void;
-  cleanupExpired(): number;
+  getByType(type: string): Promise<SynthesisCache[]>;
+  getByCacheKey(key: string): Promise<SynthesisCache | null>;
+  getValid(type: string): Promise<SynthesisCache[]>;
+  markStale(id: string): Promise<void>;
+  cleanupExpired(): Promise<number>;
   subscribe(callback: SubscriptionCallback<SynthesisCache>): Unsubscribe;
 }
 
@@ -244,12 +245,12 @@ export interface ISynthesisCacheStore
 
 export interface IExtractionProgramStore
   extends IBaseStore<ExtractionProgram, CreateExtractionProgram, UpdateExtractionProgram> {
-  getActive(): ExtractionProgram[];
-  getByType(type: string): ExtractionProgram[];
-  getCore(): ExtractionProgram[];
-  incrementRunCount(id: string): void;
-  updateSuccessRate(id: string, success: boolean): void;
-  updateProcessingTime(id: string, timeMs: number): void;
+  getActive(): Promise<ExtractionProgram[]>;
+  getByType(type: string): Promise<ExtractionProgram[]>;
+  getCore(): Promise<ExtractionProgram[]>;
+  incrementRunCount(id: string): Promise<void>;
+  updateSuccessRate(id: string, success: boolean): Promise<void>;
+  updateProcessingTime(id: string, timeMs: number): Promise<void>;
   subscribe(callback: SubscriptionCallback<ExtractionProgram>): Unsubscribe;
 }
 
@@ -259,12 +260,12 @@ export interface IExtractionProgramStore
 
 export interface IObserverProgramStore
   extends IBaseStore<ObserverProgram, CreateObserverProgram, UpdateObserverProgram> {
-  getActive(): ObserverProgram[];
-  getByType(type: ObserverType): ObserverProgram | null;
-  getCore(): ObserverProgram[];
-  incrementRunCount(id: string): void;
-  updateSuccessRate(id: string, success: boolean): void;
-  updateProcessingTime(id: string, timeMs: number): void;
+  getActive(): Promise<ObserverProgram[]>;
+  getByType(type: ObserverType): Promise<ObserverProgram | null>;
+  getCore(): Promise<ObserverProgram[]>;
+  incrementRunCount(id: string): Promise<void>;
+  updateSuccessRate(id: string, success: boolean): Promise<void>;
+  updateProcessingTime(id: string, timeMs: number): Promise<void>;
   subscribe(callback: SubscriptionCallback<ObserverProgram>): Unsubscribe;
 }
 
@@ -274,10 +275,10 @@ export interface IObserverProgramStore
 
 export interface ICorrectionStore
   extends IBaseStore<Correction, CreateCorrection, UpdateCorrection> {
-  getByWrongText(wrongText: string): Correction | null;
-  getFrequentlyUsed(limit: number): Correction[];
-  incrementUsageCount(id: string): void;
-  updateLastUsed(id: string): void;
+  getByWrongText(wrongText: string): Promise<Correction | null>;
+  getFrequentlyUsed(limit: number): Promise<Correction[]>;
+  incrementUsageCount(id: string): Promise<void>;
+  updateLastUsed(id: string): Promise<void>;
   subscribe(callback: SubscriptionCallback<Correction>): Unsubscribe;
 }
 
