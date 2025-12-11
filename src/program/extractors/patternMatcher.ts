@@ -143,9 +143,9 @@ export function findPatternMatches(
     // Skip if extractor always runs (no pattern matching needed)
     if (extractor.config.alwaysRun) {
       results.push({
-        extractor_id: extractor.config.id,
+        extractorId: extractor.config.id,
         matches: [],
-        total_relevance: 1.0, // Always relevant
+        totalRelevance: 1.0, // Always relevant
       });
       continue;
     }
@@ -166,9 +166,9 @@ export function findPatternMatches(
 
     if (totalRelevance >= opts.min_relevance) {
       results.push({
-        extractor_id: extractor.config.id,
+        extractorId: extractor.config.id,
         matches: uniqueMatches,
-        total_relevance: totalRelevance,
+        totalRelevance: totalRelevance,
       });
     }
   }

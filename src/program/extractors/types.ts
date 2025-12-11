@@ -260,11 +260,11 @@ export interface ExtractorRegistry {
  */
 export interface PatternMatchResult {
   /** The extractor that matched */
-  extractor_id: string;
+  extractorId: string;
   /** All matches found */
   matches: PatternMatch[];
   /** Total relevance score */
-  total_relevance: number;
+  totalRelevance: number;
 }
 
 /**
@@ -272,13 +272,13 @@ export interface PatternMatchResult {
  */
 export interface TokenBudget {
   /** Maximum tokens for context */
-  context_tokens: number;
+  contextTokens: number;
   /** Maximum tokens for response */
-  response_tokens: number;
+  responseTokens: number;
   /** Tokens per recent claim */
-  claim_tokens: number;
+  claimTokens: number;
   /** Maximum recent claims to include */
-  max_claims: number;
+  maxClaims: number;
 }
 
 /**
@@ -286,21 +286,21 @@ export interface TokenBudget {
  */
 export const DEFAULT_TOKEN_BUDGETS: Record<LLMTier, TokenBudget> = {
   small: {
-    context_tokens: 4000,
-    response_tokens: 1000,
-    claim_tokens: 50,
-    max_claims: 10,
+    contextTokens: 4000,
+    responseTokens: 1000,
+    claimTokens: 50,
+    maxClaims: 10,
   },
   medium: {
-    context_tokens: 8000,
-    response_tokens: 2000,
-    claim_tokens: 50,
-    max_claims: 20,
+    contextTokens: 8000,
+    responseTokens: 2000,
+    claimTokens: 50,
+    maxClaims: 20,
   },
   large: {
-    context_tokens: 16000,
-    response_tokens: 4000,
-    claim_tokens: 100,
-    max_claims: 50,
+    contextTokens: 16000,
+    responseTokens: 4000,
+    claimTokens: 100,
+    maxClaims: 50,
   },
 };

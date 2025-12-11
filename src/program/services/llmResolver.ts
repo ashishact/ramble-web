@@ -153,28 +153,28 @@ export function resetSTTTier(tier: STTTier): void {
  * Get token budget for LLM tier
  */
 export function getTokenBudgetForTier(tier: LLMTier): {
-  context_tokens: number;
-  max_claims: number;
+  contextTokens: number;
+  maxClaims: number;
   max_entities: number;
 } {
   // Map tier to budget based on capabilities
   switch (tier) {
     case 'small':
       return {
-        context_tokens: 4000,
-        max_claims: 10,
+        contextTokens: 4000,
+        maxClaims: 10,
         max_entities: 5,
       };
     case 'medium':
       return {
-        context_tokens: 8000,
-        max_claims: 20,
+        contextTokens: 8000,
+        maxClaims: 20,
         max_entities: 10,
       };
     case 'large':
       return {
-        context_tokens: 16000,
-        max_claims: 50,
+        contextTokens: 16000,
+        maxClaims: 50,
         max_entities: 20,
       };
   }
