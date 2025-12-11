@@ -115,8 +115,8 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
               </h3>
               <p className="text-base-content font-medium">{claim.statement}</p>
               <div className="flex gap-2 mt-2">
-                <div className="badge badge-primary">{claim.claim_type}</div>
-                <div className="badge badge-outline">Confidence: {(claim.current_confidence * 100).toFixed(0)}%</div>
+                <div className="badge badge-primary">{claim.claimType}</div>
+                <div className="badge badge-outline">Confidence: {(claim.currentConfidence * 100).toFixed(0)}%</div>
               </div>
             </div>
           </div>
@@ -132,14 +132,14 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
                 <div>
                   <div className="text-sm text-base-content/60">Extractor ID</div>
                   <div className="font-mono text-sm bg-base-200 px-2 py-1 rounded mt-1">
-                    {claim.extraction_program_id}
+                    {claim.extractionProgramId}
                   </div>
                 </div>
-                {sourceTracking.pattern_id && (
+                {sourceTracking.patternId && (
                   <div>
                     <div className="text-sm text-base-content/60">Pattern Matched</div>
                     <div className="font-mono text-sm bg-base-200 px-2 py-1 rounded mt-1">
-                      {sourceTracking.pattern_id}
+                      {sourceTracking.patternId}
                     </div>
                   </div>
                 )}

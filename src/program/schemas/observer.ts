@@ -45,11 +45,11 @@ export const ObserverTriggerSchema = z.object({
  */
 export const ObserverOutputSchema = z.object({
   id: z.string(),
-  observer_type: ObserverTypeSchema,
-  output_type: z.string(),
-  content_json: z.string(), // JSON serialized content
-  source_claims_json: z.string(), // JSON array of claim IDs
-  created_at: z.number(),
+  observerType: ObserverTypeSchema,
+  outputType: z.string(),
+  contentJson: z.string(), // JSON serialized content
+  sourceClaimsJson: z.string(), // JSON array of claim IDs
+  createdAt: z.number(),
   stale: z.boolean(),
 });
 
@@ -58,7 +58,7 @@ export const ObserverOutputSchema = z.object({
  */
 export const CreateObserverOutputSchema = ObserverOutputSchema.omit({
   id: true,
-  created_at: true,
+  createdAt: true,
   stale: true,
 }).extend({
   stale: z.boolean().default(false),
@@ -69,7 +69,7 @@ export const CreateObserverOutputSchema = ObserverOutputSchema.omit({
  */
 export const UpdateObserverOutputSchema = ObserverOutputSchema.partial().omit({
   id: true,
-  created_at: true,
+  createdAt: true,
 });
 
 /**
@@ -77,14 +77,14 @@ export const UpdateObserverOutputSchema = ObserverOutputSchema.partial().omit({
  */
 export const ContradictionSchema = z.object({
   id: z.string(),
-  claim_a_id: z.string(),
-  claim_b_id: z.string(),
-  detected_at: z.number(),
-  contradiction_type: z.enum(['direct', 'temporal', 'implication']),
+  claimAId: z.string(),
+  claimBId: z.string(),
+  detectedAt: z.number(),
+  contradictionType: z.enum(['direct', 'temporal', 'implication']),
   resolved: z.boolean(),
-  resolution_type: z.string().nullable(),
-  resolution_notes: z.string().nullable(),
-  resolved_at: z.number().nullable(),
+  resolutionType: z.string().nullable(),
+  resolutionNotes: z.string().nullable(),
+  resolvedAt: z.number().nullable(),
 });
 
 /**
@@ -92,16 +92,16 @@ export const ContradictionSchema = z.object({
  */
 export const CreateContradictionSchema = ContradictionSchema.omit({
   id: true,
-  detected_at: true,
+  detectedAt: true,
   resolved: true,
-  resolution_type: true,
-  resolution_notes: true,
-  resolved_at: true,
+  resolutionType: true,
+  resolutionNotes: true,
+  resolvedAt: true,
 }).extend({
   resolved: z.boolean().default(false),
-  resolution_type: z.string().nullable().default(null),
-  resolution_notes: z.string().nullable().default(null),
-  resolved_at: z.number().nullable().default(null),
+  resolutionType: z.string().nullable().default(null),
+  resolutionNotes: z.string().nullable().default(null),
+  resolvedAt: z.number().nullable().default(null),
 });
 
 /**
@@ -109,12 +109,12 @@ export const CreateContradictionSchema = ContradictionSchema.omit({
  */
 export const PatternSchema = z.object({
   id: z.string(),
-  pattern_type: z.string(),
+  patternType: z.string(),
   description: z.string(),
-  evidence_claims_json: z.string(), // JSON array of claim IDs
-  first_detected: z.number(),
-  last_detected: z.number(),
-  occurrence_count: z.number().int().positive(),
+  evidenceClaimsJson: z.string(), // JSON array of claim IDs
+  firstDetected: z.number(),
+  lastDetected: z.number(),
+  occurrenceCount: z.number().int().positive(),
   confidence: z.number().min(0).max(1),
 });
 
@@ -123,11 +123,11 @@ export const PatternSchema = z.object({
  */
 export const CreatePatternSchema = PatternSchema.omit({
   id: true,
-  first_detected: true,
-  last_detected: true,
-  occurrence_count: true,
+  firstDetected: true,
+  lastDetected: true,
+  occurrenceCount: true,
 }).extend({
-  occurrence_count: z.number().int().positive().default(1),
+  occurrenceCount: z.number().int().positive().default(1),
 });
 
 /**
@@ -138,10 +138,10 @@ export const ValueSchema = z.object({
   statement: z.string(),
   domain: z.string(), // work, relationships, health, etc.
   importance: z.number().min(0).max(1),
-  source_claim_id: z.string(),
-  first_expressed: z.number(),
-  last_confirmed: z.number(),
-  confirmation_count: z.number().int().nonnegative(),
+  sourceClaimId: z.string(),
+  firstExpressed: z.number(),
+  lastConfirmed: z.number(),
+  confirmationCount: z.number().int().nonnegative(),
 });
 
 /**
@@ -149,11 +149,11 @@ export const ValueSchema = z.object({
  */
 export const CreateValueSchema = ValueSchema.omit({
   id: true,
-  first_expressed: true,
-  last_confirmed: true,
-  confirmation_count: true,
+  firstExpressed: true,
+  lastConfirmed: true,
+  confirmationCount: true,
 }).extend({
-  confirmation_count: z.number().int().nonnegative().default(1),
+  confirmationCount: z.number().int().nonnegative().default(1),
 });
 
 /**

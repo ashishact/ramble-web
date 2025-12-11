@@ -130,8 +130,8 @@ function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
           <div className="flex-1">
             <p className="text-sm font-medium leading-relaxed">{claim.statement}</p>
             <div className="flex flex-wrap gap-1 mt-2">
-              <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claim.claim_type] || 'badge-ghost'}`}>
-                {claim.claim_type.replace('_', ' ')}
+              <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claim.claimType] || 'badge-ghost'}`}>
+                {claim.claimType.replace('_', ' ')}
               </span>
               <span className={`badge badge-xs ${STAKES_COLORS[claim.stakes] || 'badge-ghost'}`}>
                 {claim.stakes}
@@ -154,11 +154,11 @@ function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
           </div>
           <div className="text-right flex flex-col items-end gap-1">
             {isLatest ? (
-              <LiveRelativeTime timestamp={claim.created_at} />
+              <LiveRelativeTime timestamp={claim.createdAt} />
             ) : (
-              <span className="text-xs opacity-50">{formatRelativeTime(claim.created_at)}</span>
+              <span className="text-xs opacity-50">{formatRelativeTime(claim.createdAt)}</span>
             )}
-            <span className="text-xs opacity-50">{Math.round(claim.current_confidence * 100)}%</span>
+            <span className="text-xs opacity-50">{Math.round(claim.currentConfidence * 100)}%</span>
           </div>
         </div>
 
@@ -171,7 +171,7 @@ function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
             </div>
             <div>
               <span className="opacity-50">Source:</span>{' '}
-              <span className="font-medium">{claim.source_type}</span>
+              <span className="font-medium">{claim.sourceType}</span>
             </div>
             <div>
               <span className="opacity-50">Abstraction:</span>{' '}
@@ -182,26 +182,26 @@ function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
               <span className="font-medium">{claim.state}</span>
             </div>
           </div>
-          {(claim.emotional_valence !== 0 || claim.emotional_intensity > 0) && (
+          {(claim.emotionalValence !== 0 || claim.emotionalIntensity > 0) && (
             <div className="flex gap-4">
               <div>
                 <span className="opacity-50">Valence:</span>{' '}
-                <span className={claim.emotional_valence > 0 ? 'text-success' : claim.emotional_valence < 0 ? 'text-error' : ''}>
-                  {claim.emotional_valence > 0 ? '+' : ''}{claim.emotional_valence.toFixed(2)}
+                <span className={claim.emotionalValence > 0 ? 'text-success' : claim.emotionalValence < 0 ? 'text-error' : ''}>
+                  {claim.emotionalValence > 0 ? '+' : ''}{claim.emotionalValence.toFixed(2)}
                 </span>
               </div>
               <div>
                 <span className="opacity-50">Intensity:</span>{' '}
-                <span className={claim.emotional_intensity > 0.7 ? 'text-warning font-bold' : ''}>
-                  {Math.round(claim.emotional_intensity * 100)}%
+                <span className={claim.emotionalIntensity > 0.7 ? 'text-warning font-bold' : ''}>
+                  {Math.round(claim.emotionalIntensity * 100)}%
                 </span>
               </div>
             </div>
           )}
-          {claim.confirmation_count > 0 && (
+          {claim.confirmationCount > 0 && (
             <div>
               <span className="opacity-50">Confirmed:</span>{' '}
-              <span className="font-medium">{claim.confirmation_count}x</span>
+              <span className="font-medium">{claim.confirmationCount}x</span>
             </div>
           )}
         </div>
@@ -324,8 +324,8 @@ function ContradictionCard({
           </p>
           {claimA && (
             <div className="flex gap-1 mt-1">
-              <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claimA.claim_type] || 'badge-ghost'}`}>
-                {claimA.claim_type.replace('_', ' ')}
+              <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claimA.claimType] || 'badge-ghost'}`}>
+                {claimA.claimType.replace('_', ' ')}
               </span>
               <span className="badge badge-xs badge-outline">{claimA.subject}</span>
             </div>
@@ -341,8 +341,8 @@ function ContradictionCard({
           </p>
           {claimB && (
             <div className="flex gap-1 mt-1">
-              <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claimB.claim_type] || 'badge-ghost'}`}>
-                {claimB.claim_type.replace('_', ' ')}
+              <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claimB.claimType] || 'badge-ghost'}`}>
+                {claimB.claimType.replace('_', ' ')}
               </span>
               <span className="badge badge-xs badge-outline">{claimB.subject}</span>
             </div>
@@ -355,24 +355,24 @@ function ContradictionCard({
         <div className="mt-3 pt-3 border-t border-base-300/50 text-xs space-y-2">
           <div className="flex justify-between">
             <span className="opacity-50">Detected:</span>
-            <span>{formatRelativeTime(contradiction.detected_at)}</span>
+            <span>{formatRelativeTime(contradiction.detectedAt)}</span>
           </div>
-          {contradiction.resolved && contradiction.resolved_at && (
+          {contradiction.resolved && contradiction.resolvedAt && (
             <div className="flex justify-between">
               <span className="opacity-50">Resolved:</span>
-              <span>{formatRelativeTime(contradiction.resolved_at)}</span>
+              <span>{formatRelativeTime(contradiction.resolvedAt)}</span>
             </div>
           )}
-          {contradiction.resolution_type && (
+          {contradiction.resolutionType && (
             <div className="flex justify-between">
               <span className="opacity-50">Resolution type:</span>
-              <span className="font-medium">{contradiction.resolution_type}</span>
+              <span className="font-medium">{contradiction.resolutionType}</span>
             </div>
           )}
-          {contradiction.resolution_notes && (
+          {contradiction.resolutionNotes && (
             <div>
               <span className="opacity-50">Notes:</span>
-              <p className="mt-1 bg-base-100/50 p-2 rounded">{contradiction.resolution_notes}</p>
+              <p className="mt-1 bg-base-100/50 p-2 rounded">{contradiction.resolutionNotes}</p>
             </div>
           )}
         </div>
@@ -390,14 +390,14 @@ function CorrectionCard({ correction, onRemove }: { correction: Correction; onRe
     <div className="p-3 bg-base-200 rounded-lg flex items-center justify-between gap-3">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-error line-through opacity-70">{correction.wrong_text}</span>
+          <span className="text-error line-through opacity-70">{correction.wrongText}</span>
           <span className="text-base-content/50">→</span>
-          <span className="text-success font-medium">{correction.correct_text}</span>
+          <span className="text-success font-medium">{correction.correctText}</span>
         </div>
         <div className="flex gap-2 mt-1 text-xs opacity-50">
-          <span>Used {correction.usage_count}x</span>
+          <span>Used {correction.usageCount}x</span>
           <span>•</span>
-          <span>Added {formatRelativeTime(correction.created_at)}</span>
+          <span>Added {formatRelativeTime(correction.createdAt)}</span>
         </div>
       </div>
       <button

@@ -12,16 +12,16 @@ import { z } from 'zod';
  */
 export const SourceTrackingSchema = z.object({
   id: z.string(),
-  claim_id: z.string(),           // Which claim this tracks
-  unit_id: z.string(),            // Which conversation unit
-  unit_text: z.string(),          // Full text of the unit
-  text_excerpt: z.string(),       // The exact text the LLM focused on
-  char_start: z.number().int().nullable(), // Character position (start)
-  char_end: z.number().int().nullable(),   // Character position (end)
-  pattern_id: z.string().nullable(),       // Which pattern matched
-  llm_prompt: z.string(),         // The prompt sent to LLM
-  llm_response: z.string(),       // Raw LLM response
-  created_at: z.number(),         // When this was captured
+  claimId: z.string(),           // Which claim this tracks
+  unitId: z.string(),            // Which conversation unit
+  unitText: z.string(),          // Full text of the unit
+  textExcerpt: z.string(),       // The exact text the LLM focused on
+  charStart: z.number().int().nullable(), // Character position (start)
+  charEnd: z.number().int().nullable(),   // Character position (end)
+  patternId: z.string().nullable(),       // Which pattern matched
+  llmPrompt: z.string(),         // The prompt sent to LLM
+  llmResponse: z.string(),       // Raw LLM response
+  createdAt: z.number(),         // When this was captured
 });
 
 export type SourceTracking = z.infer<typeof SourceTrackingSchema>;
@@ -31,7 +31,7 @@ export type SourceTracking = z.infer<typeof SourceTrackingSchema>;
  */
 export const CreateSourceTrackingSchema = SourceTrackingSchema.omit({
   id: true,
-  created_at: true,
+  createdAt: true,
 });
 
 export type CreateSourceTracking = z.infer<typeof CreateSourceTrackingSchema>;
