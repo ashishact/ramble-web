@@ -45,4 +45,5 @@ export const UpdateConversationUnitSchema = z.object({
   processed: z.boolean().optional(),
   rawText: z.string().optional(),
   sanitizedText: z.string().optional(),
+  precedingContextSummary: z.string().optional(),
 });

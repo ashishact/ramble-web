@@ -37,6 +37,7 @@ export const CreateCorrectionSchema = CorrectionSchema.omit({
  * Schema for updating a correction
  */
 export const UpdateCorrectionSchema = z.object({
+  wrongText: z.string().optional(),
   correctText: z.string().optional(),
   originalCase: z.string().optional(),
   usageCount: z.number().int().nonnegative().optional(),

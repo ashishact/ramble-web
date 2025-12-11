@@ -127,6 +127,7 @@ function modelToCorrection(model: CorrectionModel): Correction {
     originalCase: model.originalCase,
     usageCount: model.usageCount,
     createdAt: model.createdAt,
-    lastUsed: model.lastUsed || null,
+    lastUsed: model.lastUsed,
+    sourceUnitId: model.sourceUnitId ?? null,
   }
 }

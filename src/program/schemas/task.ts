@@ -112,7 +112,7 @@ export const TaskSchema = z.object({
   checkpoint_json: z.string().nullable(), // JSON TaskCheckpoint
 
   // Timestamps
-  created_at: z.number(),
+  createdAt: z.number(),
   started_at: z.number().nullable(),
   completed_at: z.number().nullable(),
 
@@ -143,7 +143,7 @@ export const CreateTaskSchema = z.object({
 /**
  * Schema for updating a task
  */
-export const UpdateTaskSchema = TaskSchema.partial().omit({ id: true, created_at: true });
+export const UpdateTaskSchema = TaskSchema.partial().omit({ id: true, createdAt: true });
 
 /**
  * Calculate next retry time with exponential backoff

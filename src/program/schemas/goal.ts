@@ -86,15 +86,15 @@ export const GoalSchema = z.object({
   goal_type: GoalTypeSchema,
   timeframe: GoalTimeframeSchema,
   status: GoalStatusSchema,
-  parent_goal_id: z.string().nullable(),
-  created_at: z.number(),
-  last_referenced: z.number(),
+  parentGoalId: z.string().nullable(),
+  createdAt: z.number(),
+  lastReferenced: z.number(),
   priority: z.number().int().min(1).max(10),
   progress_type: ProgressTypeSchema,
-  progress_value: z.number().min(0).max(100),
-  progress_indicators_json: z.string(), // JSON array
-  blockers_json: z.string(), // JSON array of Blocker objects
-  source_claim_id: z.string(),
+  progressValue: z.number().min(0).max(100),
+  progressIndicatorsJson: z.string(), // JSON array
+  blockersJson: z.string(), // JSON array of Blocker objects
+  sourceClaimId: z.string(),
   motivation: z.string().nullable(),
   deadline: z.number().nullable(),
 });
@@ -104,37 +104,37 @@ export const GoalSchema = z.object({
  */
 export const CreateGoalSchema = GoalSchema.omit({
   id: true,
-  created_at: true,
-  last_referenced: true,
+  createdAt: true,
+  lastReferenced: true,
   status: true,
-  progress_value: true,
-  progress_indicators_json: true,
-  blockers_json: true,
+  progressValue: true,
+  progressIndicatorsJson: true,
+  blockersJson: true,
 }).extend({
   status: GoalStatusSchema.default('active'),
-  progress_value: z.number().min(0).max(100).default(0),
-  progress_indicators_json: z.string().default('[]'),
-  blockers_json: z.string().default('[]'),
+  progressValue: z.number().min(0).max(100).default(0),
+  progressIndicatorsJson: z.string().default('[]'),
+  blockersJson: z.string().default('[]'),
 });
 
 /**
  * Schema for updating a goal
  */
-export const UpdateGoalSchema = GoalSchema.partial().omit({ id: true, created_at: true });
+export const UpdateGoalSchema = GoalSchema.partial().omit({ id: true, createdAt: true });
 
 /**
- * Milestone schema (stored in goals.progress_indicators_json)
+ * Milestone schema (stored in goals.progressIndicatorsJson)
  */
 export const MilestoneSchema = z.object({
   id: z.string(),
   description: z.string(),
   status: MilestoneStatusSchema,
-  achieved_at: z.number().nullable(),
-  evidence_claim_id: z.string().nullable(),
+  achievedAt: z.number().nullable(),
+  evidenceClaimId: z.string().nullable(),
 });
 
 /**
- * Blocker schema (stored in goals.blockers_json)
+ * Blocker schema (stored in goals.blockersJson)
  */
 export const BlockerSchema = z.object({
   id: z.string(),
@@ -142,7 +142,7 @@ export const BlockerSchema = z.object({
   blocker_type: BlockerTypeSchema,
   severity: BlockerSeveritySchema,
   status: BlockerStatusSchema,
-  resolution_path: z.string().nullable(),
+  resolutionPath: z.string().nullable(),
 });
 
 /**

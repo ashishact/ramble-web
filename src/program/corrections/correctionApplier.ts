@@ -24,8 +24,8 @@ export interface ApplyResult {
 /**
  * Apply all corrections from the store to the given text
  */
-export function applyCorrections(text: string, store: ICorrectionStore): ApplyResult {
-  const corrections = store.getAll();
+export async function applyCorrections(text: string, store: ICorrectionStore): ApplyResult {
+  const corrections = await store.getAll();
   const appliedCorrections: ApplyResult['appliedCorrections'] = [];
   let correctedText = text;
 
@@ -111,15 +111,15 @@ function preserveCase(original: string, replacement: string): string {
 /**
  * Check if a specific word would be corrected
  */
-export function wouldCorrect(word: string, store: ICorrectionStore): Correction | null {
+export async function wouldCorrect(word: string, store: ICorrectionStore): Correction | null {
   return store.getByWrongText(word);
 }
 
 /**
  * Get suggestions for a word (for UI autocomplete)
  */
-export function getSuggestions(partialWord: string, store: ICorrectionStore, limit = 5): Correction[] {
-  const corrections = store.getAll();
+export async function getSuggestions(partialWord: string, store: ICorrectionStore, limit = 5): Correction[] {
+  const corrections = await store.getAll();
   const lowerPartial = partialWord.toLowerCase();
 
   return corrections

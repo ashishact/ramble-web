@@ -145,7 +145,7 @@ export class CorrectionService {
     }
 
     // Check if we already have this correction
-    const existing = this.store.getByWrongText(normalizedWrong);
+    const existing = await this.store.getByWrongText(normalizedWrong);
     if (existing) {
       // Update if the correct text is different
       if (existing.correctText.toLowerCase() !== normalizedCorrect) {
@@ -158,7 +158,7 @@ export class CorrectionService {
           correct_text: correctText,
           original_case: originalCase,
         });
-        return this.store.getById(existing.id);
+        return await this.store.getById(existing.id);
       }
       // Just increment usage if it's the same
       this.store.incrementUsageCount(existing.id);
@@ -174,7 +174,7 @@ export class CorrectionService {
       usage_count: 0,
     };
 
-    const correction = this.store.create(createData);
+    const correction = await this.store.create(createData);
     logger.info('Learned new correction', { id: correction.id, wrong: normalizedWrong, correct: correctText });
     return correction;
   }
@@ -190,10 +190,10 @@ export class CorrectionService {
    * Remove a correction
    */
   removeCorrection(id: string): boolean {
-    const correction = this.store.getById(id);
+    const correction = await this.store.getById(id);
     if (correction) {
       logger.info('Removing correction', { id, wrong: correction.wrongText, correct: correction.correctText });
-      return this.store.delete(id);
+      return await this.store.delete(id);
     }
     return false;
   }
@@ -202,14 +202,14 @@ export class CorrectionService {
    * Get all corrections
    */
   getAllCorrections(): Correction[] {
-    return this.store.getAll();
+    return await this.store.getAll();
   }
 
   /**
    * Get frequently used corrections
    */
   getFrequentCorrections(limit = 10): Correction[] {
-    return this.store.getFrequentlyUsed(limit);
+    return await this.store.getFrequentlyUsed(limit);
   }
 
   /**

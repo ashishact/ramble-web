@@ -5,7 +5,7 @@
 import type { Database } from '@nozbe/watermelondb'
 import { Q } from '@nozbe/watermelondb'
 import type { IEntityStore, SubscriptionCallback, Unsubscribe } from '../../program/interfaces/store'
-import type { Entity, CreateEntity, UpdateEntity } from '../../program/types'
+import type { Entity, CreateEntity, UpdateEntity, EntityType } from '../../program/types'
 import EntityModel from '../models/Entity'
 
 export function createEntityStore(db: Database): IEntityStore {
@@ -156,7 +156,7 @@ function modelToEntity(model: EntityModel): Entity {
   return {
     id: model.id,
     canonicalName: model.canonicalName,
-    entityType: model.entityType,
+    entityType: model.entityType as EntityType,
     aliases: model.aliases,
     createdAt: model.createdAt,
     lastReferenced: model.lastReferenced,

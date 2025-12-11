@@ -9,7 +9,7 @@ import type {
   SubscriptionCallback,
   Unsubscribe,
 } from '../../program/interfaces/store'
-import type { ExtractionProgram, CreateExtractionProgram, UpdateExtractionProgram } from '../../program/types'
+import type { ExtractionProgram, CreateExtractionProgram, UpdateExtractionProgram, LLMTier } from '../../program/types'
 import ExtractionProgramModel from '../models/ExtractionProgram'
 
 export function createExtractionProgramStore(db: Database): IExtractionProgramStore {
@@ -35,22 +35,30 @@ export function createExtractionProgramStore(db: Database): IExtractionProgramSt
     },
 
     async create(data: CreateExtractionProgram): Promise<ExtractionProgram> {
+      const now = Date.now()
       const model = await db.write(() =>
         collection.create((program) => {
           program.name = data.name
           program.description = data.description
           program.type = data.type
-          program.version = data.version
-          program.active = data.active
+          program.version = data.version ?? 1
+          program.active = data.active ?? true
           program.patternsJson = data.patternsJson
+          program.alwaysRun = data.alwaysRun
           program.promptTemplate = data.promptTemplate
           program.outputSchemaJson = data.outputSchemaJson
           program.llmTier = data.llmTier
+          program.llmTemperature = data.llmTemperature ?? undefined
+          program.llmMaxTokens = data.llmMaxTokens ?? undefined
           program.priority = data.priority
-          program.createdAt = Date.now()
-          program.lastUsed = Date.now()
-          program.runCount = data.runCount
-          program.successRate = data.successRate
+          program.minConfidence = data.minConfidence
+          program.isCore = data.isCore ?? false
+          program.claimTypesJson = data.claimTypesJson
+          program.createdAt = now
+          program.updatedAt = now
+          program.runCount = data.runCount ?? 0
+          program.successRate = data.successRate ?? 0
+          program.avgProcessingTimeMs = data.avgProcessingTimeMs ?? 0
         })
       )
       return modelToExtractionProgram(model)
@@ -158,17 +166,24 @@ function modelToExtractionProgram(model: ExtractionProgramModel): ExtractionProg
     id: model.id,
     name: model.name,
     description: model.description,
-    type: model.type as 'pattern' | 'llm',
+    type: model.type,
     version: model.version,
-    active: model.active,
-    patternsJson: model.patternsJson || null,
-    promptTemplate: model.promptTemplate || null,
-    outputSchemaJson: model.outputSchemaJson || null,
-    llmTier: model.llmTier || null,
+    patternsJson: model.patternsJson,
+    alwaysRun: model.alwaysRun,
+    llmTier: model.llmTier as LLMTier,
+    llmTemperature: model.llmTemperature ?? null,
+    llmMaxTokens: model.llmMaxTokens ?? null,
+    promptTemplate: model.promptTemplate,
+    outputSchemaJson: model.outputSchemaJson,
     priority: model.priority,
-    createdAt: model.createdAt,
-    lastUsed: model.lastUsed || null,
-    runCount: model.runCount,
+    active: model.active,
+    minConfidence: model.minConfidence,
+    isCore: model.isCore,
+    claimTypesJson: model.claimTypesJson,
     successRate: model.successRate,
+    runCount: model.runCount,
+    avgProcessingTimeMs: model.avgProcessingTimeMs,
+    createdAt: model.createdAt,
+    updatedAt: model.updatedAt,
   }
 }

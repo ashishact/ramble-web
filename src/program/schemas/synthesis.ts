@@ -15,22 +15,22 @@ import { z } from 'zod';
 export const SynthesisCacheSchema = z.object({
   id: z.string(),
   synthesis_type: z.string(), // e.g., 'daily_summary', 'goal_report', 'concern_analysis'
-  cache_key: z.string(), // Unique key for cache lookup
-  content_json: z.string(), // Serialized synthesis content
+  cacheKey: z.string(), // Unique key for cache lookup
+  contentJson: z.string(), // Serialized synthesis content
   source_claims_json: z.string(), // JSON array of claim IDs used to generate this
-  generated_at: z.number(),
+  generatedAt: z.number(),
   stale: z.boolean(),
   ttl_seconds: z.number(), // Time-to-live in seconds
 });
 
 export const CreateSynthesisCacheSchema = SynthesisCacheSchema.omit({
   id: true,
-  generated_at: true,
+  generatedAt: true,
 }).partial({
   stale: true,
 });
 
 export const UpdateSynthesisCacheSchema = SynthesisCacheSchema.omit({
   id: true,
-  generated_at: true,
+  generatedAt: true,
 }).partial();

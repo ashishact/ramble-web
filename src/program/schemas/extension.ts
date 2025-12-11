@@ -33,29 +33,31 @@ export const ExtensionStatusSchema = z.enum([
 
 export const ExtensionSchema = z.object({
   id: z.string(),
-  extension_type: ExtensionTypeSchema,
+  extensionType: ExtensionTypeSchema,
   name: z.string().min(1),
   description: z.string(),
-  config_json: z.string(), // Serialized JSON config
-  system_prompt: z.string(),
-  user_prompt_template: z.string(), // Contains {VARIABLE} placeholders
-  variables_schema_json: z.string(), // JSON schema for variables
+  configJson: z.string(), // Serialized JSON config
+  systemPrompt: z.string(),
+  userPromptTemplate: z.string(), // Contains {VARIABLE} placeholders
+  variablesSchemaJson: z.string(), // JSON schema for variables
+  llmTier: z.enum(['small', 'medium', 'large']),
   status: ExtensionStatusSchema,
   version: z.number().int().positive(),
-  created_at: z.number(),
-  verified_at: z.number().nullable(),
+  createdAt: z.number(),
+  verifiedAt: z.number().nullable(),
 });
 
 export const CreateExtensionSchema = ExtensionSchema.omit({
   id: true,
-  created_at: true,
+  createdAt: true,
 }).partial({
   status: true,
   version: true,
-  verified_at: true,
+  verifiedAt: true,
+  llmTier: true,
 });
 
 export const UpdateExtensionSchema = ExtensionSchema.omit({
   id: true,
-  created_at: true,
+  createdAt: true,
 }).partial();

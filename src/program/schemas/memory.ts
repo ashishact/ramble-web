@@ -143,23 +143,23 @@ export const MemoryStatsSchema = z.object({
  */
 export const DecayConfigSchema = z.object({
   eternal: z.object({ halfLifeMs: z.number().nullable() }), // null = no decay
-  slowly_decaying: z.object({ halfLifeMs: z.number() }),
-  fast_decaying: z.object({ halfLifeMs: z.number() }),
-  point_in_time: z.object({ halfLifeMs: z.number() }),
+  slowlyDecaying: z.object({ halfLifeMs: z.number() }),
+  fastDecaying: z.object({ halfLifeMs: z.number() }),
+  pointInTime: z.object({ halfLifeMs: z.number() }),
 });
 
 /**
  * Default decay configuration
  * - eternal: never decays
- * - slowly_decaying: 30-day half-life
- * - fast_decaying: 1-day half-life
- * - point_in_time: 1-hour half-life
+ * - slowlyDecaying: 30-day half-life
+ * - fastDecaying: 1-day half-life
+ * - pointInTime: 1-hour half-life
  */
 export const DEFAULT_DECAY_CONFIG = {
   eternal: { halfLifeMs: null },
-  slowly_decaying: { halfLifeMs: 30 * 24 * 60 * 60 * 1000 }, // 30 days
-  fast_decaying: { halfLifeMs: 24 * 60 * 60 * 1000 },        // 1 day
-  point_in_time: { halfLifeMs: 60 * 60 * 1000 },              // 1 hour
+  slowlyDecaying: { halfLifeMs: 30 * 24 * 60 * 60 * 1000 }, // 30 days
+  fastDecaying: { halfLifeMs: 24 * 60 * 60 * 1000 },        // 1 day
+  pointInTime: { halfLifeMs: 60 * 60 * 1000 },              // 1 hour
 } as const;
 
 // ============================================================================

@@ -12,10 +12,10 @@ import { z } from 'zod';
 export const SessionSchema = z.object({
   id: z.string(),
   started_at: z.number(), // Unix timestamp ms
-  ended_at: z.number().nullable(),
-  unit_count: z.number().int().nonnegative(),
+  endedAt: z.number().nullable(),
+  unitCount: z.number().int().nonnegative(),
   summary: z.string().nullable(),
-  mood_trajectory_json: z.string().nullable(), // JSON array of mood points
+  moodTrajectoryJson: z.string().nullable(), // JSON array of mood points
 });
 
 /**
@@ -23,15 +23,15 @@ export const SessionSchema = z.object({
  */
 export const CreateSessionSchema = SessionSchema.omit({
   id: true,
-  ended_at: true,
-  unit_count: true,
+  endedAt: true,
+  unitCount: true,
   summary: true,
-  mood_trajectory_json: true,
+  moodTrajectoryJson: true,
 }).extend({
-  ended_at: z.number().nullable().default(null),
-  unit_count: z.number().int().nonnegative().default(0),
+  endedAt: z.number().nullable().default(null),
+  unitCount: z.number().int().nonnegative().default(0),
   summary: z.string().nullable().default(null),
-  mood_trajectory_json: z.string().nullable().default(null),
+  moodTrajectoryJson: z.string().nullable().default(null),
 });
 
 /**
