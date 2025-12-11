@@ -46,6 +46,9 @@ export interface UseProgramReturn {
   /** Recent claims */
   claims: Claim[];
 
+  /** Total count of all claims in database */
+  claimCount: number;
+
   /** All goals */
   goals: Goal[];
 
@@ -134,6 +137,9 @@ export interface UseProgramReturn {
   /** Toggle observer on/off */
   toggleObserver: (type: string, active: boolean) => void;
 
+  /** Load more claims */
+  loadMoreClaims: (additionalCount?: number) => void;
+
   /** Manually refresh data */
   refresh: () => void;
 }
@@ -149,6 +155,8 @@ export function useProgram(): UseProgramReturn {
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<KernelState | null>(null);
   const [claims, setClaims] = useState<Claim[]>([]);
+  const [claimCount, setClaimCount] = useState<number>(0);
+  const [claimLimit, setClaimLimit] = useState<number>(50);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
@@ -218,7 +226,8 @@ export function useProgram(): UseProgramReturn {
 
     try {
       setState(kernel.getState());
-      setClaims(kernel.getClaims().slice(-50)); // Last 50 claims
+      setClaims(kernel.getClaims(claimLimit)); // Limited claims
+      setClaimCount(kernel.getClaimCount()); // Total count
       setGoals(kernel.getGoals());
       setEntities(kernel.getEntities());
       setPatterns(kernel.getPatterns());
@@ -241,7 +250,7 @@ export function useProgram(): UseProgramReturn {
     } catch (err) {
       console.error('Failed to refresh program data:', err);
     }
-  }, []);
+  }, [claimLimit]);
 
   // Poll for updates
   useEffect(() => {
@@ -363,12 +372,18 @@ export function useProgram(): UseProgramReturn {
     refresh();
   }, [refresh]);
 
+  // Load more claims
+  const loadMoreClaims = useCallback((additionalCount: number = 50): void => {
+    setClaimLimit((prev) => prev + additionalCount);
+  }, []);
+
   return {
     isInitialized,
     isInitializing,
     error,
     state,
     claims,
+    claimCount,
     goals,
     entities,
     patterns,
@@ -388,6 +403,7 @@ export function useProgram(): UseProgramReturn {
     promoteToLongTerm,
     toggleExtractor,
     toggleObserver,
+    loadMoreClaims,
     refresh,
     // Memory System
     workingMemory,

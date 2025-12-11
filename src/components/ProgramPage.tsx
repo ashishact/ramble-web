@@ -5,6 +5,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { getKernel } from '../program';
 import { useNavigate } from 'react-router-dom';
 import { useProgram } from '../program/hooks';
 import { settingsHelpers } from '../stores/settingsStore';
@@ -99,6 +100,20 @@ const ENTITY_TYPE_ICONS: Record<string, string> = {
 function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  const [hasSourceTracking, setHasSourceTracking] = useState(false);
+
+  // Check if source tracking exists for this claim
+  useEffect(() => {
+    try {
+      const kernel = getKernel();
+      const store = kernel.getStore();
+      const tracking = store.sourceTracking.getByClaimId(claim.id);
+      setHasSourceTracking(!!tracking);
+    } catch (error) {
+      // Kernel not initialized yet or error fetching
+      setHasSourceTracking(false);
+    }
+  }, [claim.id]);
 
   return (
     <>
@@ -119,7 +134,7 @@ function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
                 {claim.stakes}
               </span>
               <span className="badge badge-xs badge-outline">{claim.subject}</span>
-              {claim.source_tracking && (
+              {hasSourceTracking && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -436,6 +451,7 @@ export function ProgramPage() {
     error,
     state,
     claims,
+    claimCount,
     goals,
     entities,
     patterns,
@@ -461,6 +477,7 @@ export function ProgramPage() {
     recordMemoryAccess,
     toggleExtractor,
     toggleObserver,
+    loadMoreClaims,
     refresh,
   } = useProgram();
 
@@ -1014,9 +1031,24 @@ export function ProgramPage() {
                       <p>{claims.length === 0 ? 'No claims yet. Start sharing your thoughts!' : 'No claims match this filter.'}</p>
                     </div>
                   ) : (
-                    filteredClaims.slice().reverse().map((claim, i) => (
-                      <ClaimCard key={claim.id} claim={claim} isLatest={i === 0} />
-                    ))
+                    <>
+                      {filteredClaims.slice().reverse().map((claim, i) => (
+                        <ClaimCard key={claim.id} claim={claim} isLatest={i === 0} />
+                      ))}
+
+                      {/* Show More button if there are more claims in DB */}
+                      {claims.length < claimCount && (
+                        <div className="text-center py-4">
+                          <button
+                            onClick={() => loadMoreClaims(50)}
+                            className="btn btn-outline btn-sm gap-2"
+                          >
+                            <Icon icon="mdi:chevron-down" className="w-4 h-4" />
+                            Show More ({claimCount - claims.length} more claims available)
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

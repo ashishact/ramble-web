@@ -7,8 +7,10 @@
  * - LLM prompt and response
  */
 
+import { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
-import type { Claim } from '../../program/types';
+import type { Claim, SourceTracking } from '../../program/types';
+import { getKernel } from '../../program';
 
 interface ClaimDebugPanelProps {
   claim: Claim;
@@ -16,9 +18,39 @@ interface ClaimDebugPanelProps {
 }
 
 export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
-  const { source_tracking } = claim;
+  const [sourceTracking, setSourceTracking] = useState<SourceTracking | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  if (!source_tracking) {
+  useEffect(() => {
+    const fetchSourceTracking = async () => {
+      try {
+        const kernel = getKernel();
+        const store = kernel.getStore();
+        const tracking = store.sourceTracking.getByClaimId(claim.id);
+        setSourceTracking(tracking);
+      } catch (error) {
+        console.error('Failed to fetch source tracking:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSourceTracking();
+  }, [claim.id]);
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="bg-base-200 rounded-lg shadow-xl max-w-4xl w-full p-6">
+          <div className="flex items-center justify-center">
+            <span className="loading loading-spinner loading-lg"></span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!sourceTracking) {
     return (
       <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
         <div className="bg-base-200 rounded-lg shadow-xl max-w-4xl w-full p-6">
@@ -39,13 +71,13 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
 
   // Highlight the relevant portion of text if positions are available
   const highlightedText = () => {
-    if (!source_tracking.char_start || !source_tracking.char_end) {
-      return source_tracking.unit_text;
+    if (!sourceTracking.char_start || !sourceTracking.char_end) {
+      return sourceTracking.unit_text;
     }
 
-    const before = source_tracking.unit_text.slice(0, source_tracking.char_start);
-    const highlighted = source_tracking.unit_text.slice(source_tracking.char_start, source_tracking.char_end);
-    const after = source_tracking.unit_text.slice(source_tracking.char_end);
+    const before = sourceTracking.unit_text.slice(0, sourceTracking.char_start);
+    const highlighted = sourceTracking.unit_text.slice(sourceTracking.char_start, sourceTracking.char_end);
+    const after = sourceTracking.unit_text.slice(sourceTracking.char_end);
 
     return (
       <>
@@ -103,11 +135,11 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
                     {claim.extraction_program_id}
                   </div>
                 </div>
-                {source_tracking.pattern_id && (
+                {sourceTracking.pattern_id && (
                   <div>
                     <div className="text-sm text-base-content/60">Pattern Matched</div>
                     <div className="font-mono text-sm bg-base-200 px-2 py-1 rounded mt-1">
-                      {source_tracking.pattern_id}
+                      {sourceTracking.pattern_id}
                     </div>
                   </div>
                 )}
@@ -121,9 +153,9 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
               <h3 className="card-title text-lg flex items-center gap-2">
                 <Icon icon="mdi:message-text" className="w-5 h-5" />
                 Original Transcript
-                {source_tracking.char_start !== null && source_tracking.char_end !== null && (
+                {sourceTracking.char_start !== null && sourceTracking.char_end !== null && (
                   <span className="badge badge-sm">
-                    chars {source_tracking.char_start}-{source_tracking.char_end}
+                    chars {sourceTracking.char_start}-{sourceTracking.char_end}
                   </span>
                 )}
               </h3>
@@ -132,16 +164,16 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
                   {highlightedText()}
                 </p>
               </div>
-              {source_tracking.unit_id && (
+              {sourceTracking.unit_id && (
                 <div className="text-xs text-base-content/50 mt-2">
-                  Unit ID: <code className="bg-base-200 px-1 py-0.5 rounded">{source_tracking.unit_id}</code>
+                  Unit ID: <code className="bg-base-200 px-1 py-0.5 rounded">{sourceTracking.unit_id}</code>
                 </div>
               )}
             </div>
           </div>
 
           {/* LLM Prompt */}
-          {source_tracking.llm_prompt && (
+          {sourceTracking.llm_prompt && (
             <div className="card bg-base-100">
               <div className="card-body">
                 <h3 className="card-title text-lg flex items-center gap-2">
@@ -153,7 +185,7 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
                   <div className="collapse-title font-medium">Click to expand prompt</div>
                   <div className="collapse-content">
                     <pre className="text-xs whitespace-pre-wrap bg-base-300 p-4 rounded mt-2 max-h-96 overflow-auto">
-                      {source_tracking.llm_prompt}
+                      {sourceTracking.llm_prompt}
                     </pre>
                   </div>
                 </div>
@@ -162,7 +194,7 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
           )}
 
           {/* LLM Response */}
-          {source_tracking.llm_response && (
+          {sourceTracking.llm_response && (
             <div className="card bg-base-100">
               <div className="card-body">
                 <h3 className="card-title text-lg flex items-center gap-2">
@@ -174,7 +206,7 @@ export function ClaimDebugPanel({ claim, onClose }: ClaimDebugPanelProps) {
                   <div className="collapse-title font-medium">Click to collapse response</div>
                   <div className="collapse-content">
                     <pre className="text-xs whitespace-pre-wrap bg-base-300 p-4 rounded mt-2 max-h-96 overflow-auto">
-                      {source_tracking.llm_response}
+                      {sourceTracking.llm_response}
                     </pre>
                   </div>
                 </div>

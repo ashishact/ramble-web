@@ -122,16 +122,6 @@ function rowToConversationUnit(id: string, row: Record<string, unknown>): Conver
 }
 
 function rowToClaim(id: string, row: Record<string, unknown>): Claim {
-  // Parse source_tracking JSON if present
-  let source_tracking = null;
-  if (row.source_tracking_json && typeof row.source_tracking_json === 'string') {
-    try {
-      source_tracking = JSON.parse(row.source_tracking_json);
-    } catch (e) {
-      console.warn('[Store] Failed to parse source_tracking_json for claim', id);
-    }
-  }
-
   return {
     id,
     statement: row.statement as string,
@@ -159,8 +149,6 @@ function rowToClaim(id: string, row: Record<string, unknown>): Claim {
     salience: (row.salience as number) || 0,
     promoted_at: (row.promoted_at as number) || null,
     last_accessed: (row.last_accessed as number) || row.created_at as number,
-    // Source tracking
-    source_tracking,
   };
 }
 
@@ -410,6 +398,7 @@ export interface ProgramStoreInstance extends IProgramStore {
 export interface ITaskStore {
   getById(id: string): Task | null;
   getAll(): Task[];
+  count(): number;
   create(data: CreateTask): Task;
   update(id: string, data: UpdateTask): Task | null;
   delete(id: string): boolean;
@@ -471,6 +460,12 @@ export function createProgramStore(): ProgramStoreInstance {
       const table = store.getTable('sessions');
       if (!table) return [];
       return Object.entries(table).map(([id, row]) => rowToSession(id, row));
+    },
+
+    count(): number {
+      const table = store.getTable('sessions');
+      if (!table) return 0;
+      return Object.keys(table).length;
     },
 
     create(data: CreateSession): Session {
@@ -557,6 +552,12 @@ export function createProgramStore(): ProgramStoreInstance {
       return Object.entries(table)
         .map(([id, row]) => rowToConversationUnit(id, row))
         .sort((a, b) => a.timestamp - b.timestamp);
+    },
+
+    count(): number {
+      const table = store.getTable('conversations');
+      if (!table) return 0;
+      return Object.keys(table).length;
     },
 
     create(data: CreateConversationUnit): ConversationUnit {
@@ -647,6 +648,12 @@ export function createProgramStore(): ProgramStoreInstance {
       return Object.entries(table).map(([id, row]) => rowToClaim(id, row));
     },
 
+    count(): number {
+      const table = store.getTable('claims');
+      if (!table) return 0;
+      return Object.keys(table).length;
+    },
+
     create(data: CreateClaim): Claim {
       const id = idGen.claim();
       const timestamp = now();
@@ -677,12 +684,7 @@ export function createProgramStore(): ProgramStoreInstance {
         salience: data.salience ?? 0,
         promoted_at: data.promoted_at ?? null,
         last_accessed: timestamp,
-        // Source tracking
-        source_tracking: data.source_tracking ?? null,
       };
-
-      // Serialize source_tracking to JSON
-      const source_tracking_json = claim.source_tracking ? JSON.stringify(claim.source_tracking) : '';
 
       store.setRow('claims', id, {
         statement: claim.statement,
@@ -710,8 +712,6 @@ export function createProgramStore(): ProgramStoreInstance {
         salience: claim.salience,
         promoted_at: claim.promoted_at ?? 0,
         last_accessed: claim.last_accessed,
-        // Source tracking
-        source_tracking_json,
       });
 
       logger.debug('Created claim', { id, type: claim.claim_type });
@@ -724,16 +724,10 @@ export function createProgramStore(): ProgramStoreInstance {
 
       const row = store.getRow('claims', id);
       for (const [key, value] of Object.entries(data)) {
-        if (value !== undefined && key !== 'source_tracking') {
+        if (value !== undefined) {
           const storeValue = value === null ? (typeof row[key] === 'number' ? 0 : '') : value;
           store.setCell('claims', id, key, storeValue);
         }
-      }
-
-      // Special handling for source_tracking - serialize to JSON
-      if ('source_tracking' in data) {
-        const storeValue = data.source_tracking ? JSON.stringify(data.source_tracking) : '';
-        store.setCell('claims', id, 'source_tracking_json', storeValue);
       }
 
       return claims.getById(id);
@@ -903,6 +897,12 @@ export function createProgramStore(): ProgramStoreInstance {
       return Object.entries(table).map(([id, row]) => rowToSourceTracking(id, row));
     },
 
+    count(): number {
+      const table = store.getTable('source_tracking');
+      if (!table) return 0;
+      return Object.keys(table).length;
+    },
+
     create(data: CreateSourceTracking): SourceTracking {
       const id = idGen.claim(); // Reuse claim ID generator
       const timestamp = now();
@@ -977,6 +977,12 @@ export function createProgramStore(): ProgramStoreInstance {
       const table = store.getTable('entities');
       if (!table) return [];
       return Object.entries(table).map(([id, row]) => rowToEntity(id, row));
+    },
+
+    count(): number {
+      const table = store.getTable('entities');
+      if (!table) return 0;
+      return Object.keys(table).length;
     },
 
     create(data: CreateEntity): Entity {
@@ -1116,6 +1122,11 @@ export function createProgramStore(): ProgramStoreInstance {
       if (!table) return [];
       return Object.entries(table).map(([id, row]) => rowToGoal(id, row));
     },
+    count(): number {
+      const table = store.getTable('goals');
+      if (!table) return 0;
+      return Object.keys(table).length;
+    },
 
     create(data: CreateGoal): Goal {
       const id = idGen.goal();
@@ -1239,6 +1250,11 @@ export function createProgramStore(): ProgramStoreInstance {
       const table = store.getTable('observer_outputs');
       if (!table) return [];
       return Object.entries(table).map(([id, row]) => rowToObserverOutput(id, row));
+    },
+    count(): number {
+      const table = store.getTable('observer_outputs');
+      if (!table) return 0;
+      return Object.keys(table).length;
     },
 
     create(data: CreateObserverOutput): ObserverOutput {
@@ -1458,6 +1474,11 @@ export function createProgramStore(): ProgramStoreInstance {
       if (!table) return [];
       return Object.entries(table).map(([id, row]) => rowToTask(id, row));
     },
+    count(): number {
+      const table = store.getTable('tasks');
+      if (!table) return 0;
+      return Object.keys(table).length;
+    },
 
     create(data: CreateTask): Task {
       const id = idGen.task();
@@ -1588,6 +1609,11 @@ export function createProgramStore(): ProgramStoreInstance {
       if (!table) return [];
       return Object.entries(table).map(([id, row]) => rowToExtension(id, row));
     },
+    count(): number {
+      const table = store.getTable('extensions');
+      if (!table) return 0;
+      return Object.keys(table).length;
+    },
 
     create(data: CreateExtension): Extension {
       const id = idGen.extension();
@@ -1689,6 +1715,11 @@ export function createProgramStore(): ProgramStoreInstance {
       const table = store.getTable('synthesis_cache');
       if (!table) return [];
       return Object.entries(table).map(([id, row]) => rowToSynthesisCache(id, row));
+    },
+    count(): number {
+      const table = store.getTable('synthesis_cache');
+      if (!table) return 0;
+      return Object.keys(table).length;
     },
 
     create(data: CreateSynthesisCache): SynthesisCache {
@@ -1799,6 +1830,11 @@ export function createProgramStore(): ProgramStoreInstance {
       const table = store.getTable('extraction_programs');
       if (!table) return [];
       return Object.entries(table).map(([id, row]) => rowToExtractionProgram(id, row));
+    },
+    count(): number {
+      const table = store.getTable('extraction_programs');
+      if (!table) return 0;
+      return Object.keys(table).length;
     },
 
     create(data: CreateExtractionProgram): ExtractionProgram {
@@ -1945,6 +1981,11 @@ export function createProgramStore(): ProgramStoreInstance {
       const table = store.getTable('observer_programs');
       if (!table) return [];
       return Object.entries(table).map(([id, row]) => rowToObserverProgram(id, row));
+    },
+    count(): number {
+      const table = store.getTable('observer_programs');
+      if (!table) return 0;
+      return Object.keys(table).length;
     },
 
     create(data: CreateObserverProgram): ObserverProgram {
@@ -2097,6 +2138,11 @@ export function createProgramStore(): ProgramStoreInstance {
       const table = store.getTable('corrections');
       if (!table) return [];
       return Object.entries(table).map(([id, row]) => rowToCorrection(id, row));
+    },
+    count(): number {
+      const table = store.getTable('corrections');
+      if (!table) return 0;
+      return Object.keys(table).length;
     },
 
     create(data: CreateCorrection): Correction {

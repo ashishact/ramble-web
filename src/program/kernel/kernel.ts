@@ -538,9 +538,22 @@ export class ProgramKernel {
         memory_tier: 'working',
         salience: 0,
         promoted_at: null,
-        // Source tracking from pipeline
-        source_tracking: extractedClaim.source_tracking || null,
       });
+
+      // Save source tracking separately if available
+      if (extractedClaim.source_tracking) {
+        this.store!.sourceTracking.create({
+          claim_id: claim.id,
+          unit_id: extractedClaim.source_tracking.unit_id,
+          unit_text: extractedClaim.source_tracking.unit_text,
+          text_excerpt: extractedClaim.source_tracking.text_excerpt,
+          char_start: extractedClaim.source_tracking.char_start,
+          char_end: extractedClaim.source_tracking.char_end,
+          pattern_id: extractedClaim.source_tracking.pattern_id,
+          llm_prompt: extractedClaim.source_tracking.llm_prompt || '',
+          llm_response: extractedClaim.source_tracking.llm_response || '',
+        });
+      }
 
       // Link claim to conversation unit
       this.store!.claims.addSource({
@@ -628,9 +641,22 @@ export class ProgramKernel {
   /**
    * Get all claims
    */
-  getClaims(): Claim[] {
+  getClaims(limit?: number): Claim[] {
     this.ensureInitialized();
-    return this.store!.claims.getAll();
+    const allClaims = this.store!.claims.getAll();
+    if (limit === undefined) {
+      return allClaims;
+    }
+    // Return last N claims (most recent)
+    return allClaims.slice(-limit);
+  }
+
+  /**
+   * Get total count of claims without loading them all
+   */
+  getClaimCount(): number {
+    this.ensureInitialized();
+    return this.store!.claims.count();
   }
 
   /**
@@ -1249,6 +1275,14 @@ export class ProgramKernel {
   async rollbackMigration(version: number): Promise<MigrationResult> {
     this.ensureInitialized();
     return this.migrationManager!.rollbackMigration(version);
+  }
+
+  /**
+   * Get the underlying store instance (for direct access)
+   */
+  getStore(): ProgramStoreInstance {
+    this.ensureInitialized();
+    return this.store!;
   }
 
   // ==========================================================================

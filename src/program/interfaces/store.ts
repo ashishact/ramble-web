@@ -68,6 +68,7 @@ import type {
 export interface IBaseStore<T, TCreate, TUpdate> {
   getById(id: string): T | null;
   getAll(): T[];
+  count(): number; // Get total count without loading all items
   create(data: TCreate): T;
   update(id: string, data: TUpdate): T | null;
   delete(id: string): boolean;
