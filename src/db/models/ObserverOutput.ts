@@ -12,6 +12,7 @@ export default class ObserverOutput extends Model {
   @text('outputType') outputType!: string
   @text('contentJson') contentJson!: string
   @text('sourceClaimsJson') sourceClaimsJson!: string
+  @field('stale') stale!: boolean
+  @text('sessionId') sessionId?: string
   @field('createdAt') createdAt!: number
-  @text('sessionId') sessionId!: string
 }

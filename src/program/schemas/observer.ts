@@ -49,8 +49,9 @@ export const ObserverOutputSchema = z.object({
   outputType: z.string(),
   contentJson: z.string(), // JSON serialized content
   sourceClaimsJson: z.string(), // JSON array of claim IDs
-  createdAt: z.number(),
   stale: z.boolean(),
+  sessionId: z.string().nullable(),
+  createdAt: z.number(),
 });
 
 /**

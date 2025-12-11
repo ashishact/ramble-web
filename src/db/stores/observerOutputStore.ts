@@ -169,10 +169,10 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
           pattern.patternType = data.patternType
           pattern.description = data.description
           pattern.evidenceClaimsJson = data.evidenceClaimsJson
+          pattern.firstDetected = Date.now()
+          pattern.lastDetected = Date.now()
           pattern.occurrenceCount = data.occurrenceCount
           pattern.confidence = data.confidence
-          pattern.createdAt = Date.now()
-          pattern.lastObserved = data.lastObserved
         })
       )
       return modelToPattern(model)
@@ -189,7 +189,7 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
         await model.update((pattern) => {
           pattern.occurrenceCount = (pattern.occurrenceCount || 0) + 1
           pattern.confidence = Math.min(1.0, pattern.confidence + 0.05)
-          pattern.lastObserved = Date.now()
+          pattern.lastDetected = Date.now()
         })
       } catch {
         // Ignore errors
@@ -204,7 +204,9 @@ export function createObserverOutputStore(db: Database): IObserverOutputStore {
           value.domain = data.domain
           value.importance = data.importance
           value.sourceClaimId = data.sourceClaimId
-          value.createdAt = Date.now()
+          value.firstExpressed = Date.now()
+          value.lastConfirmed = Date.now()
+          value.confirmationCount = 0
         })
       )
       return modelToValue(model)
@@ -260,10 +262,10 @@ function modelToPattern(model: PatternModel): Pattern {
     patternType: model.patternType,
     description: model.description,
     evidenceClaimsJson: model.evidenceClaimsJson,
+    firstDetected: model.firstDetected,
+    lastDetected: model.lastDetected,
     occurrenceCount: model.occurrenceCount,
     confidence: model.confidence,
-    createdAt: model.createdAt,
-    lastObserved: model.lastObserved,
   }
 }
 
@@ -274,6 +276,8 @@ function modelToValue(model: ValueModel): Value {
     domain: model.domain,
     importance: model.importance,
     sourceClaimId: model.sourceClaimId,
-    createdAt: model.createdAt,
+    firstExpressed: model.firstExpressed,
+    lastConfirmed: model.lastConfirmed,
+    confirmationCount: model.confirmationCount,
   }
 }

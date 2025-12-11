@@ -11,8 +11,8 @@ export default class Pattern extends Model {
   @text('patternType') patternType!: string
   @text('description') description!: string
   @text('evidenceClaimsJson') evidenceClaimsJson!: string // JSON array of claim IDs
+  @field('firstDetected') firstDetected!: number
+  @field('lastDetected') lastDetected!: number
   @field('occurrenceCount') occurrenceCount!: number
   @field('confidence') confidence!: number
-  @field('createdAt') createdAt!: number
-  @field('lastObserved') lastObserved!: number
 }
