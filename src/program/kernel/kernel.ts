@@ -11,7 +11,8 @@
  * Provides a unified API for the UI and external consumers.
  */
 
-import { createProgramStore, type ProgramStoreInstance } from '../store/programStore';
+import { createProgramStore, type StoreBackend } from '../store/storeFactory';
+import type { IProgramStore } from '../interfaces/store';
 import { QueueRunner, createQueueRunner } from '../pipeline/queueRunner';
 import { runExtractionPipeline, type PipelineInput, type PipelineOutput } from '../pipeline/extractionPipeline';
 import { GoalManager, createGoalManager } from '../goals/goalManager';
@@ -46,6 +47,8 @@ const logger = createLogger('Kernel');
 // ============================================================================
 
 export interface KernelConfig {
+  /** Store backend to use: 'watermelon' (default) or 'tinybase' (legacy) */
+  storeBackend: StoreBackend;
   /** Enable automatic observer execution */
   autoObservers: boolean;
   /** Maximum concurrent queue tasks */
@@ -63,6 +66,7 @@ export interface KernelConfig {
 }
 
 const DEFAULT_CONFIG: KernelConfig = {
+  storeBackend: 'watermelon',
   autoObservers: true,
   maxConcurrentTasks: 3,
   queuePollInterval: 1000,
@@ -122,7 +126,7 @@ export interface ReplaceResult {
 
 export class ProgramKernel {
   private config: KernelConfig;
-  private store: ProgramStoreInstance | null = null;
+  private store: IProgramStore | null = null;
   private queueRunner: QueueRunner | null = null;
   private goalManager: GoalManager | null = null;
   private dispatcher: ObserverDispatcher | null = null;
@@ -166,9 +170,9 @@ export class ProgramKernel {
     this.startTime = now();
 
     try {
-      // Initialize store
-      this.store = createProgramStore();
-      await this.store.initialize();
+      // Initialize store with configured backend
+      logger.info('Initializing store', { backend: this.config.storeBackend });
+      this.store = await createProgramStore({ backend: this.config.storeBackend });
 
       // Initialize managers
       this.goalManager = createGoalManager(this.store);
@@ -213,7 +217,7 @@ export class ProgramKernel {
       this.schedulePeriodicDecay();
 
       // Check for active session
-      this.state.activeSession = this.store.sessions.getActive();
+      this.state.activeSession = await this.store.sessions.getActive();
 
       // If there's an active session, start the queue to resume processing
       if (this.state.activeSession) {
@@ -251,7 +255,7 @@ export class ProgramKernel {
 
     // End active session if any
     if (this.state.activeSession) {
-      this.store?.sessions.endSession(this.state.activeSession.id);
+      await this.store?.sessions.endSession(this.state.activeSession.id);
     }
 
     this.state.initialized = false;
@@ -265,20 +269,20 @@ export class ProgramKernel {
   /**
    * Start a new session
    */
-  startSession(_metadata?: Record<string, unknown>): Session {
+  async startSession(_metadata?: Record<string, unknown>): Promise<Session> {
     this.ensureInitialized();
 
     // End existing session if any
     if (this.state.activeSession) {
-      this.store!.sessions.endSession(this.state.activeSession.id);
+      await this.store!.sessions.endSession(this.state.activeSession.id);
     }
 
-    const session = this.store!.sessions.create({
-      started_at: now(),
-      ended_at: null,
-      unit_count: 0,
+    const session = await this.store!.sessions.create({
+      startedAt: now(),
+      endedAt: null,
+      unitCount: 0,
       summary: null,
-      mood_trajectory_json: null,
+      moodTrajectoryJson: null,
     });
 
     this.state.activeSession = session;
