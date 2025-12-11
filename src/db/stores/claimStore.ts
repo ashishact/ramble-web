@@ -42,6 +42,7 @@ export function createClaimStore(db: Database): IClaimStore {
     },
 
     async create(data: CreateClaim): Promise<Claim> {
+      const now = Date.now()
       const model = await db.write(() =>
         collection.create((claim) => {
           claim.statement = data.statement
@@ -51,23 +52,23 @@ export function createClaimStore(db: Database): IClaimStore {
           claim.abstraction = data.abstraction
           claim.sourceType = data.sourceType
           claim.initialConfidence = data.initialConfidence
-          claim.currentConfidence = data.currentConfidence
-          claim.state = data.state
+          claim.currentConfidence = data.initialConfidence // Not in CreateClaim, use initial
+          claim.state = data.state || 'active'
           claim.emotionalValence = data.emotionalValence
           claim.emotionalIntensity = data.emotionalIntensity
           claim.stakes = data.stakes
           claim.validFrom = data.validFrom
-          claim.validUntil = data.validUntil
-          claim.createdAt = data.createdAt
-          claim.lastConfirmed = data.lastConfirmed
-          claim.confirmationCount = data.confirmationCount
+          claim.validUntil = data.validUntil ?? null
+          claim.createdAt = now
+          claim.lastConfirmed = now
+          claim.confirmationCount = data.confirmationCount || 1
           claim.extractionProgramId = data.extractionProgramId
-          claim.supersededBy = data.supersededBy
-          claim.elaborates = data.elaborates
-          claim.memoryTier = data.memoryTier
-          claim.salience = data.salience
-          claim.promotedAt = data.promotedAt
-          claim.lastAccessed = data.lastAccessed
+          claim.supersededBy = data.supersededBy ?? null
+          claim.elaborates = data.elaborates ?? null
+          claim.memoryTier = data.memoryTier || 'working'
+          claim.salience = data.salience || 0
+          claim.promotedAt = data.promotedAt ?? null
+          claim.lastAccessed = now
         })
       )
       return modelToClaim(model)
@@ -309,26 +310,26 @@ function modelToClaim(model: ClaimModel): Claim {
     statement: model.statement,
     subject: model.subject,
     claimType: model.claimType as ClaimType,
-    temporality: model.temporality,
-    abstraction: model.abstraction,
-    sourceType: model.sourceType,
+    temporality: model.temporality as Temporality,
+    abstraction: model.abstraction as Abstraction,
+    sourceType: model.sourceType as SourceType,
     initialConfidence: model.initialConfidence,
     currentConfidence: model.currentConfidence,
     state: model.state as ClaimState,
     emotionalValence: model.emotionalValence,
     emotionalIntensity: model.emotionalIntensity,
-    stakes: model.stakes,
+    stakes: model.stakes as Stakes,
     validFrom: model.validFrom,
-    validUntil: model.validUntil || null,
+    validUntil: model.validUntil ?? null,
     createdAt: model.createdAt,
     lastConfirmed: model.lastConfirmed,
     confirmationCount: model.confirmationCount,
     extractionProgramId: model.extractionProgramId,
-    supersededBy: model.supersededBy || null,
-    elaborates: model.elaborates || null,
+    supersededBy: model.supersededBy ?? null,
+    elaborates: model.elaborates ?? null,
     memoryTier: model.memoryTier as MemoryTier,
     salience: model.salience,
-    promotedAt: model.promotedAt || null,
+    promotedAt: model.promotedAt ?? null,
     lastAccessed: model.lastAccessed,
   }
 }
