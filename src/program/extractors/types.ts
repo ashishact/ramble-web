@@ -26,9 +26,9 @@ export interface PatternMatch {
   /** Surrounding context for better extraction */
   context: string;
   /** How relevant this match is (0-1) */
-  relevance_score: number;
+  relevanceScore: number;
   /** Which pattern triggered this match */
-  pattern_id: string;
+  patternId: string;
 }
 
 /**
@@ -77,8 +77,8 @@ export interface ExtractionResult {
   /** Processing metadata */
   metadata: {
     model: string;
-    tokens_used: number;
-    processing_time_ms: number;
+    tokensUsed: number;
+    processingTimeMs: number;
   };
 }
 
@@ -91,19 +91,19 @@ export interface ExtractedClaim {
   /** Subject of the claim */
   subject: string;
   /** Claim type determined by extractor */
-  claim_type: ClaimType;
+  claimType: ClaimType;
   /** Temporal nature */
   temporality: Temporality;
   /** Level of abstraction */
   abstraction: Abstraction;
   /** How claim was derived */
-  source_type: SourceType;
+  sourceType: SourceType;
   /** Confidence in the extraction (0-1) */
   confidence: number;
   /** Emotional valence (-1 to 1) */
-  emotional_valence: number;
+  emotionalValence: number;
   /** Emotional intensity (0 to 1) */
-  emotional_intensity: number;
+  emotionalIntensity: number;
   /** Importance level */
   stakes: Stakes;
   /** Optional: when claim becomes valid */
@@ -114,14 +114,14 @@ export interface ExtractedClaim {
   elaborates?: string | null;
   /** Source tracking for debugging (attached by pipeline) */
   source_tracking?: {
-    unit_id: string;
-    unit_text: string;
-    text_excerpt: string;
-    char_start: number | null;
-    char_end: number | null;
-    pattern_id: string | null;
-    llm_prompt: string | null;
-    llm_response: string | null;
+    unitId: string;
+    unitText: string;
+    textExcerpt: string;
+    charStart: number | null;
+    charEnd: number | null;
+    patternId: string | null;
+    llmPrompt: string | null;
+    llmResponse: string | null;
   } | null;
 }
 
@@ -130,9 +130,9 @@ export interface ExtractedClaim {
  */
 export interface ExtractedEntity {
   /** Canonical name of the entity */
-  canonical_name: string;
+  canonicalName: string;
   /** Type of entity */
-  entity_type: 'person' | 'organization' | 'product' | 'place' | 'project' | 'role' | 'event' | 'concept';
+  entityType: 'person' | 'organization' | 'product' | 'place' | 'project' | 'role' | 'event' | 'concept';
   /** Alternative names mentioned */
   aliases: string[];
 }
@@ -152,18 +152,18 @@ export interface ExtractorConfig {
   /** Description of what this extractor finds */
   description: string;
   /** Primary claim types this extractor produces */
-  claim_types: ClaimType[];
+  claimTypes: ClaimType[];
   /** Patterns to match in text */
   patterns: PatternDef[];
   /** LLM tier to use (small/medium/large) - Settings determine actual provider */
-  llm_tier: LLMTier;
+  llmTier: LLMTier;
   /** Model-specific options */
   llm_options?: {
     temperature?: number;
     max_tokens?: number;
   };
   /** Minimum confidence to accept a claim */
-  min_confidence: number;
+  minConfidence: number;
   /** Priority (higher = run first) */
   priority: number;
   /** Whether to run on every unit or only matching ones */
@@ -177,28 +177,28 @@ export interface ExtractorContext {
   /** The conversation unit being processed */
   unit: {
     id: string;
-    raw_text: string;
-    sanitized_text: string;
+    rawText: string;
+    sanitizedText: string;
     source: 'speech' | 'text';
-    preceding_context_summary: string;
+    precedingContextSummary: string;
   };
   /** Pattern matches found */
   matches: PatternMatch[];
   /** Recent claims for context */
-  recent_claims: Array<{
+  recentClaims: Array<{
     statement: string;
-    claim_type: ClaimType;
+    claimType: ClaimType;
     subject: string;
   }>;
   /** Active thought chains */
-  active_chains: Array<{
+  activeChains: Array<{
     id: string;
     topic: string;
   }>;
   /** Known entities */
-  known_entities: Array<{
-    canonical_name: string;
-    entity_type: string;
+  knownEntities: Array<{
+    canonicalName: string;
+    entityType: string;
   }>;
 }
 
