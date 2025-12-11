@@ -57,6 +57,7 @@ export class GroqWhisperProvider implements ISTTProvider {
   private fullTranscript = '';
   private pendingChunks: AudioChunk[] = [];
   private isProcessing = false;
+  private waitingForFinalBlob = false; // True when stopRecording called, waiting for onstop
 
   constructor(config: GroqWhisperConfig) {
     if (!config.provider) {
@@ -88,15 +89,34 @@ export class GroqWhisperProvider implements ISTTProvider {
     });
   }
 
+  /**
+   * Ensure microphone stream is open (called once, kept open)
+   */
+  private async ensureMicrophoneStream(): Promise<void> {
+    if (this.stream) return; // Already have a stream
+
+    console.log('[GroqWhisper] Opening microphone stream...');
+    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    console.log('[GroqWhisper] Microphone stream opened');
+  }
+
   async startRecording(): Promise<void> {
-    if (!this.connected || this.recording) {
-      throw new Error('Cannot start recording: not connected or already recording');
+    if (!this.connected) {
+      throw new Error('Cannot start recording: not connected');
+    }
+    if (this.recording) {
+      console.log('[GroqWhisper] Already recording, ignoring startRecording');
+      return;
     }
 
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Ensure microphone is open (fast if already open)
+      await this.ensureMicrophoneStream();
+
       this.fullTranscript = '';
       this.pendingChunks = [];
+      this.transcriptResolvers = [];
+      this.waitingForFinalBlob = false;
 
       // Initialize based on chunking strategy
       switch (this.chunkingStrategy) {
@@ -124,10 +144,16 @@ export class GroqWhisperProvider implements ISTTProvider {
     }
   }
 
-  private stopResolvers: Array<() => void> = [];
+  // Resolvers waiting for final transcript
+  private transcriptResolvers: Array<(transcript: string) => void> = [];
 
   stopRecording(): void {
-    console.log('[GroqWhisper] stopRecording called, recording:', this.recording);
+    if (!this.recording) {
+      console.log('[GroqWhisper] Not recording, ignoring stopRecording');
+      return;
+    }
+
+    console.log('[GroqWhisper] stopRecording called');
 
     // For VAD: send any remaining accumulated chunks before stopping
     if (this.chunkingStrategy === 'vad' && this.vadAudioChunks.length > 0) {
@@ -135,17 +161,21 @@ export class GroqWhisperProvider implements ISTTProvider {
       this.processVADChunks();
     }
 
+    // For simple mode: mark that we're waiting for the final blob from onstop
+    if (this.chunkingStrategy === 'simple' && this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.waitingForFinalBlob = true;
+      console.log('[GroqWhisper] Waiting for final audio blob...');
+    }
+
+    // Stop MediaRecorder but DON'T close the stream
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       this.mediaRecorder.stop();
     }
 
     this.recording = false;
 
-    // Cleanup strategy-specific resources
+    // Cleanup strategy-specific resources (VAD state, etc.) but NOT the stream
     this.cleanupChunkingResources();
-
-    // Also cleanup audio stream immediately so next recording can start fresh
-    this.cleanupAudio();
 
     this.callbacks.onStatusChange?.({
       connected: this.connected,
@@ -153,51 +183,54 @@ export class GroqWhisperProvider implements ISTTProvider {
       provider: this.providerType,
     });
 
-    console.log('[GroqWhisper] stopRecording complete, ready for next recording');
+    console.log('[GroqWhisper] stopRecording complete, microphone stream kept open');
   }
 
   /**
-   * Wait for all pending transcriptions to complete
-   * Returns the final accumulated transcript
+   * Notify any waiting resolvers that transcript is ready
+   */
+  private notifyTranscriptReady(): void {
+    const resolvers = this.transcriptResolvers;
+    this.transcriptResolvers = [];
+    for (const resolve of resolvers) {
+      resolve(this.fullTranscript);
+    }
+  }
+
+  /**
+   * Wait for final transcript after stopping recording
+   * Returns immediately if transcript is already ready, otherwise waits
    */
   async waitForFinalTranscript(timeoutMs = 10000): Promise<string> {
-    // If nothing is processing and no pending chunks, return immediately
-    if (!this.isProcessing && this.pendingChunks.length === 0) {
-      // Small delay to allow any in-flight transcription to complete
-      await new Promise(resolve => setTimeout(resolve, 500));
+    console.log('[GroqWhisper] waitForFinalTranscript called, state:', {
+      waitingForFinalBlob: this.waitingForFinalBlob,
+      isProcessing: this.isProcessing,
+      pendingChunks: this.pendingChunks.length,
+    });
+
+    // If nothing is processing AND not waiting for blob, return immediately
+    if (!this.waitingForFinalBlob && !this.isProcessing && this.pendingChunks.length === 0) {
+      console.log('[GroqWhisper] Returning immediately with transcript:', this.fullTranscript.slice(0, 50));
       return this.fullTranscript;
     }
 
     return new Promise((resolve) => {
       const timeoutId = setTimeout(() => {
-        // Remove from resolvers
-        const idx = this.stopResolvers.indexOf(resolveHandler);
-        if (idx > -1) this.stopResolvers.splice(idx, 1);
-        resolve(this.fullTranscript); // Return what we have on timeout
+        // Remove from resolvers and return what we have
+        const idx = this.transcriptResolvers.indexOf(resolverWithCleanup);
+        if (idx > -1) this.transcriptResolvers.splice(idx, 1);
+        console.log('[GroqWhisper] waitForFinalTranscript timeout, returning:', this.fullTranscript.slice(0, 50));
+        resolve(this.fullTranscript);
       }, timeoutMs);
 
-      const resolveHandler = () => {
+      // Resolver that clears timeout
+      const resolverWithCleanup = (transcript: string) => {
         clearTimeout(timeoutId);
-        resolve(this.fullTranscript);
+        console.log('[GroqWhisper] waitForFinalTranscript resolved with:', transcript.slice(0, 50));
+        resolve(transcript);
       };
 
-      this.stopResolvers.push(resolveHandler);
-
-      // Check periodically if processing is done
-      const checkInterval = setInterval(() => {
-        if (!this.isProcessing && this.pendingChunks.length === 0) {
-          clearInterval(checkInterval);
-          clearTimeout(timeoutId);
-          // Small additional delay for any callbacks to fire
-          setTimeout(() => {
-            const idx = this.stopResolvers.indexOf(resolveHandler);
-            if (idx > -1) {
-              this.stopResolvers.splice(idx, 1);
-              resolveHandler();
-            }
-          }, 300);
-        }
-      }, 100);
+      this.transcriptResolvers.push(resolverWithCleanup);
     });
   }
 
@@ -237,10 +270,14 @@ export class GroqWhisperProvider implements ISTTProvider {
     };
 
     this.mediaRecorder.onstop = async () => {
+      // Clear the waiting flag - we have the blob now
+      this.waitingForFinalBlob = false;
+      console.log('[GroqWhisper] Got final audio blob, transcribing...');
+
       const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
       await this.transcribeAudio(blob);
       this.audioChunks = [];
-      this.cleanupAudio();
+      // Don't cleanup audio - keep mic stream open for faster next recording
     };
 
     this.mediaRecorder.start();
@@ -367,6 +404,8 @@ export class GroqWhisperProvider implements ISTTProvider {
   private async processTranscriptionQueue(): Promise<void> {
     if (this.pendingChunks.length === 0) {
       this.isProcessing = false;
+      // Notify any waiting resolvers that queue is empty
+      this.notifyTranscriptReady();
       return;
     }
 
@@ -425,12 +464,22 @@ export class GroqWhisperProvider implements ISTTProvider {
           timestamp: Date.now(),
         });
       }
+
+      // Check if this was the last pending chunk and notify resolvers
+      if (this.pendingChunks.length === 0 && !this.isProcessing) {
+        this.notifyTranscriptReady();
+      }
     } catch (err) {
       this.callbacks.onError?.({
         code: 'TRANSCRIPTION_ERROR',
         message: err instanceof Error ? err.message : 'Failed to transcribe audio',
         provider: this.providerType,
       });
+
+      // Still notify on error so waiters don't hang
+      if (this.pendingChunks.length === 0) {
+        this.notifyTranscriptReady();
+      }
     }
   }
 
