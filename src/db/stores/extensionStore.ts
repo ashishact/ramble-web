@@ -31,6 +31,7 @@ export function createExtensionStore(db: Database): IExtensionStore {
     },
 
     async create(data: CreateExtension): Promise<Extension> {
+      const now = Date.now()
       const model = await db.write(() =>
         collection.create((extension) => {
           extension.extensionType = data.extensionType
@@ -39,10 +40,12 @@ export function createExtensionStore(db: Database): IExtensionStore {
           extension.configJson = data.configJson
           extension.systemPrompt = data.systemPrompt
           extension.userPromptTemplate = data.userPromptTemplate
-          extension.llmTier = data.llmTier
-          extension.status = data.status
-          extension.createdAt = Date.now()
-          extension.lastUsed = Date.now()
+          extension.variablesSchemaJson = data.variablesSchemaJson
+          extension.llmTier = data.llmTier ?? 'small'
+          extension.status = data.status ?? 'draft'
+          extension.version = data.version ?? 1
+          extension.createdAt = now
+          extension.verifiedAt = data.verifiedAt ?? undefined
         })
       )
       return modelToExtension(model)
@@ -57,9 +60,11 @@ export function createExtensionStore(db: Database): IExtensionStore {
           if (data.configJson !== undefined) extension.configJson = data.configJson
           if (data.systemPrompt !== undefined) extension.systemPrompt = data.systemPrompt
           if (data.userPromptTemplate !== undefined) extension.userPromptTemplate = data.userPromptTemplate
+          if (data.variablesSchemaJson !== undefined) extension.variablesSchemaJson = data.variablesSchemaJson
           if (data.llmTier !== undefined) extension.llmTier = data.llmTier
           if (data.status !== undefined) extension.status = data.status
-          if (Date.now() !== undefined) extension.lastUsed = Date.now()
+          if (data.version !== undefined) extension.version = data.version
+          if (data.verifiedAt !== undefined) extension.verifiedAt = data.verifiedAt ?? undefined
         })
         return modelToExtension(updated)
       } catch {
@@ -124,11 +129,13 @@ function modelToExtension(model: ExtensionModel): Extension {
     name: model.name,
     description: model.description,
     configJson: model.configJson,
-    systemPrompt: model.systemPrompt || null,
-    userPromptTemplate: model.userPromptTemplate || null,
-    llmTier: model.llmTier || null,
+    systemPrompt: model.systemPrompt,
+    userPromptTemplate: model.userPromptTemplate,
+    variablesSchemaJson: model.variablesSchemaJson,
+    llmTier: model.llmTier as 'small' | 'medium' | 'large',
     status: model.status as ExtensionStatus,
+    version: model.version,
     createdAt: model.createdAt,
-    lastUsed: model.lastUsed || null,
+    verifiedAt: model.verifiedAt ?? null,
   }
 }

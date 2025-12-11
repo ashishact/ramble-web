@@ -83,14 +83,14 @@ export const MilestoneStatusSchema = z.enum(['pending', 'achieved', 'skipped']);
 export const GoalSchema = z.object({
   id: z.string(),
   statement: z.string(),
-  goal_type: GoalTypeSchema,
+  goalType: GoalTypeSchema,
   timeframe: GoalTimeframeSchema,
   status: GoalStatusSchema,
   parentGoalId: z.string().nullable(),
   createdAt: z.number(),
   lastReferenced: z.number(),
   priority: z.number().int().min(1).max(10),
-  progress_type: ProgressTypeSchema,
+  progressType: ProgressTypeSchema,
   progressValue: z.number().min(0).max(100),
   progressIndicatorsJson: z.string(), // JSON array
   blockersJson: z.string(), // JSON array of Blocker objects
@@ -139,7 +139,7 @@ export const MilestoneSchema = z.object({
 export const BlockerSchema = z.object({
   id: z.string(),
   description: z.string(),
-  blocker_type: BlockerTypeSchema,
+  blockerType: BlockerTypeSchema,
   severity: BlockerSeveritySchema,
   status: BlockerStatusSchema,
   resolutionPath: z.string().nullable(),

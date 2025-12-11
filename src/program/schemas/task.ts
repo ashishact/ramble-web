@@ -95,34 +95,34 @@ export const TaskCheckpointSchema = z.object({
 export const TaskSchema = z.object({
   id: z.string(),
   task_type: TaskTypeSchema,
-  payload_json: z.string(), // JSON serialized payload
+  payloadJson: z.string(), // JSON serialized payload
   status: TaskStatusSchema,
   priority: TaskPrioritySchema,
   priority_value: z.number().int(), // Numeric priority for sorting
 
   // Retry/backoff tracking
   attempts: z.number().int().nonnegative(),
-  max_attempts: z.number().int().positive(),
-  last_error: z.string().nullable(),
-  last_error_at: z.number().nullable(),
+  maxAttempts: z.number().int().positive(),
+  lastError: z.string().nullable(),
+  lastErrorAt: z.number().nullable(),
   next_retry_at: z.number().nullable(), // When to retry (with backoff)
-  backoff_config_json: z.string(), // JSON BackoffConfig
+  backoffConfigJson: z.string(), // JSON BackoffConfig
 
   // Checkpoint for resumability
   checkpoint_json: z.string().nullable(), // JSON TaskCheckpoint
 
   // Timestamps
   createdAt: z.number(),
-  started_at: z.number().nullable(),
-  completed_at: z.number().nullable(),
+  startedAt: z.number().nullable(),
+  completedAt: z.number().nullable(),
 
   // Scheduling
   execute_at: z.number(), // Scheduled execution time (now for immediate)
 
   // Grouping/dependencies
-  group_id: z.string().nullable(), // Group related tasks
-  depends_on: z.string().nullable(), // Task ID this depends on
-  session_id: z.string().nullable(), // Associated session
+  groupId: z.string().nullable(), // Group related tasks
+  dependsOn: z.string().nullable(), // Task ID this depends on
+  sessionId: z.string().nullable(), // Associated session
 });
 
 /**
@@ -130,14 +130,14 @@ export const TaskSchema = z.object({
  */
 export const CreateTaskSchema = z.object({
   task_type: TaskTypeSchema,
-  payload_json: z.string(),
+  payloadJson: z.string(),
   priority: TaskPrioritySchema.default('normal'),
-  max_attempts: z.number().int().positive().default(5),
-  backoff_config_json: z.string().optional(),
+  maxAttempts: z.number().int().positive().default(5),
+  backoffConfigJson: z.string().optional(),
   execute_at: z.number().optional(), // Defaults to now
-  group_id: z.string().nullable().optional(),
-  depends_on: z.string().nullable().optional(),
-  session_id: z.string().nullable().optional(),
+  groupId: z.string().nullable().optional(),
+  dependsOn: z.string().nullable().optional(),
+  sessionId: z.string().nullable().optional(),
 });
 
 /**
@@ -263,7 +263,7 @@ export const RunExtractorPayloadSchema = z.object({
       text: z.string(),
       position: z.object({ start: z.number(), end: z.number() }),
       context: z.string(),
-      relevance_score: z.number(),
+      relevanceScore: z.number(),
     })
   ),
 });
@@ -345,7 +345,7 @@ export function shouldRetryTask(task: z.infer<typeof TaskSchema>): boolean {
   }
 
   // Check if we've exceeded max attempts
-  if (task.attempts >= task.max_attempts) {
+  if (task.attempts >= task.maxAttempts) {
     return false;
   }
 
@@ -365,9 +365,9 @@ export function isStaleTask(task: z.infer<typeof TaskSchema>, staleThresholdMs: 
     return false;
   }
 
-  if (!task.started_at) {
+  if (!task.startedAt) {
     return false;
   }
 
-  return Date.now() - task.started_at > staleThresholdMs;
+  return Date.now() - task.startedAt > staleThresholdMs;
 }
