@@ -137,6 +137,16 @@ export async function runPrimitivePipeline(
       store
     )
 
+    // Step 6b: Save extraction traces for debugging
+    await saveExtractionTraces({
+      propositions: storedResults.propositions,
+      stances: storedResults.stances,
+      spans,
+      unit,
+      metadata: extractionResult.metadata,
+      store,
+    })
+
     // Step 7: Resolve entity mentions to canonical entities (Layer 2)
     const entityResolution = await resolveEntities({
       mentions: extractionResult.entityMentions,
@@ -148,7 +158,9 @@ export async function runPrimitivePipeline(
     const claims = await deriveClaims(
       storedResults.propositions,
       storedResults.stances,
+      spans,
       unit,
+      extractionResult.metadata,
       store
     )
 
@@ -385,6 +397,72 @@ async function storeResults(
 // ============================================================================
 
 /**
+ * Save extraction traces for debugging
+ *
+ * Creates trace records that capture:
+ * - Which spans matched which propositions
+ * - LLM prompt/response for the extraction
+ * - Processing time and model used
+ */
+async function saveExtractionTraces(input: {
+  propositions: Proposition[]
+  stances: Stance[]
+  spans: Span[]
+  unit: ConversationUnit
+  metadata: {
+    llmPrompt: string
+    llmResponse: string
+    model: string
+    tokensUsed: number
+    processingTimeMs: number
+  }
+  store: IProgramStore
+}): Promise<void> {
+  const { propositions, spans, unit, metadata, store } = input
+
+  try {
+    // Create a trace for each proposition
+    for (const proposition of propositions) {
+      // Find spans associated with this proposition
+      const propSpans = spans.filter(s =>
+        proposition.spanIds?.includes(s.id)
+      )
+
+      const firstSpan = propSpans[0]
+
+      await store.extractionTraces.create({
+        targetType: 'proposition',
+        targetId: proposition.id,
+        conversationId: unit.id,
+        inputText: unit.rawText,
+        spanId: firstSpan?.id || null,
+        charStart: firstSpan?.charStart ?? null,
+        charEnd: firstSpan?.charEnd ?? null,
+        matchedPattern: firstSpan?.patternId || null,
+        matchedText: firstSpan?.textExcerpt || null,
+        llmPrompt: metadata.llmPrompt,
+        llmResponse: metadata.llmResponse,
+        llmModel: metadata.model,
+        llmTokensUsed: metadata.tokensUsed,
+        processingTimeMs: metadata.processingTimeMs,
+        extractorId: 'primitive-extractor',
+        error: null,
+      })
+    }
+
+    logger.debug('Saved extraction traces', {
+      count: propositions.length,
+      conversationId: unit.id,
+    })
+  } catch (error) {
+    // Don't fail the pipeline for trace errors
+    logger.warn('Failed to save extraction traces', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })
+  }
+}
+
+/**
  * Derive and store claims from propositions and stances
  *
  * Each Proposition + Stance pair produces one Claim.
@@ -393,7 +471,15 @@ async function storeResults(
 async function deriveClaims(
   propositions: Proposition[],
   stances: Stance[],
+  spans: Span[],
   unit: ConversationUnit,
+  metadata: {
+    llmPrompt: string
+    llmResponse: string
+    model: string
+    tokensUsed: number
+    processingTimeMs: number
+  },
   store: IProgramStore
 ): Promise<Claim[]> {
   const claims: Claim[] = []
@@ -417,6 +503,33 @@ async function deriveClaims(
 
     // Link claim to conversation unit
     await store.claims.addSource({ claimId: claim.id, unitId: unit.id })
+
+    // Save extraction trace for this claim (links back to proposition's extraction)
+    const propSpans = spans.filter(s => proposition.spanIds?.includes(s.id))
+    const firstSpan = propSpans[0]
+
+    try {
+      await store.extractionTraces.create({
+        targetType: 'claim',
+        targetId: claim.id,
+        conversationId: unit.id,
+        inputText: unit.rawText,
+        spanId: firstSpan?.id || null,
+        charStart: firstSpan?.charStart ?? null,
+        charEnd: firstSpan?.charEnd ?? null,
+        matchedPattern: firstSpan?.patternId || null,
+        matchedText: firstSpan?.textExcerpt || null,
+        llmPrompt: metadata.llmPrompt,
+        llmResponse: metadata.llmResponse,
+        llmModel: metadata.model,
+        llmTokensUsed: metadata.tokensUsed,
+        processingTimeMs: metadata.processingTimeMs,
+        extractorId: 'claim-deriver',
+        error: null,
+      })
+    } catch (err) {
+      logger.warn('Failed to save claim trace', { claimId: claim.id })
+    }
 
     logger.debug('Derived claim', {
       claimId: claim.id,

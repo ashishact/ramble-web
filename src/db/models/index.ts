@@ -52,3 +52,8 @@ export { default as Extension } from './Extension'
 export { default as SynthesisCache } from './SynthesisCache'
 export { default as Correction } from './Correction'
 export { default as Task } from './Task'
+
+// ============================================================================
+// DEBUG / TRACING
+// ============================================================================
+export { default as ExtractionTrace } from './ExtractionTrace'

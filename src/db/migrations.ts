@@ -20,11 +20,37 @@
  * ============================================================================
  */
 
-import { schemaMigrations } from '@nozbe/watermelondb/Schema/migrations'
+import { schemaMigrations, createTable } from '@nozbe/watermelondb/Schema/migrations'
 
 export const migrations = schemaMigrations({
   migrations: [
-    // Fresh start - all tables defined in schema.ts v1
-    // Future migrations go here
+    // v2: Add extraction_traces table for debug/tracing
+    {
+      toVersion: 2,
+      steps: [
+        createTable({
+          name: 'extraction_traces',
+          columns: [
+            { name: 'targetType', type: 'string', isIndexed: true },
+            { name: 'targetId', type: 'string', isIndexed: true },
+            { name: 'conversationId', type: 'string', isIndexed: true },
+            { name: 'inputText', type: 'string' },
+            { name: 'spanId', type: 'string', isOptional: true },
+            { name: 'charStart', type: 'number', isOptional: true },
+            { name: 'charEnd', type: 'number', isOptional: true },
+            { name: 'matchedPattern', type: 'string', isOptional: true },
+            { name: 'matchedText', type: 'string', isOptional: true },
+            { name: 'llmPrompt', type: 'string', isOptional: true },
+            { name: 'llmResponse', type: 'string', isOptional: true },
+            { name: 'llmModel', type: 'string', isOptional: true },
+            { name: 'llmTokensUsed', type: 'number', isOptional: true },
+            { name: 'processingTimeMs', type: 'number' },
+            { name: 'extractorId', type: 'string', isOptional: true },
+            { name: 'error', type: 'string', isOptional: true },
+            { name: 'createdAt', type: 'number', isIndexed: true },
+          ],
+        }),
+      ],
+    },
   ],
 })

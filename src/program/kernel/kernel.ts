@@ -15,7 +15,7 @@ import { createProgramStore, type StoreBackend } from '../store/storeFactory'
 import type { IProgramStore } from '../interfaces/store'
 import { QueueRunner, createQueueRunner } from '../pipeline/queueRunner'
 import { runPrimitivePipeline, type PrimitivePipelineOutput } from '../pipeline/primitivePipeline'
-import type { Proposition, Stance } from '../schemas/primitives'
+import type { Proposition, Stance, Relation, EntityMention, Span } from '../schemas/primitives'
 import { GoalManager, createGoalManager } from '../goals/goalManager'
 import { ObserverDispatcher, createStandardDispatcher, type DispatcherStats } from '../observers'
 import { CorrectionService, createCorrectionService, type ProcessTextResult } from '../corrections'
@@ -350,6 +350,21 @@ export class ProgramKernel {
   async getStances(): Promise<Stance[]> {
     this.ensureInitialized()
     return this.store!.stances.getRecent(100)
+  }
+
+  async getRelations(): Promise<Relation[]> {
+    this.ensureInitialized()
+    return this.queryService!.getRelations()
+  }
+
+  async getEntityMentions(): Promise<EntityMention[]> {
+    this.ensureInitialized()
+    return this.queryService!.getEntityMentions()
+  }
+
+  async getSpans(): Promise<Span[]> {
+    this.ensureInitialized()
+    return this.queryService!.getSpans()
   }
 
   async getGoals(): Promise<Goal[]> {

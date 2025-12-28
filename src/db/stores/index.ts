@@ -47,3 +47,9 @@ export { createExtensionStore } from './extensionStore'
 export { createSynthesisCacheStore } from './synthesisCacheStore'
 export { createCorrectionStore } from './correctionStore'
 export { createTaskStore } from './taskStore'
+
+// ============================================================================
+// Debug / Tracing
+// ============================================================================
+export { createExtractionTraceStore } from './extractionTraceStore'
+export type { IExtractionTraceStore, ExtractionTraceRecord, CreateExtractionTrace } from './extractionTraceStore'

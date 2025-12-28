@@ -58,4 +58,7 @@ export const collections = {
   extensions: database.get('extensions'),
   synthesisCache: database.get('synthesis_cache'),
   corrections: database.get('corrections'),
+
+  // Debug / Tracing
+  extractionTraces: database.get('extraction_traces'),
 }

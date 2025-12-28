@@ -24,7 +24,7 @@ import {
   type ExtractionProgramRecord,
   type DispatcherStats,
 } from '../index';
-import type { Proposition, Stance } from '../schemas/primitives';
+import type { Proposition, Stance, Relation, EntityMention, Span } from '../schemas/primitives';
 import type { SearchResult, ReplaceResult } from '../kernel';
 
 // ============================================================================
@@ -61,6 +61,15 @@ export interface UseProgramReturn {
 
   /** Layer 1: Stances (how propositions are held) */
   stances: Stance[];
+
+  /** Layer 1: Relations (how propositions connect) */
+  relations: Relation[];
+
+  /** Layer 1: Entity mentions (raw text references) */
+  entityMentions: EntityMention[];
+
+  /** Layer 1: Spans (pattern matches in text) */
+  spans: Span[];
 
   /** Detected patterns */
   patterns: Pattern[];
@@ -168,6 +177,9 @@ export function useProgram(): UseProgramReturn {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [propositions, setPropositions] = useState<Proposition[]>([]);
   const [stances, setStances] = useState<Stance[]>([]);
+  const [relations, setRelations] = useState<Relation[]>([]);
+  const [entityMentions, setEntityMentions] = useState<EntityMention[]>([]);
+  const [spans, setSpans] = useState<Span[]>([]);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [contradictions, setContradictions] = useState<Contradiction[]>([]);
   const [conversations, setConversations] = useState<ConversationUnit[]>([]);
@@ -241,6 +253,9 @@ export function useProgram(): UseProgramReturn {
       setEntities(await kernel.getEntities());
       setPropositions(await kernel.getPropositions());
       setStances(await kernel.getStances());
+      setRelations(await kernel.getRelations());
+      setEntityMentions(await kernel.getEntityMentions());
+      setSpans(await kernel.getSpans());
       setPatterns(await kernel.getPatterns());
       setContradictions(await kernel.getContradictions());
       setConversations(await kernel.getConversations());
@@ -399,6 +414,9 @@ export function useProgram(): UseProgramReturn {
     entities,
     propositions,
     stances,
+    relations,
+    entityMentions,
+    spans,
     patterns,
     contradictions,
     conversations,

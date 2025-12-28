@@ -16,6 +16,13 @@ import type {
   ExtractionProgramRecord,
   ObserverProgram,
 } from '../types'
+import type {
+  Proposition,
+  Stance,
+  Relation,
+  EntityMention,
+  Span,
+} from '../schemas/primitives'
 
 export class QueryService {
   private store: IProgramStore
@@ -62,6 +69,30 @@ export class QueryService {
 
   async getGoalTree() {
     return this.goalManager.buildGoalTree()
+  }
+
+  // ==========================================================================
+  // Layer 1: Primitives
+  // ==========================================================================
+
+  async getPropositions(): Promise<Proposition[]> {
+    return this.store.propositions.getRecent(100)
+  }
+
+  async getStances(): Promise<Stance[]> {
+    return this.store.stances.getRecent(100)
+  }
+
+  async getRelations(): Promise<Relation[]> {
+    return this.store.relations.getAll()
+  }
+
+  async getEntityMentions(): Promise<EntityMention[]> {
+    return this.store.entityMentions.getRecent(100)
+  }
+
+  async getSpans(): Promise<Span[]> {
+    return this.store.spans.getAll()
   }
 
   // ==========================================================================

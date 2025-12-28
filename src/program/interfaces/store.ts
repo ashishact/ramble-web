@@ -334,6 +334,61 @@ export interface ITaskStore extends IBaseStore<Task, CreateTask, UpdateTask> {
 }
 
 // ============================================================================
+// DEBUG / TRACING
+// ============================================================================
+
+export interface ExtractionTraceRecord {
+  id: string;
+  targetType: string;
+  targetId: string;
+  conversationId: string;
+  inputText: string;
+  spanId: string | null;
+  charStart: number | null;
+  charEnd: number | null;
+  matchedPattern: string | null;
+  matchedText: string | null;
+  llmPrompt: string | null;
+  llmResponse: string | null;
+  llmModel: string | null;
+  llmTokensUsed: number | null;
+  processingTimeMs: number;
+  extractorId: string | null;
+  error: string | null;
+  createdAt: number;
+}
+
+export interface CreateExtractionTrace {
+  targetType: string;
+  targetId: string;
+  conversationId: string;
+  inputText: string;
+  spanId?: string | null;
+  charStart?: number | null;
+  charEnd?: number | null;
+  matchedPattern?: string | null;
+  matchedText?: string | null;
+  llmPrompt?: string | null;
+  llmResponse?: string | null;
+  llmModel?: string | null;
+  llmTokensUsed?: number | null;
+  processingTimeMs: number;
+  extractorId?: string | null;
+  error?: string | null;
+}
+
+export interface IExtractionTraceStore {
+  getById(id: string): Promise<ExtractionTraceRecord | null>;
+  getByTargetId(targetId: string): Promise<ExtractionTraceRecord[]>;
+  getByConversation(conversationId: string): Promise<ExtractionTraceRecord[]>;
+  getByType(targetType: string): Promise<ExtractionTraceRecord[]>;
+  getRecent(limit: number): Promise<ExtractionTraceRecord[]>;
+  create(data: CreateExtractionTrace): Promise<ExtractionTraceRecord>;
+  delete(id: string): Promise<boolean>;
+  deleteByConversation(conversationId: string): Promise<number>;
+}
+
+// ============================================================================
 // Combined Store Interface
 // ============================================================================
 
@@ -369,6 +424,9 @@ export interface IProgramStore {
   synthesisCache: ISynthesisCacheStore;
   corrections: ICorrectionStore;
   tasks: ITaskStore;
+
+  // Debug / Tracing
+  extractionTraces: IExtractionTraceStore;
 
   /**
    * Initialize the store (load from IndexedDB)

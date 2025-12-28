@@ -37,6 +37,8 @@ import {
   createSynthesisCacheStore,
   createCorrectionStore,
   createTaskStore,
+  // Debug / Tracing
+  createExtractionTraceStore,
 } from './index'
 
 export class WatermelonProgramStore implements IProgramStore {
@@ -71,6 +73,9 @@ export class WatermelonProgramStore implements IProgramStore {
   public readonly corrections
   public readonly tasks
 
+  // Debug / Tracing
+  public readonly extractionTraces
+
   constructor(db: Database = database) {
     // Layer 0: Stream
     this.sessions = createSessionStore(db)
@@ -100,6 +105,9 @@ export class WatermelonProgramStore implements IProgramStore {
     this.synthesisCache = createSynthesisCacheStore(db)
     this.corrections = createCorrectionStore(db)
     this.tasks = createTaskStore(db)
+
+    // Debug / Tracing
+    this.extractionTraces = createExtractionTraceStore(db)
   }
 
   async initialize(): Promise<void> {

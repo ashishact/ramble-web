@@ -4,13 +4,13 @@
  * Enhanced UI with tabbed panels, detailed views, and better usability.
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProgram } from '../program/hooks';
-import { settingsHelpers } from '../stores/settingsStore';
-import { useSTT } from '../services/stt/useSTT';
-import type { STTConfig } from '../services/stt/types';
+import { VoiceRecorder } from './VoiceRecorder';
 import type { Claim, Entity, Goal, Correction } from '../program';
+import type { ExtractionTraceRecord } from '../db/stores/extractionTraceStore';
+import { programStore } from '../program/store';
 
 // ============================================================================
 // Live Relative Time Component
@@ -92,7 +92,12 @@ const ENTITY_TYPE_ICONS: Record<string, string> = {
 // Sub-Components
 // ============================================================================
 
-function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
+function ClaimCard({ claim, isLatest, onViewTrace, loadingTrace }: {
+  claim: Claim;
+  isLatest: boolean;
+  onViewTrace?: (id: string) => void;
+  loadingTrace?: string | null;
+}) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -116,11 +121,27 @@ function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
           </div>
         </div>
         <div className="text-right flex flex-col items-end gap-1">
-          {isLatest ? (
-            <LiveRelativeTime timestamp={claim.createdAt} />
-          ) : (
-            <span className="text-xs opacity-50">{formatRelativeTime(claim.createdAt)}</span>
-          )}
+          <div className="flex items-center gap-1">
+            {onViewTrace && (
+              <button
+                className="btn btn-ghost btn-xs btn-square"
+                onClick={(e) => { e.stopPropagation(); onViewTrace(claim.id); }}
+                disabled={loadingTrace === claim.id}
+                title="View extraction debug"
+              >
+                {loadingTrace === claim.id ? (
+                  <span className="loading loading-spinner loading-xs"></span>
+                ) : (
+                  '🔍'
+                )}
+              </button>
+            )}
+            {isLatest ? (
+              <LiveRelativeTime timestamp={claim.createdAt} />
+            ) : (
+              <span className="text-xs opacity-50">{formatRelativeTime(claim.createdAt)}</span>
+            )}
+          </div>
           <span className="text-xs opacity-50">{Math.round(claim.currentConfidence * 100)}%</span>
         </div>
       </div>
@@ -255,10 +276,159 @@ function CorrectionCard({ correction, onRemove }: { correction: Correction; onRe
 }
 
 // ============================================================================
+// Extraction Trace Debug Panel
+// ============================================================================
+
+function TraceDebugPanel({ trace, onClose }: { trace: ExtractionTraceRecord; onClose: () => void }) {
+  const [activeSection, setActiveSection] = useState<'span' | 'prompt' | 'response'>('span');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-base-100 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-base-300">
+          <div className="flex items-center gap-3">
+            <span className="text-lg font-bold">🔍 Extraction Debug</span>
+            <span className="badge badge-outline">{trace.targetType}</span>
+            <span className="text-xs font-mono opacity-50">{trace.targetId.slice(0, 12)}...</span>
+          </div>
+          <button className="btn btn-ghost btn-sm btn-square" onClick={onClose}>✕</button>
+        </div>
+
+        {/* Tabs */}
+        <div className="tabs tabs-boxed bg-base-200 m-2 mb-0">
+          <button
+            className={`tab ${activeSection === 'span' ? 'tab-active' : ''}`}
+            onClick={() => setActiveSection('span')}
+          >
+            Span & Pattern
+          </button>
+          <button
+            className={`tab ${activeSection === 'prompt' ? 'tab-active' : ''}`}
+            onClick={() => setActiveSection('prompt')}
+          >
+            LLM Prompt
+          </button>
+          <button
+            className={`tab ${activeSection === 'response' ? 'tab-active' : ''}`}
+            onClick={() => setActiveSection('response')}
+          >
+            LLM Response
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {/* Span & Pattern Tab */}
+          {activeSection === 'span' && (
+            <div className="space-y-4">
+              {/* Input Text */}
+              <div>
+                <h4 className="text-sm font-bold mb-2 opacity-70">Input Text</h4>
+                <div className="bg-base-200 p-3 rounded-lg text-sm font-mono whitespace-pre-wrap">
+                  {trace.inputText}
+                </div>
+              </div>
+
+              {/* Matched Span */}
+              {(trace.matchedText || trace.matchedPattern) && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="text-sm font-bold mb-2 opacity-70">Matched Pattern</h4>
+                    <div className="bg-info/10 border border-info/30 p-3 rounded-lg text-sm font-mono">
+                      {trace.matchedPattern || 'No pattern'}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold mb-2 opacity-70">Matched Text</h4>
+                    <div className="bg-success/10 border border-success/30 p-3 rounded-lg text-sm">
+                      {trace.matchedText || 'No match'}
+                      {trace.charStart !== null && trace.charEnd !== null && (
+                        <div className="text-xs opacity-50 mt-1">
+                          chars {trace.charStart} - {trace.charEnd}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Metadata */}
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="bg-base-200 p-3 rounded-lg">
+                  <div className="text-xs opacity-50 mb-1">Processing Time</div>
+                  <div className="font-bold">{trace.processingTimeMs}ms</div>
+                </div>
+                <div className="bg-base-200 p-3 rounded-lg">
+                  <div className="text-xs opacity-50 mb-1">LLM Model</div>
+                  <div className="font-bold font-mono text-xs">{trace.llmModel || 'N/A'}</div>
+                </div>
+                <div className="bg-base-200 p-3 rounded-lg">
+                  <div className="text-xs opacity-50 mb-1">Tokens Used</div>
+                  <div className="font-bold">{trace.llmTokensUsed || 'N/A'}</div>
+                </div>
+              </div>
+
+              {trace.error && (
+                <div className="bg-error/10 border border-error/30 p-3 rounded-lg">
+                  <h4 className="text-sm font-bold text-error mb-2">Error</h4>
+                  <pre className="text-xs font-mono whitespace-pre-wrap text-error">{trace.error}</pre>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* LLM Prompt Tab */}
+          {activeSection === 'prompt' && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-bold opacity-70">Full LLM Prompt</h4>
+                <button
+                  className="btn btn-xs btn-ghost"
+                  onClick={() => navigator.clipboard.writeText(trace.llmPrompt || '')}
+                >
+                  Copy
+                </button>
+              </div>
+              <pre className="bg-base-200 p-4 rounded-lg text-xs font-mono whitespace-pre-wrap overflow-x-auto max-h-[60vh]">
+                {trace.llmPrompt || 'No prompt recorded'}
+              </pre>
+            </div>
+          )}
+
+          {/* LLM Response Tab */}
+          {activeSection === 'response' && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-bold opacity-70">LLM Response</h4>
+                <button
+                  className="btn btn-xs btn-ghost"
+                  onClick={() => navigator.clipboard.writeText(trace.llmResponse || '')}
+                >
+                  Copy
+                </button>
+              </div>
+              <pre className="bg-base-200 p-4 rounded-lg text-xs font-mono whitespace-pre-wrap overflow-x-auto max-h-[60vh]">
+                {trace.llmResponse || 'No response recorded'}
+              </pre>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-3 border-t border-base-300 text-xs text-center opacity-50">
+          Created: {new Date(trace.createdAt).toLocaleString()} | Extractor: {trace.extractorId || 'unknown'}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // Main Page Component
 // ============================================================================
 
-type TabType = 'propositions' | 'entities' | 'derived' | 'corrections';
+type TabType = 'l1-primitives' | 'l1-mentions' | 'l2-entities' | 'l2-derived' | 'corrections';
 
 export function ProgramPage() {
   const navigate = useNavigate();
@@ -267,10 +437,11 @@ export function ProgramPage() {
 
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [currentTranscript, setCurrentTranscript] = useState('');
-  const [activeTab, setActiveTab] = useState<TabType>('derived');
+  const [activeTab, setActiveTab] = useState<TabType>('l2-derived');
   const [searchQuery, setSearchQuery] = useState('');
   const [replaceQuery, setReplaceQuery] = useState('');
+  const [selectedTrace, setSelectedTrace] = useState<ExtractionTraceRecord | null>(null);
+  const [loadingTrace, setLoadingTrace] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<Array<{
     type: string;
     id: string;
@@ -300,6 +471,9 @@ export function ProgramPage() {
     entities,
     propositions,
     stances,
+    relations,
+    entityMentions,
+    spans,
     conversations,
     corrections,
     queueStatus,
@@ -312,28 +486,6 @@ export function ProgramPage() {
     replaceText,
     refresh,
   } = useProgram();
-
-  // STT config
-  const sttConfig: STTConfig = useMemo(
-    () => ({
-      provider: 'groq-whisper',
-      apiKey: settingsHelpers.getApiKey('groq') || '',
-      chunkingStrategy: 'vad',
-    }),
-    []
-  );
-
-  // STT hook
-  const {
-    isConnected: sttConnected,
-    isRecording,
-    transcript,
-    connect: connectSTT,
-    disconnect: disconnectSTT,
-    startRecording,
-    stopRecordingAndWait,
-    clearTranscript,
-  } = useSTT({ config: sttConfig });
 
   // Session timing: Check last activity and auto-start session
   useEffect(() => {
@@ -369,11 +521,6 @@ export function ProgramPage() {
     return () => clearInterval(heartbeatInterval);
   }, [isInitialized, state?.activeSession, startSession]);
 
-  // Update transcript display
-  useEffect(() => {
-    setCurrentTranscript(transcript);
-  }, [transcript]);
-
   // Auto-scroll claims container
   useEffect(() => {
     if (claims.length > 0 && claimsContainerRef.current) {
@@ -381,58 +528,36 @@ export function ProgramPage() {
     }
   }, [claims.length]);
 
-  // Connect STT on mount
-  useEffect(() => {
-    let mounted = true;
-    const initSTT = async () => {
-      const groqApiKey = settingsHelpers.getApiKey('groq');
-      if (groqApiKey && mounted) {
-        try {
-          await connectSTT();
-        } catch (err) {
-          console.error('[ProgramPage] STT connection error:', err);
-        }
-      }
-    };
-    initSTT();
-    return () => {
-      mounted = false;
-      disconnectSTT();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Handle recording toggle
-  const handleToggleRecording = useCallback(async () => {
-    if (isRecording) {
-      setIsProcessing(true);
-      try {
-        // Wait for final transcript (handles last words being processed)
-        const finalTranscript = await stopRecordingAndWait(10000);
-
-        if (finalTranscript.trim()) {
-          await processText(finalTranscript.trim(), 'speech');
-        }
-      } catch (err) {
-        console.error('Failed to process voice text:', err);
-      } finally {
-        setIsProcessing(false);
-        clearTranscript();
-        setCurrentTranscript('');
-      }
-    } else {
-      const groqApiKey = settingsHelpers.getApiKey('groq');
-      if (!groqApiKey) {
-        alert('Please configure Groq API key in settings');
-        navigate('/settings');
-        return;
-      }
-      if (!sttConnected) {
-        await connectSTT();
-      }
-      await startRecording();
+  // Handle voice recording transcript
+  const handleVoiceTranscript = useCallback(async (text: string) => {
+    setIsProcessing(true);
+    try {
+      await processText(text, 'speech');
+    } catch (err) {
+      console.error('Failed to process voice text:', err);
+    } finally {
+      setIsProcessing(false);
     }
-  }, [isRecording, sttConnected, connectSTT, startRecording, stopRecordingAndWait, clearTranscript, navigate, processText]);
+  }, [processText]);
+
+  // Fetch extraction trace for a proposition
+  const handleViewTrace = useCallback(async (propositionId: string) => {
+    setLoadingTrace(propositionId);
+    try {
+      const store = programStore.get();
+      const traces = await store.extractionTraces.getByTargetId(propositionId);
+      if (traces.length > 0) {
+        setSelectedTrace(traces[0]);
+      } else {
+        alert('No extraction trace found for this proposition.');
+      }
+    } catch (err) {
+      console.error('Failed to fetch trace:', err);
+      alert('Failed to load extraction trace.');
+    } finally {
+      setLoadingTrace(null);
+    }
+  }, []);
 
   // Handle text input submit
   const handleSubmit = useCallback(
@@ -522,26 +647,15 @@ export function ProgramPage() {
 
       {/* Input Bar */}
       <div className="bg-base-100 border-b border-base-300 p-3 shrink-0">
-        <div className="flex gap-2 items-center max-w-5xl mx-auto">
-          <button
-            className={`btn btn-sm ${isRecording ? 'btn-error animate-pulse' : 'btn-primary'} gap-1`}
-            onClick={handleToggleRecording}
+        <div className="flex gap-2 items-start max-w-5xl mx-auto">
+          <VoiceRecorder
+            onTranscript={handleVoiceTranscript}
+            onMissingApiKey={() => {
+              alert('Please configure Groq API key in settings');
+              navigate('/settings');
+            }}
             disabled={isProcessing}
-          >
-            {isRecording ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-white"></span>
-                Stop
-              </>
-            ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                </svg>
-                Record
-              </>
-            )}
-          </button>
+          />
           <form onSubmit={handleSubmit} className="flex gap-2 flex-1">
             <input
               ref={inputRef}
@@ -557,14 +671,6 @@ export function ProgramPage() {
             </button>
           </form>
         </div>
-        {(currentTranscript || isRecording) && (
-          <div className="mt-2 max-w-5xl mx-auto">
-            <div className="bg-base-200 p-2 rounded text-sm flex items-center gap-2">
-              {isRecording && <span className="loading loading-dots loading-xs text-error"></span>}
-              <span className="opacity-70 italic">{currentTranscript || 'Listening...'}</span>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Main Content Area */}
@@ -688,50 +794,32 @@ export function ProgramPage() {
 
         {/* Right Panel - Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Stats Bar - Layered counts */}
-          <div className="bg-base-100 border-b border-base-300 p-2 flex gap-4 overflow-x-auto shrink-0">
-            <div className="flex gap-4 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="badge badge-xs badge-secondary">L1</span>
-                <span className="font-bold">{entities.length}</span>
-                <span className="opacity-50">entities</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="badge badge-xs badge-accent">L2</span>
-                <span className="font-bold">{goals.length}</span>
-                <span className="opacity-50">goals</span>
-                <span className="font-bold ml-2">{claims.length}</span>
-                <span className="opacity-50">claims</span>
-              </div>
-              {queueStatus.pendingTasks > 0 && (
-                <div className="flex items-center gap-1 text-warning">
-                  <span className="loading loading-spinner loading-xs"></span>
-                  <span>{queueStatus.pendingTasks} processing</span>
-                </div>
-              )}
-            </div>
-          </div>
-
           {/* Tabs - Layered Architecture */}
           <div className="tabs tabs-boxed bg-base-200 m-2 mb-0 shrink-0">
             <div className="flex items-center gap-1 px-2 opacity-50 text-xs">L1</div>
             <button
-              className={`tab tab-sm ${activeTab === 'propositions' ? 'tab-active' : ''}`}
-              onClick={() => setActiveTab('propositions')}
+              className={`tab tab-sm ${activeTab === 'l1-primitives' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('l1-primitives')}
             >
-              Propositions
+              Propositions ({propositions.length})
             </button>
             <button
-              className={`tab tab-sm ${activeTab === 'entities' ? 'tab-active' : ''}`}
-              onClick={() => setActiveTab('entities')}
+              className={`tab tab-sm ${activeTab === 'l1-mentions' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('l1-mentions')}
             >
-              Entities ({entities.length})
+              Mentions ({entityMentions.length})
             </button>
             <div className="divider divider-horizontal mx-0"></div>
             <div className="flex items-center gap-1 px-2 opacity-50 text-xs">L2</div>
             <button
-              className={`tab tab-sm ${activeTab === 'derived' ? 'tab-active' : ''}`}
-              onClick={() => setActiveTab('derived')}
+              className={`tab tab-sm ${activeTab === 'l2-entities' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('l2-entities')}
+            >
+              Entities ({entities.length})
+            </button>
+            <button
+              className={`tab tab-sm ${activeTab === 'l2-derived' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('l2-derived')}
             >
               Goals & Claims
             </button>
@@ -746,8 +834,8 @@ export function ProgramPage() {
 
           {/* Tab Content */}
           <div className="flex-1 overflow-y-auto p-4">
-            {/* Layer 1: Propositions Tab */}
-            {activeTab === 'propositions' && (
+            {/* Layer 1: Primitives Tab */}
+            {activeTab === 'l1-primitives' && (
               <div className="space-y-4">
                 <div className="bg-base-200 rounded-lg p-4">
                   <h3 className="font-bold text-sm mb-2 flex items-center gap-2">
@@ -775,6 +863,18 @@ export function ProgramPage() {
                                   <span className="badge badge-xs badge-ghost">{prop.subject}</span>
                                 </div>
                               </div>
+                              <button
+                                className="btn btn-ghost btn-xs btn-square"
+                                onClick={() => handleViewTrace(prop.id)}
+                                disabled={loadingTrace === prop.id}
+                                title="View extraction debug"
+                              >
+                                {loadingTrace === prop.id ? (
+                                  <span className="loading loading-spinner loading-xs"></span>
+                                ) : (
+                                  '🔍'
+                                )}
+                              </button>
                             </div>
                             {stance && (
                               <div className="mt-3 pt-3 border-t border-base-300 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
@@ -818,19 +918,145 @@ export function ProgramPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Entity Mentions (L1 - raw references) */}
+                <div className="bg-base-200 rounded-lg p-4">
+                  <h3 className="font-bold text-sm mb-2 flex items-center gap-2">
+                    <span className="badge badge-xs badge-secondary">L1</span>
+                    Entity Mentions ({entityMentions.length})
+                  </h3>
+                  <p className="text-xs opacity-70 mb-4">
+                    Raw text references: pronouns ("he", "she"), names, descriptions. Not yet resolved to canonical entities.
+                  </p>
+                  {entityMentions.length === 0 ? (
+                    <div className="text-center py-4 opacity-50">
+                      <p>No entity mentions yet.</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {entityMentions.slice(0, 50).map((mention) => (
+                        <div key={mention.id} className="badge badge-outline gap-1">
+                          <span className="opacity-60">{mention.mentionType}:</span>
+                          <span className="font-medium">"{mention.text}"</span>
+                          <span className="text-xs opacity-50">→ {mention.suggestedType}</span>
+                        </div>
+                      ))}
+                      {entityMentions.length > 50 && (
+                        <span className="badge badge-ghost">+{entityMentions.length - 50} more</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Relations (L1) */}
+                <div className="bg-base-200 rounded-lg p-4">
+                  <h3 className="font-bold text-sm mb-2 flex items-center gap-2">
+                    <span className="badge badge-xs badge-secondary">L1</span>
+                    Relations ({relations.length})
+                  </h3>
+                  <p className="text-xs opacity-70 mb-4">
+                    How propositions connect: causal, temporal, logical relationships.
+                  </p>
+                  {relations.length === 0 ? (
+                    <div className="text-center py-4 opacity-50">
+                      <p>No relations detected yet.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {relations.slice(0, 20).map((relation) => (
+                        <div key={relation.id} className="bg-base-100 rounded p-2 text-xs flex items-center gap-2">
+                          <span className="badge badge-xs badge-info">{relation.category}</span>
+                          <span className="opacity-60">{relation.subtype}</span>
+                          <span className="flex-1 text-right opacity-50">strength: {Math.round(relation.strength * 100)}%</span>
+                        </div>
+                      ))}
+                      {relations.length > 20 && (
+                        <div className="text-center text-xs opacity-50">+{relations.length - 20} more</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Spans (L1) */}
+                <div className="bg-base-200 rounded-lg p-4">
+                  <h3 className="font-bold text-sm mb-2 flex items-center gap-2">
+                    <span className="badge badge-xs badge-secondary">L1</span>
+                    Spans ({spans.length})
+                  </h3>
+                  <p className="text-xs opacity-70 mb-4">
+                    Pattern matches found in text (deterministic, no LLM).
+                  </p>
+                  {spans.length === 0 ? (
+                    <div className="text-center py-4 opacity-50">
+                      <p>No spans detected yet.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {spans.slice(0, 20).map((span) => (
+                        <div key={span.id} className="bg-base-100 rounded p-2 text-xs flex items-center gap-2">
+                          <span className="badge badge-xs badge-ghost">{span.patternId || 'pattern'}</span>
+                          <span className="font-mono flex-1 truncate">"{span.textExcerpt}"</span>
+                          <span className="opacity-50">[{span.charStart}-{span.charEnd}]</span>
+                        </div>
+                      ))}
+                      {spans.length > 20 && (
+                        <div className="text-center text-xs opacity-50">+{spans.length - 20} more</div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Layer 1: Entities Tab */}
-            {activeTab === 'entities' && (
+            {/* Layer 1: Entity Mentions Tab */}
+            {activeTab === 'l1-mentions' && (
               <div className="space-y-4">
                 <div className="bg-base-200 rounded-lg p-4">
                   <h3 className="font-bold text-sm mb-2 flex items-center gap-2">
                     <span className="badge badge-xs badge-secondary">L1</span>
+                    Entity Mentions ({entityMentions.length})
+                  </h3>
+                  <p className="text-xs opacity-70 mb-4">
+                    Raw text references extracted from speech. These get resolved into L2 canonical entities.
+                  </p>
+                  {entityMentions.length === 0 ? (
+                    <div className="text-center py-8 opacity-50">
+                      <div className="text-3xl mb-2">👤</div>
+                      <p>No entity mentions yet.</p>
+                      <p className="text-xs mt-2">Try saying something with names or pronouns like "I", "he", "John", "my boss"</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {entityMentions.map((mention) => (
+                        <div key={mention.id} className="bg-base-100 rounded-lg p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="badge badge-sm badge-outline">{mention.mentionType}</span>
+                            <span className="font-medium">"{mention.text}"</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs opacity-60">
+                            <span>→ {mention.suggestedType}</span>
+                            {mention.resolvedEntityId && (
+                              <span className="badge badge-xs badge-success">resolved</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Layer 2: Entities Tab */}
+            {activeTab === 'l2-entities' && (
+              <div className="space-y-4">
+                <div className="bg-base-200 rounded-lg p-4">
+                  <h3 className="font-bold text-sm mb-2 flex items-center gap-2">
+                    <span className="badge badge-xs badge-accent">L2</span>
                     Entities
                   </h3>
                   <p className="text-xs opacity-70 mb-4">
-                    Named things: people, places, projects, concepts referenced in speech.
+                    Canonical entities resolved from L1 mentions.
                   </p>
                   {entities.length === 0 ? (
                     <div className="text-center py-8 opacity-50">
@@ -849,7 +1075,7 @@ export function ProgramPage() {
             )}
 
             {/* Layer 2: Derived Tab */}
-            {activeTab === 'derived' && (
+            {activeTab === 'l2-derived' && (
               <div className="space-y-4">
                 {/* Goals */}
                 <div className="bg-base-200 rounded-lg p-4">
@@ -891,7 +1117,13 @@ export function ProgramPage() {
                   ) : (
                     <div className="space-y-2">
                       {claims.slice(0, 10).map((claim, i) => (
-                        <ClaimCard key={claim.id} claim={claim} isLatest={i === 0} />
+                        <ClaimCard
+                          key={claim.id}
+                          claim={claim}
+                          isLatest={i === 0}
+                          onViewTrace={handleViewTrace}
+                          loadingTrace={loadingTrace}
+                        />
                       ))}
                       {claims.length > 10 && (
                         <div className="text-center text-xs opacity-50 py-2">
@@ -1111,6 +1343,11 @@ export function ProgramPage() {
         </div>
       </div>
 
+      {/* Extraction Trace Debug Modal */}
+      {selectedTrace && (
+        <TraceDebugPanel trace={selectedTrace} onClose={() => setSelectedTrace(null)} />
+      )}
+
       {/* Footer */}
       <footer className="bg-base-100 border-t border-base-300 px-4 py-1.5 shrink-0">
         <div className="flex items-center justify-between text-xs">
@@ -1126,7 +1363,6 @@ export function ProgramPage() {
             ) : (
               <span>No active session</span>
             )}
-            {sttConnected && <span className="badge badge-xs badge-success">STT</span>}
           </div>
           <div className="flex gap-2">
             {state?.activeSession ? (

@@ -81,6 +81,10 @@ export interface PrimitiveExtractionOutput {
     model: string
     tokensUsed: number
     processingTimeMs: number
+    /** LLM prompt sent (for debug tracing) */
+    llmPrompt: string
+    /** Raw LLM response (for debug tracing) */
+    llmResponse: string
   }
 }
 
@@ -181,6 +185,8 @@ export async function extractPrimitives(
       model: response.model,
       tokensUsed: response.tokens_used.total,
       processingTimeMs: Date.now() - startTime,
+      llmPrompt: prompt,
+      llmResponse: response.content,
     },
   }
 }

@@ -10,7 +10,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb'
 
 export const schema = appSchema({
-  version: 1,
+  version: 2,
   tables: [
     // ========================================================================
     // SUPPORT TABLES
@@ -416,6 +416,39 @@ export const schema = appSchema({
         { name: 'createdAt', type: 'number' },
         { name: 'lastUsed', type: 'number', isOptional: true },
         { name: 'sourceUnitId', type: 'string', isOptional: true },
+      ]
+    }),
+
+    // ========================================================================
+    // DEBUG / TRACING
+    // ========================================================================
+
+    // Extraction Traces - Debug info for how things were extracted
+    tableSchema({
+      name: 'extraction_traces',
+      columns: [
+        // What was traced
+        { name: 'targetType', type: 'string', isIndexed: true },  // 'proposition' | 'claim' | 'entity' | 'relation'
+        { name: 'targetId', type: 'string', isIndexed: true },    // ID of the extracted item
+        // Source info
+        { name: 'conversationId', type: 'string', isIndexed: true },
+        { name: 'inputText', type: 'string' },
+        // Span info (JS pattern matching)
+        { name: 'spanId', type: 'string', isOptional: true },
+        { name: 'charStart', type: 'number', isOptional: true },
+        { name: 'charEnd', type: 'number', isOptional: true },
+        { name: 'matchedPattern', type: 'string', isOptional: true },  // Pattern ID or regex
+        { name: 'matchedText', type: 'string', isOptional: true },
+        // LLM extraction info
+        { name: 'llmPrompt', type: 'string', isOptional: true },
+        { name: 'llmResponse', type: 'string', isOptional: true },
+        { name: 'llmModel', type: 'string', isOptional: true },
+        { name: 'llmTokensUsed', type: 'number', isOptional: true },
+        // Processing info
+        { name: 'processingTimeMs', type: 'number' },
+        { name: 'extractorId', type: 'string', isOptional: true },
+        { name: 'error', type: 'string', isOptional: true },
+        { name: 'createdAt', type: 'number', isIndexed: true },
       ]
     }),
   ]
