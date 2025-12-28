@@ -82,6 +82,13 @@ export function createEntityStore(db: Database): IEntityStore {
       return models.map(modelToEntity)
     },
 
+    async getRecent(limit: number): Promise<Entity[]> {
+      const models = await collection
+        .query(Q.sortBy('lastReferenced', Q.desc), Q.take(limit))
+        .fetch()
+      return models.map(modelToEntity)
+    },
+
     async findByAlias(alias: string): Promise<Entity | null> {
       // Search through aliases JSON
       const allModels = await collection.query().fetch()

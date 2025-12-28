@@ -74,11 +74,19 @@ A GOAL is a desired future state someone wants to achieve. Look for:
 - Improvement goals ("I want to get better at...", "I want to learn...")
 - Avoidance goals ("I want to stop...", "I need to avoid...")
 
+IMPORTANT - sourceType Rules:
+- Use "direct" ONLY for goals EXPLICITLY stated by the speaker
+- Use "inferred" for goals implied by actions or context
+
+DO NOT extract:
+- Goals you assume based on behavior
+- Goals the speaker didn't actually express wanting
+- Implicit objectives not stated as desires
+
 For each goal, determine:
 - What they want to achieve (the statement)
 - The timeframe (short-term, medium-term, long-term, life goal)
 - How important it is to them (stakes)
-- Any implicit blockers or challenges mentioned
 
 ${contextSection}
 

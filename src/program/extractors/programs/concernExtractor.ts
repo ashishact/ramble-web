@@ -70,7 +70,15 @@ A CONCERN is something that worries or troubles someone. Look for:
 - Fears and anxieties ("I'm afraid that...", "What if...?")
 - Problems being faced ("I'm struggling with...", "The issue is...")
 - Uncertainties about outcomes ("I'm not sure if...", "I don't know whether...")
-- Anticipated negative consequences
+
+IMPORTANT - sourceType Rules:
+- Use "direct" ONLY for concerns EXPLICITLY expressed by the speaker
+- Use "inferred" for concerns implied by context or tone
+
+DO NOT extract:
+- Concerns you assume the speaker has based on their situation
+- Worries not explicitly expressed
+- Problems that might logically exist but weren't mentioned
 
 For each concern:
 - What is the source of worry (subject)?

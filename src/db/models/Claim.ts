@@ -1,18 +1,16 @@
 /**
- * Claim Model
+ * Claim Model - Layer 2: Derived
  */
 
-import { Model, Query, Relation } from '@nozbe/watermelondb'
-import { field, text, relation, children } from '@nozbe/watermelondb/decorators'
+import { Model, Relation } from '@nozbe/watermelondb'
+import { field, text, relation } from '@nozbe/watermelondb/decorators'
 import type ExtractionProgram from './ExtractionProgram'
-import type SourceTracking from './SourceTracking'
 
 export default class Claim extends Model {
   static table = 'claims'
 
   static associations = {
     extraction_programs: { type: 'belongs_to', key: 'extractionProgramId' },
-    source_tracking: { type: 'has_many', foreignKey: 'claimId' },
   } as const
 
   // Core fields
@@ -54,7 +52,4 @@ export default class Claim extends Model {
   // Relation accessors
   @relation('extraction_programs', 'extractionProgramId')
   extractionProgram!: Relation<ExtractionProgram>
-
-  @children('source_tracking')
-  sourceTracking!: Query<SourceTracking>
 }

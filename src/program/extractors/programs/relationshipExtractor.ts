@@ -67,14 +67,20 @@ RELATIONSHIP claims describe connections between people. Look for:
 - Professional relationships (boss, colleague, client)
 - Friendships and social connections
 - Romantic relationships
-- Relationship dynamics (how they get along, conflicts)
-- Relationship changes (meeting, breaking up, reconciling)
+
+IMPORTANT - sourceType Rules:
+- Use "direct" ONLY for relationships EXPLICITLY stated ("X is my boss", "Y is my friend")
+- Use "inferred" for relationships implied by context (working together, attending same event)
+
+DO NOT extract:
+- Relationships between entities that weren't explicitly described
+- Assumed roles or connections based on context alone
+- Dynamics or qualities not directly stated by the speaker
+- Relationships that require inference or assumption
 
 For each relationship claim:
 - Who is the relationship between (include both parties in statement)
 - What type of relationship is it
-- What is the current state/quality
-- Any recent changes or developments
 
 Also extract ENTITIES for the people mentioned.
 
@@ -86,7 +92,7 @@ ${outputInstructions}
 
 For relationships:
 - subject: The primary person in the relationship (often "I" or the speaker)
-- statement: Describe the relationship clearly
+- statement: Describe the relationship clearly - only what was explicitly stated
 - temporality: "slowlyDecaying" for ongoing relationships, "pointInTime" for events
 - stakes: Based on importance of the relationship`;
   }

@@ -60,6 +60,15 @@ A BELIEF is a subjective claim about how things are or should be. Look for:
 - Worldview statements ("People always...", "The world is...")
 - Assessments of situations ("This seems like...", "That appears to be...")
 
+IMPORTANT - sourceType Rules:
+- Use "direct" ONLY for beliefs EXPLICITLY stated by the speaker
+- Use "inferred" for beliefs implied by behavior or context
+
+DO NOT extract:
+- Beliefs inferred from behavior (e.g., don't assume someone "values X" because they did Y)
+- Opinions the speaker didn't actually express
+- Beliefs attributed to others unless directly quoted
+
 Extract beliefs that are:
 - Personally held by the speaker
 - About how the world works or should work

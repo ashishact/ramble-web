@@ -43,5 +43,5 @@ export * from './correction';
 // Memory System
 export * from './memory';
 
-// Source Tracking
-export * from './sourceTracking';
+// Primitives (Layer 0 + Layer 1)
+export * from './primitives';

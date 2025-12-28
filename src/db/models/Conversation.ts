@@ -1,5 +1,5 @@
 /**
- * Conversation Model
+ * Conversation Model - Layer 0: Stream
  */
 
 import { Model } from '@nozbe/watermelondb'
@@ -13,6 +13,8 @@ export default class Conversation extends Model {
   @text('rawText') rawText!: string
   @text('sanitizedText') sanitizedText!: string
   @text('source') source!: string // 'speech' | 'text'
+  @text('speaker') speaker!: string // 'user' | 'agent'
+  @text('discourseFunction') discourseFunction!: string // 'assert' | 'question' | 'command' | 'express' | 'commit'
   @text('precedingContextSummary') precedingContextSummary!: string
   @field('createdAt') createdAt!: number
   @field('processed') processed!: boolean

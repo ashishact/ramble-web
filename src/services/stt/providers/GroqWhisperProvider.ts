@@ -300,6 +300,12 @@ export class GroqWhisperProvider implements ISTTProvider {
         console.log('Speech started');
       },
       onSpeechEnd: async (audio: Float32Array) => {
+        // Guard: Don't process if recording has stopped
+        if (!this.recording) {
+          console.log('[VAD] Speech ended but recording stopped, ignoring');
+          return;
+        }
+
         const chunkDuration = audio.length / 16000;
         console.log('[VAD] Speech ended, duration:', chunkDuration.toFixed(2), 'seconds');
 
@@ -488,11 +494,9 @@ export class GroqWhisperProvider implements ISTTProvider {
   // ========================================================================
 
   private cleanupChunkingResources(): void {
-    // VAD cleanup
-    if (this.vad) {
-      // VAD doesn't have a destroy method, just set to null
-      this.vad = null;
-    }
+    // Don't destroy VAD - keep it running for fast restart
+    // The recording flag gates whether we accumulate/send audio
+    // Just clear accumulated chunks
     this.vadAudioChunks = [];
     this.vadAccumulatedDuration = 0;
   }

@@ -36,7 +36,9 @@ export type LogModule =
   | 'WatermelonImport'
   | 'ConversationProcessor'
   | 'SearchService'
-  | 'SessionManager';
+  | 'SessionManager'
+  | 'PrimitivePipeline'
+  | 'ClaimDeriver';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -81,6 +83,8 @@ const MODULE_COLORS: Record<LogModule, string> = {
   ConversationProcessor: '#9C27B0',
   SearchService: '#2196F3',
   SessionManager: '#607D8B',
+  PrimitivePipeline: '#4CAF50',
+  ClaimDeriver: '#9C27B0',
 };
 
 interface LogConfig {

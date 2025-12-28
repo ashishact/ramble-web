@@ -31,10 +31,6 @@ import {
   ClaimSourceSchema,
   CreateClaimSourceSchema,
 
-  // Source Tracking
-  SourceTrackingSchema,
-  CreateSourceTrackingSchema,
-
   // Entities
   EntityTypeSchema,
   EntitySchema,
@@ -168,13 +164,6 @@ export type CreateClaim = z.input<typeof CreateClaimSchema>;  // Use input for o
 export type UpdateClaim = z.infer<typeof UpdateClaimSchema>;
 export type ClaimSource = z.infer<typeof ClaimSourceSchema>;
 export type CreateClaimSource = z.infer<typeof CreateClaimSourceSchema>;
-
-// ============================================================================
-// Source Tracking Types
-// ============================================================================
-
-export type SourceTracking = z.infer<typeof SourceTrackingSchema>;
-export type CreateSourceTracking = z.infer<typeof CreateSourceTrackingSchema>;
 
 // ============================================================================
 // Entity Types

@@ -47,15 +47,22 @@ class DecisionExtractor extends BaseExtractor {
 
     return `Extract decisions - choices that have been made or are being made.
 
+IMPORTANT - Only extract decisions EXPLICITLY stated by the speaker.
+DO NOT extract:
+- Implied decisions from behavior
+- Decisions you assume were made
+- Choices not explicitly stated
+
 ${contextSection}
 ${inputSection}
 
 For each decision:
 - decision: What was decided
-- alternatives_rejected: What was not chosen (if mentioned)
+- alternativesRejected: What was not chosen (if mentioned)
 - reasoning: Why this was chosen
-- confidence_level: "tentative"|"moderate"|"confident"|"certain"
+- confidenceLevel: "tentative"|"moderate"|"confident"|"certain"
 - stakes: "low"|"medium"|"high"|"critical"
+- sourceType: "direct" if explicitly stated, "inferred" if implied
 
 Respond with JSON array:
 [
@@ -63,10 +70,11 @@ Respond with JSON array:
     "statement": "Full decision statement",
     "subject": "What decision is about",
     "decision": "What was decided",
-    "alternatives_rejected": ["option1", "option2"],
+    "alternativesRejected": ["option1", "option2"],
     "reasoning": "Why",
-    "confidence_level": "confident",
-    "stakes": "medium"
+    "confidenceLevel": "confident",
+    "stakes": "medium",
+    "sourceType": "direct"
   }
 ]
 
@@ -92,6 +100,11 @@ If no decisions found, respond: []`;
         // Handle both camelCase and snake_case from LLM response
         const confidenceLevel = (obj.confidenceLevel || obj.confidence_level) as string;
         const rawStakes = obj.stakes as string;
+        const rawSourceType = (obj.sourceType || obj.source_type) as string;
+        const sourceType = (rawSourceType === 'inferred' || rawSourceType === 'corrected')
+          ? rawSourceType
+          : 'direct';
+
         let stakes: Stakes = 'medium';
         if (validStakes.includes(rawStakes as Stakes)) {
           stakes = rawStakes as Stakes;
@@ -105,7 +118,7 @@ If no decisions found, respond: []`;
           claimType: 'decision',
           temporality: 'pointInTime',
           abstraction: 'specific',
-          sourceType: 'direct',
+          sourceType: sourceType as 'direct' | 'inferred' | 'corrected',
           confidence: confidenceMap[confidenceLevel] || 0.7,
           emotionalValence: 0.2,
           emotionalIntensity: 0.4,

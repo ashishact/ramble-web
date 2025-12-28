@@ -46,25 +46,33 @@ class CommitmentExtractor extends BaseExtractor {
 
     return `Extract commitments - promises, pledges, and obligations.
 
+IMPORTANT - Only extract commitments EXPLICITLY made by the speaker.
+DO NOT extract:
+- Implied obligations from context
+- Commitments you assume were made
+- Responsibilities not explicitly stated
+
 ${contextSection}
 ${inputSection}
 
 For each commitment:
 - statement: The commitment made
-- commitment_type: "promise"|"agreement"|"obligation"|"self_commitment"|"deadline"
-- to_whom: Who is the commitment to (self, specific person, organization, etc.)
+- commitmentType: "promise"|"agreement"|"obligation"|"selfCommitment"|"deadline"
+- toWhom: Who is the commitment to (self, specific person, organization, etc.)
 - timeframe: When is it due (if mentioned)
 - strength: "weak"|"moderate"|"strong"|"binding"
+- sourceType: "direct" if explicitly stated, "inferred" if implied
 
 Respond with JSON array:
 [
   {
     "statement": "The commitment",
     "subject": "What it's about",
-    "commitment_type": "promise",
-    "to_whom": "specific person",
+    "commitmentType": "promise",
+    "toWhom": "specific person",
     "timeframe": "by Friday",
     "strength": "strong",
+    "sourceType": "direct",
     "confidence": 0.8
   }
 ]
@@ -95,6 +103,10 @@ If no commitments found, respond: []`;
       if (obj.statement) {
         // Handle both camelCase and snake_case from LLM response
         const strength = (obj.strength as string) || 'moderate';
+        const rawSourceType = (obj.sourceType || obj.source_type) as string;
+        const sourceType = (rawSourceType === 'inferred' || rawSourceType === 'corrected')
+          ? rawSourceType
+          : 'direct';
 
         claims.push({
           statement: obj.statement as string,
@@ -102,7 +114,7 @@ If no commitments found, respond: []`;
           claimType: 'commitment',
           temporality: 'slowlyDecaying',
           abstraction: 'specific',
-          sourceType: 'direct',
+          sourceType: sourceType as 'direct' | 'inferred' | 'corrected',
           confidence: strengthMap[strength] || 0.7,
           emotionalValence: 0.1,
           emotionalIntensity: strengthMap[strength] || 0.5,

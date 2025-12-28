@@ -5,17 +5,12 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { getKernel } from '../program';
 import { useNavigate } from 'react-router-dom';
 import { useProgram } from '../program/hooks';
 import { settingsHelpers } from '../stores/settingsStore';
 import { useSTT } from '../services/stt/useSTT';
 import type { STTConfig } from '../services/stt/types';
-import type { Claim, Entity, Goal, Pattern, Contradiction, Correction } from '../program';
-import { MemoryTab } from './program/MemoryTab';
-import { ExtractorsObserversTab } from './program/ExtractorsObserversTab';
-import { ClaimDebugPanel } from './program/ClaimDebugPanel';
-import { Icon } from '@iconify/react';
+import type { Claim, Entity, Goal, Correction } from '../program';
 
 // ============================================================================
 // Live Relative Time Component
@@ -99,68 +94,36 @@ const ENTITY_TYPE_ICONS: Record<string, string> = {
 
 function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const [showDebug, setShowDebug] = useState(false);
-  const [hasSourceTracking, setHasSourceTracking] = useState(false);
-
-  // Check if source tracking exists for this claim
-  useEffect(() => {
-    async function checkSourceTracking() {
-      try {
-        const kernel = getKernel();
-        const store = kernel.getStore();
-        const tracking = await store.sourceTracking.getByClaimId(claim.id);
-        setHasSourceTracking(!!tracking);
-      } catch (error) {
-        // Kernel not initialized yet or error fetching
-        setHasSourceTracking(false);
-      }
-    }
-    checkSourceTracking();
-  }, [claim.id]);
 
   return (
-    <>
-      <div
-        className={`p-3 bg-base-200 rounded-lg hover:bg-base-300 transition-all cursor-pointer ${
-          isLatest ? 'ring-2 ring-primary/30' : ''
-        }`}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1">
-            <p className="text-sm font-medium leading-relaxed">{claim.statement}</p>
-            <div className="flex flex-wrap gap-1 mt-2">
-              <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claim.claimType] || 'badge-ghost'}`}>
-                {claim.claimType.replace('_', ' ')}
-              </span>
-              <span className={`badge badge-xs ${STAKES_COLORS[claim.stakes] || 'badge-ghost'}`}>
-                {claim.stakes}
-              </span>
-              <span className="badge badge-xs badge-outline">{claim.subject}</span>
-              {hasSourceTracking && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowDebug(true);
-                  }}
-                  className="badge badge-xs badge-warning gap-1 hover:badge-error cursor-pointer"
-                  title="View source tracking (debug)"
-                >
-                  <Icon icon="mdi:bug" className="w-3 h-3" />
-                  debug
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="text-right flex flex-col items-end gap-1">
-            {isLatest ? (
-              <LiveRelativeTime timestamp={claim.createdAt} />
-            ) : (
-              <span className="text-xs opacity-50">{formatRelativeTime(claim.createdAt)}</span>
-            )}
-            <span className="text-xs opacity-50">{Math.round(claim.currentConfidence * 100)}%</span>
+    <div
+      className={`p-3 bg-base-200 rounded-lg hover:bg-base-300 transition-all cursor-pointer ${
+        isLatest ? 'ring-2 ring-primary/30' : ''
+      }`}
+      onClick={() => setExpanded(!expanded)}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1">
+          <p className="text-sm font-medium leading-relaxed">{claim.statement}</p>
+          <div className="flex flex-wrap gap-1 mt-2">
+            <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claim.claimType] || 'badge-ghost'}`}>
+              {claim.claimType.replace('_', ' ')}
+            </span>
+            <span className={`badge badge-xs ${STAKES_COLORS[claim.stakes] || 'badge-ghost'}`}>
+              {claim.stakes}
+            </span>
+            <span className="badge badge-xs badge-outline">{claim.subject}</span>
           </div>
         </div>
+        <div className="text-right flex flex-col items-end gap-1">
+          {isLatest ? (
+            <LiveRelativeTime timestamp={claim.createdAt} />
+          ) : (
+            <span className="text-xs opacity-50">{formatRelativeTime(claim.createdAt)}</span>
+          )}
+          <span className="text-xs opacity-50">{Math.round(claim.currentConfidence * 100)}%</span>
+        </div>
+      </div>
 
       {expanded && (
         <div className="mt-3 pt-3 border-t border-base-300 text-xs space-y-2">
@@ -207,12 +170,6 @@ function ClaimCard({ claim, isLatest }: { claim: Claim; isLatest: boolean }) {
         </div>
       )}
     </div>
-
-      {/* Debug Panel Modal */}
-      {showDebug && (
-        <ClaimDebugPanel claim={claim} onClose={() => setShowDebug(false)} />
-      )}
-    </>
   );
 }
 
@@ -270,120 +227,6 @@ function GoalCard({ goal }: { goal: Goal }) {
   );
 }
 
-function PatternCard({ pattern }: { pattern: Pattern }) {
-  return (
-    <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
-      <div className="text-sm font-medium">{pattern.description}</div>
-      <div className="flex flex-wrap gap-2 mt-2">
-        <span className="badge badge-xs badge-primary">{pattern.patternType}</span>
-        <span className="badge badge-xs badge-outline">{pattern.occurrenceCount} occurrences</span>
-        <span className="badge badge-xs">{Math.round(pattern.confidence * 100)}% confidence</span>
-      </div>
-    </div>
-  );
-}
-
-function ContradictionCard({
-  contradiction,
-  claimA,
-  claimB
-}: {
-  contradiction: Contradiction;
-  claimA: Claim | null;
-  claimB: Claim | null;
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div
-      className={`p-3 rounded-lg border cursor-pointer transition-all ${
-        contradiction.resolved
-          ? 'bg-success/10 border-success/20 hover:bg-success/15'
-          : 'bg-error/10 border-error/20 hover:bg-error/15'
-      }`}
-      onClick={() => setExpanded(!expanded)}
-    >
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">{contradiction.resolved ? '✓' : '⚠️'}</span>
-          <span className="text-sm font-medium capitalize">
-            {contradiction.contradictionType.replace('_', ' ')} contradiction
-          </span>
-        </div>
-        <span className={`badge badge-xs ${contradiction.resolved ? 'badge-success' : 'badge-error'}`}>
-          {contradiction.resolved ? 'Resolved' : 'Unresolved'}
-        </span>
-      </div>
-
-      {/* Show the two conflicting claims */}
-      <div className="space-y-2 mb-2">
-        <div className="bg-base-100/50 rounded p-2">
-          <div className="text-xs opacity-50 mb-1">Claim A:</div>
-          <p className="text-sm">
-            {claimA ? claimA.statement : <span className="opacity-50 italic">Claim not found</span>}
-          </p>
-          {claimA && (
-            <div className="flex gap-1 mt-1">
-              <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claimA.claimType] || 'badge-ghost'}`}>
-                {claimA.claimType.replace('_', ' ')}
-              </span>
-              <span className="badge badge-xs badge-outline">{claimA.subject}</span>
-            </div>
-          )}
-        </div>
-        <div className="flex justify-center">
-          <span className="text-error text-xs font-bold">VS</span>
-        </div>
-        <div className="bg-base-100/50 rounded p-2">
-          <div className="text-xs opacity-50 mb-1">Claim B:</div>
-          <p className="text-sm">
-            {claimB ? claimB.statement : <span className="opacity-50 italic">Claim not found</span>}
-          </p>
-          {claimB && (
-            <div className="flex gap-1 mt-1">
-              <span className={`badge badge-xs ${CLAIM_TYPE_COLORS[claimB.claimType] || 'badge-ghost'}`}>
-                {claimB.claimType.replace('_', ' ')}
-              </span>
-              <span className="badge badge-xs badge-outline">{claimB.subject}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Expanded details */}
-      {expanded && (
-        <div className="mt-3 pt-3 border-t border-base-300/50 text-xs space-y-2">
-          <div className="flex justify-between">
-            <span className="opacity-50">Detected:</span>
-            <span>{formatRelativeTime(contradiction.detectedAt)}</span>
-          </div>
-          {contradiction.resolved && contradiction.resolvedAt && (
-            <div className="flex justify-between">
-              <span className="opacity-50">Resolved:</span>
-              <span>{formatRelativeTime(contradiction.resolvedAt)}</span>
-            </div>
-          )}
-          {contradiction.resolutionType && (
-            <div className="flex justify-between">
-              <span className="opacity-50">Resolution type:</span>
-              <span className="font-medium">{contradiction.resolutionType}</span>
-            </div>
-          )}
-          {contradiction.resolutionNotes && (
-            <div>
-              <span className="opacity-50">Notes:</span>
-              <p className="mt-1 bg-base-100/50 p-2 rounded">{contradiction.resolutionNotes}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="text-xs text-center opacity-40 mt-2">
-        {expanded ? '▲ Click to collapse' : '▼ Click for details'}
-      </div>
-    </div>
-  );
-}
 
 function CorrectionCard({ correction, onRemove }: { correction: Correction; onRemove: (id: string) => Promise<boolean> }) {
   return (
@@ -415,7 +258,7 @@ function CorrectionCard({ correction, onRemove }: { correction: Correction; onRe
 // Main Page Component
 // ============================================================================
 
-type TabType = 'claims' | 'entities' | 'goals' | 'patterns' | 'corrections' | 'insights' | 'memory' | 'extractors';
+type TabType = 'propositions' | 'entities' | 'derived' | 'corrections';
 
 export function ProgramPage() {
   const navigate = useNavigate();
@@ -425,11 +268,7 @@ export function ProgramPage() {
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentTranscript, setCurrentTranscript] = useState('');
-  const [selectedClaimType, setSelectedClaimType] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabType>('claims');
-  const [showConversations, setShowConversations] = useState(true);
-  const [showRawText, setShowRawText] = useState(true); // Toggle between raw and sanitized text
-  const [conversationsDisplayLimit, setConversationsDisplayLimit] = useState(20); // Lazy load limit
+  const [activeTab, setActiveTab] = useState<TabType>('derived');
   const [searchQuery, setSearchQuery] = useState('');
   const [replaceQuery, setReplaceQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Array<{
@@ -447,6 +286,9 @@ export function ProgramPage() {
     totalReplacements: number;
   } | null>(null);
   const [addAsCorrection, setAddAsCorrection] = useState(true);
+  const [showConversations, setShowConversations] = useState(true);
+  const [showRawText, setShowRawText] = useState(false);
+  const [conversationsDisplayLimit, setConversationsDisplayLimit] = useState(20);
 
   const {
     isInitialized,
@@ -454,22 +296,13 @@ export function ProgramPage() {
     error,
     state,
     claims,
-    claimCount,
     goals,
     entities,
-    patterns,
-    contradictions,
+    propositions,
+    stances,
     conversations,
-    tasks,
     corrections,
     queueStatus,
-    workingMemory,
-    longTermMemory,
-    topOfMind,
-    memoryStats,
-    extractors,
-    observers,
-    observerStats,
     startSession,
     endSession,
     processText,
@@ -477,10 +310,6 @@ export function ProgramPage() {
     removeCorrection,
     searchText,
     replaceText,
-    recordMemoryAccess,
-    toggleExtractor,
-    toggleObserver,
-    loadMoreClaims,
     refresh,
   } = useProgram();
 
@@ -622,31 +451,6 @@ export function ProgramPage() {
     },
     [inputText, isProcessing, processText]
   );
-
-  // Filter claims by type
-  const filteredClaims = useMemo(() => {
-    if (!selectedClaimType) return claims;
-    return claims.filter((c) => c.claimType === selectedClaimType);
-  }, [claims, selectedClaimType]);
-
-  // Count claims by type
-  const claimTypeCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const claim of claims) {
-      counts[claim.claimType] = (counts[claim.claimType] || 0) + 1;
-    }
-    return counts;
-  }, [claims]);
-
-  // Stats summary
-  const stats = useMemo(() => ({
-    totalClaims: claims.length,
-    activeGoals: goals.filter(g => g.status === 'active').length,
-    achievedGoals: goals.filter(g => g.status === 'achieved').length,
-    unresolvedContradictions: contradictions.filter(c => !c.resolved).length,
-    highStakesClaims: claims.filter(c => c.stakes === 'high' || c.stakes === 'existential').length,
-    emotionalClaims: claims.filter(c => Math.abs(c.emotionalValence) > 0.5).length,
-  }), [claims, goals, contradictions]);
 
   // Loading state
   if (isInitializing) {
@@ -884,61 +688,38 @@ export function ProgramPage() {
 
         {/* Right Panel - Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Stats Bar */}
+          {/* Stats Bar - Layered counts */}
           <div className="bg-base-100 border-b border-base-300 p-2 flex gap-4 overflow-x-auto shrink-0">
-            {!showConversations && (
-              <button
-                className="btn btn-ghost btn-xs"
-                onClick={() => setShowConversations(true)}
-              >
-                ☰ Conv
-              </button>
-            )}
-            <div className="flex gap-3 text-xs">
-              <div className="flex items-center gap-1">
-                <span className="font-bold text-lg">{stats.totalClaims}</span>
-                <span className="opacity-50">claims</span>
-              </div>
-              <div className="divider divider-horizontal m-0"></div>
-              <div className="flex items-center gap-1">
-                <span className="font-bold text-lg text-success">{stats.activeGoals}</span>
-                <span className="opacity-50">active goals</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="font-bold text-lg">{entities.length}</span>
+            <div className="flex gap-4 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="badge badge-xs badge-secondary">L1</span>
+                <span className="font-bold">{entities.length}</span>
                 <span className="opacity-50">entities</span>
               </div>
-              {stats.unresolvedContradictions > 0 && (
-                <>
-                  <div className="divider divider-horizontal m-0"></div>
-                  <div className="flex items-center gap-1 text-error">
-                    <span className="font-bold text-lg">{stats.unresolvedContradictions}</span>
-                    <span className="opacity-70">contradictions</span>
-                  </div>
-                </>
-              )}
-              {stats.highStakesClaims > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="badge badge-xs badge-accent">L2</span>
+                <span className="font-bold">{goals.length}</span>
+                <span className="opacity-50">goals</span>
+                <span className="font-bold ml-2">{claims.length}</span>
+                <span className="opacity-50">claims</span>
+              </div>
+              {queueStatus.pendingTasks > 0 && (
                 <div className="flex items-center gap-1 text-warning">
-                  <span className="font-bold">{stats.highStakesClaims}</span>
-                  <span className="opacity-70">high stakes</span>
+                  <span className="loading loading-spinner loading-xs"></span>
+                  <span>{queueStatus.pendingTasks} processing</span>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Tabs */}
+          {/* Tabs - Layered Architecture */}
           <div className="tabs tabs-boxed bg-base-200 m-2 mb-0 shrink-0">
+            <div className="flex items-center gap-1 px-2 opacity-50 text-xs">L1</div>
             <button
-              className={`tab tab-sm ${activeTab === 'memory' ? 'tab-active' : ''}`}
-              onClick={() => setActiveTab('memory')}
+              className={`tab tab-sm ${activeTab === 'propositions' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('propositions')}
             >
-              Memory
-            </button>
-            <button
-              className={`tab tab-sm ${activeTab === 'claims' ? 'tab-active' : ''}`}
-              onClick={() => setActiveTab('claims')}
-            >
-              Claims ({claims.length})
+              Propositions
             </button>
             <button
               className={`tab tab-sm ${activeTab === 'entities' ? 'tab-active' : ''}`}
@@ -946,207 +727,183 @@ export function ProgramPage() {
             >
               Entities ({entities.length})
             </button>
+            <div className="divider divider-horizontal mx-0"></div>
+            <div className="flex items-center gap-1 px-2 opacity-50 text-xs">L2</div>
             <button
-              className={`tab tab-sm ${activeTab === 'goals' ? 'tab-active' : ''}`}
-              onClick={() => setActiveTab('goals')}
+              className={`tab tab-sm ${activeTab === 'derived' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('derived')}
             >
-              Goals ({goals.length})
+              Goals & Claims
             </button>
-            <button
-              className={`tab tab-sm ${activeTab === 'patterns' ? 'tab-active' : ''}`}
-              onClick={() => setActiveTab('patterns')}
-            >
-              Patterns ({patterns.length})
-            </button>
+            <div className="divider divider-horizontal mx-0"></div>
             <button
               className={`tab tab-sm ${activeTab === 'corrections' ? 'tab-active' : ''}`}
               onClick={() => setActiveTab('corrections')}
             >
-              Corrections ({corrections.length})
-            </button>
-            <button
-              className={`tab tab-sm ${activeTab === 'insights' ? 'tab-active' : ''}`}
-              onClick={() => setActiveTab('insights')}
-            >
-              Insights
-            </button>
-            <button
-              className={`tab tab-sm ${activeTab === 'extractors' ? 'tab-active' : ''}`}
-              onClick={() => setActiveTab('extractors')}
-            >
-              Extractors
+              Corrections
             </button>
           </div>
 
           {/* Tab Content */}
           <div className="flex-1 overflow-y-auto p-4">
-            {/* Memory Tab */}
-            {activeTab === 'memory' && (
-              <MemoryTab
-                workingMemory={workingMemory}
-                longTermMemory={longTermMemory}
-                topOfMind={topOfMind}
-                memoryStats={memoryStats}
-                onRecordAccess={recordMemoryAccess}
-              />
-            )}
-
-            {/* Extractors & Observers Tab */}
-            {activeTab === 'extractors' && (
-              <ExtractorsObserversTab
-                extractors={extractors}
-                observers={observers}
-                observerStats={observerStats}
-                onToggleExtractor={toggleExtractor}
-                onToggleObserver={toggleObserver}
-              />
-            )}
-
-            {/* Claims Tab */}
-            {activeTab === 'claims' && (
+            {/* Layer 1: Propositions Tab */}
+            {activeTab === 'propositions' && (
               <div className="space-y-4">
-                {/* Claim Type Filter */}
-                <div className="flex flex-wrap gap-1">
-                  <button
-                    className={`badge badge-sm cursor-pointer ${!selectedClaimType ? 'badge-primary' : 'badge-ghost'}`}
-                    onClick={() => setSelectedClaimType(null)}
-                  >
-                    All ({claims.length})
-                  </button>
-                  {Object.entries(claimTypeCounts)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([type, count]) => (
-                      <button
-                        key={type}
-                        className={`badge badge-sm cursor-pointer ${
-                          selectedClaimType === type ? CLAIM_TYPE_COLORS[type] || 'badge-primary' : 'badge-ghost'
-                        }`}
-                        onClick={() => setSelectedClaimType(selectedClaimType === type ? null : type)}
-                      >
-                        {type.replace('_', ' ')} ({count})
-                      </button>
-                    ))}
-                </div>
-
-                {/* Claims List */}
-                <div ref={claimsContainerRef} className="space-y-2">
-                  {filteredClaims.length === 0 ? (
-                    <div className="text-center py-12 opacity-50">
-                      <div className="text-4xl mb-2">💭</div>
-                      <p>{claims.length === 0 ? 'No claims yet. Start sharing your thoughts!' : 'No claims match this filter.'}</p>
+                <div className="bg-base-200 rounded-lg p-4">
+                  <h3 className="font-bold text-sm mb-2 flex items-center gap-2">
+                    <span className="badge badge-xs badge-secondary">L1</span>
+                    Propositions & Stances ({propositions.length})
+                  </h3>
+                  <p className="text-xs opacity-70 mb-4">
+                    What was said (proposition) + how it was held (stance: certainty, desire, obligation, emotion).
+                  </p>
+                  {propositions.length === 0 ? (
+                    <div className="text-center py-8 opacity-50">
+                      <p>No propositions yet. Start speaking to see primitives extracted.</p>
                     </div>
                   ) : (
-                    <>
-                      {filteredClaims.slice().reverse().map((claim, i) => (
-                        <ClaimCard key={claim.id} claim={claim} isLatest={i === 0} />
-                      ))}
-
-                      {/* Show More button if there are more claims in DB */}
-                      {claims.length < claimCount && (
-                        <div className="text-center py-4">
-                          <button
-                            onClick={() => loadMoreClaims(50)}
-                            className="btn btn-outline btn-sm gap-2"
-                          >
-                            <Icon icon="mdi:chevron-down" className="w-4 h-4" />
-                            Show More ({claimCount - claims.length} more claims available)
-                          </button>
-                        </div>
-                      )}
-                    </>
+                    <div className="space-y-3">
+                      {propositions.map((prop) => {
+                        const stance = stances.find(s => s.propositionId === prop.id);
+                        return (
+                          <div key={prop.id} className="bg-base-100 rounded-lg p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className="text-sm font-medium">{prop.content}</p>
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  <span className="badge badge-xs badge-outline">{prop.type}</span>
+                                  <span className="badge badge-xs badge-ghost">{prop.subject}</span>
+                                </div>
+                              </div>
+                            </div>
+                            {stance && (
+                              <div className="mt-3 pt-3 border-t border-base-300 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                                <div>
+                                  <span className="opacity-50">Certainty:</span>{' '}
+                                  <span className={stance.epistemic.certainty > 0.7 ? 'text-success font-bold' : stance.epistemic.certainty < 0.4 ? 'text-warning' : ''}>
+                                    {Math.round(stance.epistemic.certainty * 100)}%
+                                  </span>
+                                  <span className="opacity-50 ml-1">({stance.epistemic.evidence})</span>
+                                </div>
+                                {stance.volitional.strength > 0.1 && (
+                                  <div>
+                                    <span className="opacity-50">Volitional:</span>{' '}
+                                    <span className={stance.volitional.valence > 0 ? 'text-success' : 'text-error'}>
+                                      {stance.volitional.type || 'neutral'} ({Math.round(stance.volitional.strength * 100)}%)
+                                    </span>
+                                  </div>
+                                )}
+                                {stance.deontic.strength > 0.1 && (
+                                  <div>
+                                    <span className="opacity-50">Deontic:</span>{' '}
+                                    <span>{stance.deontic.type || 'none'} ({Math.round(stance.deontic.strength * 100)}%)</span>
+                                  </div>
+                                )}
+                                {(stance.affective.arousal > 0.2 || Math.abs(stance.affective.valence) > 0.2) && (
+                                  <div>
+                                    <span className="opacity-50">Affect:</span>{' '}
+                                    <span className={stance.affective.valence > 0 ? 'text-success' : stance.affective.valence < 0 ? 'text-error' : ''}>
+                                      {stance.affective.valence > 0 ? '+' : ''}{stance.affective.valence.toFixed(1)} / {Math.round(stance.affective.arousal * 100)}%
+                                    </span>
+                                    {stance.affective.emotions && stance.affective.emotions.length > 0 && (
+                                      <span className="ml-1 opacity-70">[{stance.affective.emotions.join(', ')}]</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Entities Tab */}
+            {/* Layer 1: Entities Tab */}
             {activeTab === 'entities' && (
               <div className="space-y-4">
-                {entities.length === 0 ? (
-                  <div className="text-center py-12 opacity-50">
-                    <div className="text-4xl mb-2">👥</div>
-                    <p>No entities detected yet.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {entities
-                      .slice()
-                      .sort((a, b) => b.mentionCount - a.mentionCount)
-                      .map((entity) => (
+                <div className="bg-base-200 rounded-lg p-4">
+                  <h3 className="font-bold text-sm mb-2 flex items-center gap-2">
+                    <span className="badge badge-xs badge-secondary">L1</span>
+                    Entities
+                  </h3>
+                  <p className="text-xs opacity-70 mb-4">
+                    Named things: people, places, projects, concepts referenced in speech.
+                  </p>
+                  {entities.length === 0 ? (
+                    <div className="text-center py-8 opacity-50">
+                      <div className="text-3xl mb-2">👥</div>
+                      <p>No entities detected yet.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {entities.map((entity) => (
                         <EntityCard key={entity.id} entity={entity} />
                       ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Goals Tab */}
-            {activeTab === 'goals' && (
-              <div className="space-y-4">
-                {goals.length === 0 ? (
-                  <div className="text-center py-12 opacity-50">
-                    <div className="text-4xl mb-2">🎯</div>
-                    <p>No goals detected yet.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {goals.map((goal) => (
-                      <GoalCard key={goal.id} goal={goal} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Patterns Tab */}
-            {activeTab === 'patterns' && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Patterns */}
-                  <div>
-                    <h3 className="font-bold text-sm uppercase opacity-70 mb-3">Detected Patterns</h3>
-                    {patterns.length === 0 ? (
-                      <div className="text-center py-8 opacity-50">
-                        <div className="text-3xl mb-2">🔍</div>
-                        <p className="text-sm">No patterns detected yet.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {patterns.map((pattern) => (
-                          <PatternCard key={pattern.id} pattern={pattern} />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Contradictions */}
-                  <div>
-                    <h3 className="font-bold text-sm uppercase opacity-70 mb-3">Contradictions</h3>
-                    {contradictions.length === 0 ? (
-                      <div className="text-center py-8 opacity-50">
-                        <div className="text-3xl mb-2">✓</div>
-                        <p className="text-sm">No contradictions detected.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {contradictions.map((c) => {
-                          const claimA = claims.find(cl => cl.id === c.claimAId) || null;
-                          const claimB = claims.find(cl => cl.id === c.claimBId) || null;
-                          return (
-                            <ContradictionCard
-                              key={c.id}
-                              contradiction={c}
-                              claimA={claimA}
-                              claimB={claimB}
-                            />
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
+
+            {/* Layer 2: Derived Tab */}
+            {activeTab === 'derived' && (
+              <div className="space-y-4">
+                {/* Goals */}
+                <div className="bg-base-200 rounded-lg p-4">
+                  <h3 className="font-bold text-sm mb-2 flex items-center gap-2">
+                    <span className="badge badge-xs badge-accent">L2</span>
+                    Goals
+                  </h3>
+                  <p className="text-xs opacity-70 mb-4">
+                    Derived from propositions with volitional/teleological stance.
+                  </p>
+                  {goals.length === 0 ? (
+                    <div className="text-center py-8 opacity-50">
+                      <div className="text-3xl mb-2">🎯</div>
+                      <p>No goals detected yet.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {goals.map((goal) => (
+                        <GoalCard key={goal.id} goal={goal} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Claims */}
+                <div className="bg-base-200 rounded-lg p-4">
+                  <h3 className="font-bold text-sm mb-2 flex items-center gap-2">
+                    <span className="badge badge-xs badge-accent">L2</span>
+                    Claims
+                  </h3>
+                  <p className="text-xs opacity-70 mb-4">
+                    Derived from proposition + stance. Tracked over time with confidence decay.
+                  </p>
+                  {claims.length === 0 ? (
+                    <div className="text-center py-8 opacity-50">
+                      <div className="text-3xl mb-2">💭</div>
+                      <p>No claims yet.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {claims.slice(0, 10).map((claim, i) => (
+                        <ClaimCard key={claim.id} claim={claim} isLatest={i === 0} />
+                      ))}
+                      {claims.length > 10 && (
+                        <div className="text-center text-xs opacity-50 py-2">
+                          + {claims.length - 10} more claims
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
 
             {/* Corrections Tab */}
             {activeTab === 'corrections' && (
@@ -1350,94 +1107,6 @@ export function ProgramPage() {
               </div>
             )}
 
-            {/* Insights Tab */}
-            {activeTab === 'insights' && (
-              <div className="space-y-6">
-                {/* Summary Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="stat bg-base-200 rounded-lg p-4">
-                    <div className="stat-title text-xs">Total Claims</div>
-                    <div className="stat-value text-2xl">{stats.totalClaims}</div>
-                  </div>
-                  <div className="stat bg-base-200 rounded-lg p-4">
-                    <div className="stat-title text-xs">Active Goals</div>
-                    <div className="stat-value text-2xl text-success">{stats.activeGoals}</div>
-                    <div className="stat-desc">{stats.achievedGoals} achieved</div>
-                  </div>
-                  <div className="stat bg-base-200 rounded-lg p-4">
-                    <div className="stat-title text-xs">Entities Known</div>
-                    <div className="stat-value text-2xl">{entities.length}</div>
-                  </div>
-                </div>
-
-                {/* Claim Type Distribution */}
-                {Object.keys(claimTypeCounts).length > 0 && (
-                  <div className="bg-base-200 rounded-lg p-4">
-                    <h3 className="font-bold text-sm mb-3">Claim Distribution</h3>
-                    <div className="space-y-2">
-                      {Object.entries(claimTypeCounts)
-                        .sort((a, b) => b[1] - a[1])
-                        .slice(0, 8)
-                        .map(([type, count]) => (
-                          <div key={type} className="flex items-center gap-2">
-                            <span className="w-24 text-xs truncate">{type.replace('_', ' ')}</span>
-                            <progress
-                              className="progress progress-primary flex-1 h-2"
-                              value={count}
-                              max={Math.max(...Object.values(claimTypeCounts))}
-                            />
-                            <span className="text-xs w-8 text-right">{count}</span>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Task Queue Status */}
-                <div className="bg-base-200 rounded-lg p-4">
-                  <h3 className="font-bold text-sm mb-3">Processing Queue</h3>
-                  <div className="grid grid-cols-4 gap-3 text-center">
-                    <div>
-                      <div className={`text-2xl font-bold ${queueStatus.isRunning ? 'text-success' : 'text-warning'}`}>
-                        {queueStatus.isRunning ? '●' : '○'}
-                      </div>
-                      <div className="text-xs opacity-50">{queueStatus.isRunning ? 'Running' : 'Stopped'}</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold">{queueStatus.pendingTasks}</div>
-                      <div className="text-xs opacity-50">Pending</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-primary">{queueStatus.activeTasks}</div>
-                      <div className="text-xs opacity-50">Active</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-error">{queueStatus.failedTasks}</div>
-                      <div className="text-xs opacity-50">Failed</div>
-                    </div>
-                  </div>
-                  {tasks.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-base-300">
-                      <div className="text-xs font-bold opacity-70 mb-2">Recent Tasks</div>
-                      <div className="space-y-1 max-h-32 overflow-y-auto">
-                        {tasks.slice(-8).reverse().map((task) => (
-                          <div key={task.id} className="flex justify-between text-xs bg-base-100 p-1 rounded">
-                            <span className="truncate flex-1 opacity-70">{task.taskType}</span>
-                            <span className={`badge badge-xs ${
-                              task.status === 'completed' ? 'badge-success' :
-                              task.status === 'processing' ? 'badge-primary' :
-                              task.status === 'failed' ? 'badge-error' : 'badge-ghost'
-                            }`}>
-                              {task.status}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>

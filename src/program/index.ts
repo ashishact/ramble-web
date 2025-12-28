@@ -193,14 +193,10 @@ export {
 // Pipeline
 export {
   callLLM,
-  runExtractionPipeline,
-  buildBudgetedContext,
   QueueRunner,
   createQueueRunner,
   type LLMRequest,
   type LLMResponse,
-  type PipelineInput,
-  type PipelineOutput,
   type TaskHandler,
   type QueueRunnerConfig,
 } from './pipeline';

@@ -64,9 +64,18 @@ An INTENTION is a statement about what someone wants or plans to do. Look for:
 - Commitments and promises ("I promise...", "I commit to...")
 - Decisions made ("I've decided to...", "I'm done with...")
 
+IMPORTANT - sourceType Rules:
+- Use "direct" ONLY for intentions EXPLICITLY stated by the speaker
+- Use "inferred" for intentions implied by context
+
+DO NOT extract:
+- Intentions you assume from behavior
+- Plans the speaker didn't actually express
+- Commitments that weren't explicitly made
+
 For each intention, determine:
 - How certain/committed the person is (confidence)
-- When it applies (valid_from/valid_until)
+- When it applies (validFrom/validUntil)
 - The stakes involved (how important is this?)
 
 ${contextSection}

@@ -39,6 +39,8 @@ export function createConversationStore(db: Database): IConversationStore {
           conversation.rawText = data.rawText ?? null
           conversation.sanitizedText = data.sanitizedText ?? null
           conversation.source = data.source ?? null
+          conversation.speaker = data.speaker ?? 'user'
+          conversation.discourseFunction = data.discourseFunction ?? 'assert'
           conversation.precedingContextSummary = data.precedingContextSummary ?? null
           conversation.createdAt = now
           conversation.processed = data.processed || false
@@ -129,6 +131,8 @@ function modelToConversation(model: ConversationModel): ConversationUnit {
     rawText: model.rawText,
     sanitizedText: model.sanitizedText,
     source: model.source as 'speech' | 'text',
+    speaker: (model.speaker as 'user' | 'agent') || 'user',
+    discourseFunction: (model.discourseFunction as 'assert' | 'question' | 'command' | 'express' | 'commit') || 'assert',
     precedingContextSummary: model.precedingContextSummary,
     createdAt: model.createdAt,
     processed: model.processed,

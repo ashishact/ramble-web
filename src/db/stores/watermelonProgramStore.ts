@@ -2,21 +2,37 @@
  * WatermelonDB Program Store
  *
  * Implements IProgramStore interface using WatermelonDB stores
+ *
+ * Layered Architecture:
+ * - Layer 0: Stream (conversations)
+ * - Layer 1: Primitives (propositions, stances, relations, spans, entities)
+ * - Layer 2: Derived (claims, goals, patterns, values, contradictions)
  */
 
 import type { Database } from '@nozbe/watermelondb'
 import type { IProgramStore } from '../../program/interfaces/store'
 import { database } from '../database'
 import {
+  // Layer 0: Stream
   createSessionStore,
   createConversationStore,
-  createClaimStore,
-  createSourceTrackingStore,
+  // Layer 1: Primitives
+  createPropositionStore,
+  createStanceStore,
+  createRelationStore,
+  createSpanStore,
+  createPrimitiveEntityStore,
+  createEntityMentionStore,
   createEntityStore,
+  // Layer 2: Derived
+  createDerivedStore,
+  createClaimStore,
   createGoalStore,
+  // Observers & Extractors
   createExtractionProgramStore,
   createObserverProgramStore,
   createObserverOutputStore,
+  // Support
   createExtensionStore,
   createSynthesisCacheStore,
   createCorrectionStore,
@@ -26,36 +42,64 @@ import {
 export class WatermelonProgramStore implements IProgramStore {
   private ready: boolean = false
 
-  // Store instances
+  // Layer 0: Stream
   public readonly sessions
   public readonly conversations
-  public readonly claims
-  public readonly sourceTracking
+
+  // Layer 1: Primitives
+  public readonly propositions
+  public readonly stances
+  public readonly relations
+  public readonly spans
+  public readonly entityMentions
+  public readonly primitiveEntities
   public readonly entities
+
+  // Layer 2: Derived
+  public readonly derived
+  public readonly claims
   public readonly goals
   public readonly observerOutputs
-  public readonly extensions
-  public readonly synthesisCache
+
+  // Observers & Extractors
   public readonly extractionPrograms
   public readonly observerPrograms
+
+  // Support
+  public readonly extensions
+  public readonly synthesisCache
   public readonly corrections
   public readonly tasks
 
   constructor(db: Database = database) {
-    // Initialize all stores
+    // Layer 0: Stream
     this.sessions = createSessionStore(db)
     this.conversations = createConversationStore(db)
-    this.claims = createClaimStore(db)
-    this.sourceTracking = createSourceTrackingStore(db)
+
+    // Layer 1: Primitives
+    this.propositions = createPropositionStore(db)
+    this.stances = createStanceStore(db)
+    this.relations = createRelationStore(db)
+    this.spans = createSpanStore(db)
+    this.primitiveEntities = createPrimitiveEntityStore(db)
+    this.entityMentions = createEntityMentionStore(db)
     this.entities = createEntityStore(db)
+
+    // Layer 2: Derived
+    this.derived = createDerivedStore(db)
+    this.claims = createClaimStore(db)
     this.goals = createGoalStore(db)
     this.observerOutputs = createObserverOutputStore(db)
-    this.extensions = createExtensionStore(db)
-    this.synthesisCache = createSynthesisCacheStore(db)
+
+    // Observers & Extractors
     this.extractionPrograms = createExtractionProgramStore(db)
     this.observerPrograms = createObserverProgramStore(db)
+
+    // Support
+    this.extensions = createExtensionStore(db)
+    this.synthesisCache = createSynthesisCacheStore(db)
     this.corrections = createCorrectionStore(db)
-    this.tasks = createTaskStore(db)  // Persisted for durability
+    this.tasks = createTaskStore(db)
   }
 
   async initialize(): Promise<void> {

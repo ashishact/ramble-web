@@ -78,6 +78,9 @@ export class ConversationProcessor {
     // Build preceding context
     const precedingContext = await this.buildPrecedingContext(sessionId, '')
 
+    // Infer discourse function from text
+    const discourseFunction = this.inferDiscourseFunction(sanitizedText)
+
     // Create conversation unit
     const data: CreateConversationUnit = {
       sessionId: sessionId,
@@ -85,6 +88,8 @@ export class ConversationProcessor {
       rawText: rawText,
       sanitizedText: sanitizedText,
       source,
+      speaker: 'user',  // Default to user for now
+      discourseFunction,
       precedingContextSummary: precedingContext,
       processed: false,
     }
@@ -117,6 +122,36 @@ export class ConversationProcessor {
         .replace(/\s+/g, ' ') // Normalize whitespace
         .slice(0, 10000)
     ) // Limit length
+  }
+
+  /**
+   * Infer discourse function from text patterns
+   */
+  private inferDiscourseFunction(text: string): 'assert' | 'question' | 'command' | 'express' | 'commit' {
+    const trimmed = text.trim().toLowerCase()
+
+    // Question detection
+    if (trimmed.endsWith('?') || /^(what|who|where|when|why|how|is|are|do|does|can|will|should)\b/.test(trimmed)) {
+      return 'question'
+    }
+
+    // Command detection
+    if (/^(please|could you|can you|would you|help me|show me|tell me|give me)\b/.test(trimmed)) {
+      return 'command'
+    }
+
+    // Commitment detection
+    if (/\b(i will|i'll|i promise|i'm going to|i am going to|i commit)\b/.test(trimmed)) {
+      return 'commit'
+    }
+
+    // Emotion expression detection
+    if (/\b(i feel|i'm feeling|i am feeling|i'm so|i am so|i love|i hate|i'm happy|i'm sad|i'm angry)\b/.test(trimmed)) {
+      return 'express'
+    }
+
+    // Default to assertion
+    return 'assert'
   }
 
   /**

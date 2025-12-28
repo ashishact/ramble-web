@@ -24,6 +24,7 @@ import {
   type ExtractionProgramRecord,
   type DispatcherStats,
 } from '../index';
+import type { Proposition, Stance } from '../schemas/primitives';
 import type { SearchResult, ReplaceResult } from '../kernel';
 
 // ============================================================================
@@ -54,6 +55,12 @@ export interface UseProgramReturn {
 
   /** Known entities */
   entities: Entity[];
+
+  /** Layer 1: Propositions (what was said) */
+  propositions: Proposition[];
+
+  /** Layer 1: Stances (how propositions are held) */
+  stances: Stance[];
 
   /** Detected patterns */
   patterns: Pattern[];
@@ -159,6 +166,8 @@ export function useProgram(): UseProgramReturn {
   const [claimLimit, setClaimLimit] = useState<number>(50);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [entities, setEntities] = useState<Entity[]>([]);
+  const [propositions, setPropositions] = useState<Proposition[]>([]);
+  const [stances, setStances] = useState<Stance[]>([]);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [contradictions, setContradictions] = useState<Contradiction[]>([]);
   const [conversations, setConversations] = useState<ConversationUnit[]>([]);
@@ -230,6 +239,8 @@ export function useProgram(): UseProgramReturn {
       setClaimCount(await kernel.getClaimCount()); // Total count
       setGoals(await kernel.getGoals());
       setEntities(await kernel.getEntities());
+      setPropositions(await kernel.getPropositions());
+      setStances(await kernel.getStances());
       setPatterns(await kernel.getPatterns());
       setContradictions(await kernel.getContradictions());
       setConversations(await kernel.getConversations());
@@ -386,6 +397,8 @@ export function useProgram(): UseProgramReturn {
     claimCount,
     goals,
     entities,
+    propositions,
+    stances,
     patterns,
     contradictions,
     conversations,

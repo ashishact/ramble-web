@@ -1,14 +1,21 @@
 /**
- * WatermelonDB Schema
+ * WatermelonDB Schema v1
  *
- * Defines all 17 tables for the RAMBLE system
+ * Layered Architecture:
+ * - Layer 0: Stream (conversations)
+ * - Layer 1: Primitives (propositions, stances, relations, spans, entities)
+ * - Layer 2: Derived (claims, goals, patterns, values, contradictions)
  */
 
 import { appSchema, tableSchema } from '@nozbe/watermelondb'
 
 export const schema = appSchema({
-  version: 3,  // Bumped for Goal schema and timestamp field standardization
+  version: 1,
   tables: [
+    // ========================================================================
+    // SUPPORT TABLES
+    // ========================================================================
+
     // Sessions - Conversation sessions
     tableSchema({
       name: 'sessions',
@@ -21,7 +28,37 @@ export const schema = appSchema({
       ]
     }),
 
-    // Conversations - Raw conversation units
+    // Tasks - Durable task queue
+    tableSchema({
+      name: 'tasks',
+      columns: [
+        { name: 'taskType', type: 'string', isIndexed: true },
+        { name: 'status', type: 'string', isIndexed: true },
+        { name: 'priority', type: 'string' },
+        { name: 'priorityValue', type: 'number', isIndexed: true },
+        { name: 'payloadJson', type: 'string' },
+        { name: 'attempts', type: 'number' },
+        { name: 'maxAttempts', type: 'number' },
+        { name: 'lastError', type: 'string', isOptional: true },
+        { name: 'lastErrorAt', type: 'number', isOptional: true },
+        { name: 'backoffConfigJson', type: 'string' },
+        { name: 'checkpointJson', type: 'string', isOptional: true },
+        { name: 'createdAt', type: 'number', isIndexed: true },
+        { name: 'startedAt', type: 'number', isOptional: true },
+        { name: 'completedAt', type: 'number', isOptional: true },
+        { name: 'executeAt', type: 'number', isIndexed: true },
+        { name: 'nextRetryAt', type: 'number', isOptional: true, isIndexed: true },
+        { name: 'groupId', type: 'string', isOptional: true, isIndexed: true },
+        { name: 'dependsOn', type: 'string', isOptional: true },
+        { name: 'sessionId', type: 'string', isOptional: true, isIndexed: true },
+      ]
+    }),
+
+    // ========================================================================
+    // LAYER 0: STREAM (Ground Truth)
+    // ========================================================================
+
+    // Conversations - Raw conversation units (immutable once created)
     tableSchema({
       name: 'conversations',
       columns: [
@@ -29,14 +66,133 @@ export const schema = appSchema({
         { name: 'timestamp', type: 'number', isIndexed: true },
         { name: 'rawText', type: 'string' },
         { name: 'sanitizedText', type: 'string' },
-        { name: 'source', type: 'string' }, // 'speech' | 'text'
+        { name: 'source', type: 'string' },  // 'speech' | 'text'
+        { name: 'speaker', type: 'string' },  // 'user' | 'agent'
+        { name: 'discourseFunction', type: 'string' },  // 'assert' | 'question' | 'command' | 'express' | 'commit'
         { name: 'precedingContextSummary', type: 'string' },
         { name: 'createdAt', type: 'number' },
-        { name: 'processed', type: 'boolean' },
+        { name: 'processed', type: 'boolean', isIndexed: true },
       ]
     }),
 
-    // Claims - Core knowledge units (HIGH GROWTH TABLE)
+    // ========================================================================
+    // LAYER 1: PRIMITIVES (Extracted from Stream)
+    // ========================================================================
+
+    // Propositions - What is said (content without modality)
+    tableSchema({
+      name: 'propositions',
+      columns: [
+        { name: 'content', type: 'string' },
+        { name: 'subject', type: 'string', isIndexed: true },
+        { name: 'type', type: 'string' },  // 'state' | 'event' | 'process' | 'hypothetical' | 'generic'
+        { name: 'entityIdsJson', type: 'string' },
+        { name: 'spanIdsJson', type: 'string' },
+        { name: 'conversationId', type: 'string', isIndexed: true },
+        { name: 'createdAt', type: 'number', isIndexed: true },
+      ]
+    }),
+
+    // Stances - How propositions are held (4 dimensions)
+    tableSchema({
+      name: 'stances',
+      columns: [
+        { name: 'propositionId', type: 'string', isIndexed: true },
+        { name: 'holder', type: 'string' },
+        // Epistemic: How certain? What evidence?
+        { name: 'epistemicCertainty', type: 'number' },
+        { name: 'epistemicEvidence', type: 'string' },
+        // Volitional: Want vs averse?
+        { name: 'volitionalValence', type: 'number' },
+        { name: 'volitionalStrength', type: 'number' },
+        { name: 'volitionalType', type: 'string', isOptional: true },
+        // Deontic: Obligation?
+        { name: 'deonticStrength', type: 'number' },
+        { name: 'deonticSource', type: 'string', isOptional: true },
+        { name: 'deonticType', type: 'string', isOptional: true },
+        // Affective: Emotional?
+        { name: 'affectiveValence', type: 'number' },
+        { name: 'affectiveArousal', type: 'number' },
+        { name: 'emotionsJson', type: 'string', isOptional: true },
+        // Meta
+        { name: 'expressedAt', type: 'number', isIndexed: true },
+        { name: 'supersedes', type: 'string', isOptional: true },
+      ]
+    }),
+
+    // Relations - How propositions connect
+    tableSchema({
+      name: 'relations',
+      columns: [
+        { name: 'sourceId', type: 'string', isIndexed: true },
+        { name: 'targetId', type: 'string', isIndexed: true },
+        { name: 'category', type: 'string', isIndexed: true },
+        { name: 'subtype', type: 'string' },
+        { name: 'strength', type: 'number' },
+        { name: 'spanIdsJson', type: 'string' },
+        { name: 'createdAt', type: 'number' },
+      ]
+    }),
+
+    // Spans - Text regions matched by pattern matching (JS, not LLM)
+    tableSchema({
+      name: 'spans',
+      columns: [
+        { name: 'conversationId', type: 'string', isIndexed: true },
+        { name: 'charStart', type: 'number' },
+        { name: 'charEnd', type: 'number' },
+        { name: 'textExcerpt', type: 'string' },
+        { name: 'matchedBy', type: 'string' },  // 'pattern' | 'rule'
+        { name: 'patternId', type: 'string', isOptional: true },
+        { name: 'createdAt', type: 'number' },
+      ]
+    }),
+
+    // Primitive Entities - Named entities from Layer 1 extraction
+    tableSchema({
+      name: 'primitive_entities',
+      columns: [
+        { name: 'canonicalName', type: 'string', isIndexed: true },
+        { name: 'type', type: 'string', isIndexed: true },
+        { name: 'aliases', type: 'string' },
+        { name: 'firstSpanId', type: 'string' },
+        { name: 'mentionCount', type: 'number' },
+        { name: 'lastMentioned', type: 'number', isIndexed: true },
+        { name: 'createdAt', type: 'number' },
+      ]
+    }),
+
+    // Entities - Named entities (from claim extraction)
+    tableSchema({
+      name: 'entities',
+      columns: [
+        { name: 'canonicalName', type: 'string', isIndexed: true },
+        { name: 'entityType', type: 'string', isIndexed: true },
+        { name: 'aliases', type: 'string' },
+        { name: 'createdAt', type: 'number' },
+        { name: 'lastReferenced', type: 'number', isIndexed: true },
+        { name: 'mentionCount', type: 'number', isIndexed: true },
+      ]
+    }),
+
+    // ========================================================================
+    // LAYER 2: DERIVED (Memoized computations from primitives)
+    // ========================================================================
+
+    // Generic derived table for memoized computations
+    tableSchema({
+      name: 'derived',
+      columns: [
+        { name: 'type', type: 'string', isIndexed: true },
+        { name: 'dependencyIdsJson', type: 'string' },
+        { name: 'dependencyHash', type: 'string' },
+        { name: 'dataJson', type: 'string' },
+        { name: 'stale', type: 'boolean', isIndexed: true },
+        { name: 'computedAt', type: 'number', isIndexed: true },
+      ]
+    }),
+
+    // Claims - Structured knowledge units
     tableSchema({
       name: 'claims',
       columns: [
@@ -60,50 +216,10 @@ export const schema = appSchema({
         { name: 'extractionProgramId', type: 'string', isIndexed: true },
         { name: 'supersededBy', type: 'string', isOptional: true },
         { name: 'elaborates', type: 'string', isOptional: true },
-        // Memory system fields
         { name: 'memoryTier', type: 'string', isIndexed: true },
         { name: 'salience', type: 'number', isIndexed: true },
         { name: 'promotedAt', type: 'number', isOptional: true },
         { name: 'lastAccessed', type: 'number', isIndexed: true },
-      ]
-    }),
-
-    // Source Tracking - Claim source attribution (HIGH GROWTH)
-    tableSchema({
-      name: 'source_tracking',
-      columns: [
-        { name: 'claimId', type: 'string', isIndexed: true },
-        { name: 'unitId', type: 'string', isIndexed: true },
-        { name: 'unitText', type: 'string' },
-        { name: 'textExcerpt', type: 'string' },
-        { name: 'charStart', type: 'number', isOptional: true },
-        { name: 'charEnd', type: 'number', isOptional: true },
-        { name: 'patternId', type: 'string', isOptional: true },
-        { name: 'llmPrompt', type: 'string' },
-        { name: 'llmResponse', type: 'string' },
-        { name: 'createdAt', type: 'number' },
-      ]
-    }),
-
-    // Claim Sources - Many-to-many mapping (claims <-> conversation units)
-    tableSchema({
-      name: 'claim_sources',
-      columns: [
-        { name: 'claimId', type: 'string', isIndexed: true },
-        { name: 'unitId', type: 'string', isIndexed: true },
-      ]
-    }),
-
-    // Entities - Named entities
-    tableSchema({
-      name: 'entities',
-      columns: [
-        { name: 'canonicalName', type: 'string', isIndexed: true },
-        { name: 'entityType', type: 'string', isIndexed: true },
-        { name: 'aliases', type: 'string' }, // JSON array
-        { name: 'createdAt', type: 'number' },
-        { name: 'lastReferenced', type: 'number', isIndexed: true },
-        { name: 'mentionCount', type: 'number', isIndexed: true },
       ]
     }),
 
@@ -130,40 +246,13 @@ export const schema = appSchema({
       ]
     }),
 
-    // Observer Outputs - Results from observer analysis
-    tableSchema({
-      name: 'observer_outputs',
-      columns: [
-        { name: 'observerType', type: 'string', isIndexed: true },
-        { name: 'outputType', type: 'string', isIndexed: true },
-        { name: 'contentJson', type: 'string' },
-        { name: 'sourceClaimsJson', type: 'string' },
-        { name: 'createdAt', type: 'number', isIndexed: true },
-        { name: 'sessionId', type: 'string', isIndexed: true },
-      ]
-    }),
-
-    // Contradictions - Detected contradictions between claims
-    tableSchema({
-      name: 'contradictions',
-      columns: [
-        { name: 'claimAId', type: 'string', isIndexed: true },
-        { name: 'claimBId', type: 'string', isIndexed: true },
-        { name: 'resolutionType', type: 'string', isOptional: true },
-        { name: 'resolutionExplanation', type: 'string', isOptional: true },
-        { name: 'resolved', type: 'boolean', isIndexed: true },
-        { name: 'createdAt', type: 'number' },
-        { name: 'resolvedAt', type: 'number', isOptional: true },
-      ]
-    }),
-
     // Patterns - Detected behavior patterns
     tableSchema({
       name: 'patterns',
       columns: [
         { name: 'patternType', type: 'string', isIndexed: true },
         { name: 'description', type: 'string' },
-        { name: 'evidenceClaimsJson', type: 'string' }, // JSON array of claim IDs
+        { name: 'evidenceClaimsJson', type: 'string' },
         { name: 'occurrenceCount', type: 'number' },
         { name: 'confidence', type: 'number' },
         { name: 'createdAt', type: 'number' },
@@ -183,13 +272,53 @@ export const schema = appSchema({
       ]
     }),
 
+    // Contradictions - Detected contradictions between claims
+    tableSchema({
+      name: 'contradictions',
+      columns: [
+        { name: 'claimAId', type: 'string', isIndexed: true },
+        { name: 'claimBId', type: 'string', isIndexed: true },
+        { name: 'resolutionType', type: 'string', isOptional: true },
+        { name: 'resolutionExplanation', type: 'string', isOptional: true },
+        { name: 'resolved', type: 'boolean', isIndexed: true },
+        { name: 'createdAt', type: 'number' },
+        { name: 'resolvedAt', type: 'number', isOptional: true },
+      ]
+    }),
+
+    // Claim Sources - Many-to-many mapping (claims <-> conversation units)
+    tableSchema({
+      name: 'claim_sources',
+      columns: [
+        { name: 'claimId', type: 'string', isIndexed: true },
+        { name: 'unitId', type: 'string', isIndexed: true },
+      ]
+    }),
+
+    // ========================================================================
+    // OBSERVERS & EXTRACTORS
+    // ========================================================================
+
+    // Observer Outputs - Results from observer analysis
+    tableSchema({
+      name: 'observer_outputs',
+      columns: [
+        { name: 'observerType', type: 'string', isIndexed: true },
+        { name: 'outputType', type: 'string', isIndexed: true },
+        { name: 'contentJson', type: 'string' },
+        { name: 'sourceClaimsJson', type: 'string' },
+        { name: 'createdAt', type: 'number', isIndexed: true },
+        { name: 'sessionId', type: 'string', isIndexed: true },
+      ]
+    }),
+
     // Extraction Programs - LLM-based extraction configurations
     tableSchema({
       name: 'extraction_programs',
       columns: [
         { name: 'name', type: 'string' },
         { name: 'description', type: 'string' },
-        { name: 'type', type: 'string' }, // 'pattern' | 'llm'
+        { name: 'type', type: 'string' },
         { name: 'version', type: 'number' },
         { name: 'active', type: 'boolean', isIndexed: true },
         { name: 'patternsJson', type: 'string', isOptional: true },
@@ -221,7 +350,7 @@ export const schema = appSchema({
         { name: 'description', type: 'string' },
         { name: 'active', type: 'boolean', isIndexed: true },
         { name: 'priority', type: 'number' },
-        { name: 'triggers', type: 'string' }, // JSON array
+        { name: 'triggers', type: 'string' },
         { name: 'claimTypeFilter', type: 'string', isOptional: true },
         { name: 'usesLlm', type: 'boolean' },
         { name: 'llmTier', type: 'string', isOptional: true },
@@ -240,6 +369,10 @@ export const schema = appSchema({
         { name: 'avgProcessingTimeMs', type: 'number' },
       ]
     }),
+
+    // ========================================================================
+    // SUPPORT TABLES
+    // ========================================================================
 
     // Extensions - Plugin-style extensions
     tableSchema({
@@ -283,32 +416,6 @@ export const schema = appSchema({
         { name: 'createdAt', type: 'number' },
         { name: 'lastUsed', type: 'number', isOptional: true },
         { name: 'sourceUnitId', type: 'string', isOptional: true },
-      ]
-    }),
-
-    // Tasks - Durable task queue (persisted for recovery after browser reload)
-    tableSchema({
-      name: 'tasks',
-      columns: [
-        { name: 'taskType', type: 'string', isIndexed: true },
-        { name: 'status', type: 'string', isIndexed: true },
-        { name: 'priority', type: 'string' },  // 'critical' | 'high' | 'normal' | 'low'
-        { name: 'priorityValue', type: 'number', isIndexed: true },  // Numeric for sorting
-        { name: 'payloadJson', type: 'string' },
-        { name: 'attempts', type: 'number' },
-        { name: 'maxAttempts', type: 'number' },
-        { name: 'lastError', type: 'string', isOptional: true },
-        { name: 'lastErrorAt', type: 'number', isOptional: true },
-        { name: 'backoffConfigJson', type: 'string' },
-        { name: 'checkpointJson', type: 'string', isOptional: true },
-        { name: 'createdAt', type: 'number', isIndexed: true },
-        { name: 'startedAt', type: 'number', isOptional: true },
-        { name: 'completedAt', type: 'number', isOptional: true },
-        { name: 'executeAt', type: 'number', isIndexed: true },
-        { name: 'nextRetryAt', type: 'number', isOptional: true, isIndexed: true },
-        { name: 'groupId', type: 'string', isOptional: true, isIndexed: true },
-        { name: 'dependsOn', type: 'string', isOptional: true },
-        { name: 'sessionId', type: 'string', isOptional: true, isIndexed: true },
       ]
     }),
   ]

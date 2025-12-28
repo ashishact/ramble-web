@@ -2,7 +2,10 @@
  * Store Interfaces
  *
  * Abstract interfaces for all data stores.
- * These define the contract that TinyBase implementations must fulfill.
+ * Layered Architecture:
+ * - Layer 0: Stream (conversations)
+ * - Layer 1: Primitives (propositions, stances, relations, spans, entities)
+ * - Layer 2: Derived (claims, goals, patterns, values, contradictions)
  */
 
 import type {
@@ -48,8 +51,6 @@ import type {
   UpdateExtractionProgram,
   ObserverProgram,
   CreateObserverProgram,
-  SourceTracking,
-  CreateSourceTracking,
   UpdateObserverProgram,
   ObserverType,
   Correction,
@@ -72,7 +73,7 @@ import type {
 export interface IBaseStore<T, TCreate, TUpdate> {
   getById(id: string): Promise<T | null>;
   getAll(): Promise<T[]>;
-  count(): Promise<number>; // Get total count without loading all items
+  count(): Promise<number>;
   create(data: TCreate): Promise<T>;
   update(id: string, data: TUpdate): Promise<T | null>;
   delete(id: string): Promise<boolean>;
@@ -89,7 +90,7 @@ export type SubscriptionCallback<T> = (items: T[]) => void;
 export type Unsubscribe = () => void;
 
 // ============================================================================
-// Session Store
+// LAYER 0: STREAM
 // ============================================================================
 
 export interface ISessionStore extends IBaseStore<Session, CreateSession, UpdateSession> {
@@ -98,10 +99,6 @@ export interface ISessionStore extends IBaseStore<Session, CreateSession, Update
   incrementUnitCount(id: string): Promise<void>;
   subscribe(callback: SubscriptionCallback<Session>): Unsubscribe;
 }
-
-// ============================================================================
-// Conversation Store
-// ============================================================================
 
 export interface IConversationStore
   extends IBaseStore<ConversationUnit, CreateConversationUnit, UpdateConversationUnit> {
@@ -113,8 +110,92 @@ export interface IConversationStore
 }
 
 // ============================================================================
-// Claim Store
+// LAYER 1: PRIMITIVES
 // ============================================================================
+
+import type {
+  Proposition,
+  CreateProposition,
+  Stance,
+  CreateStance,
+  Relation,
+  CreateRelation,
+  Span,
+  CreateSpan,
+  PrimitiveEntity,
+  CreatePrimitiveEntity,
+  EntityMention,
+  CreateEntityMention,
+} from '../schemas/primitives'
+
+export interface IPropositionStore extends IBaseStore<Proposition, CreateProposition, Partial<Proposition>> {
+  getByConversation(conversationId: string): Promise<Proposition[]>
+  getBySubject(subject: string): Promise<Proposition[]>
+  getByType(type: string): Promise<Proposition[]>
+  getRecent(limit: number): Promise<Proposition[]>
+  subscribe(callback: SubscriptionCallback<Proposition>): Unsubscribe
+}
+
+export interface IStanceStore extends IBaseStore<Stance, CreateStance, Partial<Stance>> {
+  getByProposition(propositionId: string): Promise<Stance[]>
+  getByHolder(holder: string): Promise<Stance[]>
+  getRecent(limit: number): Promise<Stance[]>
+  subscribe(callback: SubscriptionCallback<Stance>): Unsubscribe
+}
+
+export interface IRelationStore extends IBaseStore<Relation, CreateRelation, Partial<Relation>> {
+  getBySource(sourceId: string): Promise<Relation[]>
+  getByTarget(targetId: string): Promise<Relation[]>
+  getByCategory(category: string): Promise<Relation[]>
+  subscribe(callback: SubscriptionCallback<Relation>): Unsubscribe
+}
+
+export interface ISpanStore extends IBaseStore<Span, CreateSpan, never> {
+  getByConversation(conversationId: string): Promise<Span[]>
+  getByPattern(patternId: string): Promise<Span[]>
+  subscribe(callback: SubscriptionCallback<Span>): Unsubscribe
+}
+
+export interface IEntityMentionStore extends IBaseStore<EntityMention, CreateEntityMention, Partial<EntityMention>> {
+  getByConversation(conversationId: string): Promise<EntityMention[]>
+  getByResolvedEntity(entityId: string): Promise<EntityMention[]>
+  getUnresolved(): Promise<EntityMention[]>
+  getRecent(limit: number): Promise<EntityMention[]>
+  resolve(id: string, entityId: string): Promise<EntityMention | null>
+  subscribe(callback: SubscriptionCallback<EntityMention>): Unsubscribe
+}
+
+export interface IPrimitiveEntityStore extends IBaseStore<PrimitiveEntity, CreatePrimitiveEntity, Partial<PrimitiveEntity>> {
+  getByName(name: string): Promise<PrimitiveEntity | null>
+  getByType(type: string): Promise<PrimitiveEntity[]>
+  getRecent(limit: number): Promise<PrimitiveEntity[]>
+  subscribe(callback: SubscriptionCallback<PrimitiveEntity>): Unsubscribe
+}
+
+export interface IEntityStore extends IBaseStore<Entity, CreateEntity, UpdateEntity> {
+  getByName(name: string): Promise<Entity | null>;
+  getByType(type: string): Promise<Entity[]>;
+  getRecent(limit: number): Promise<Entity[]>;
+  findByAlias(alias: string): Promise<Entity | null>;
+  incrementMentionCount(id: string): Promise<void>;
+  updateLastReferenced(id: string): Promise<void>;
+  mergeEntities(keepId: string, deleteId: string): Promise<Entity | null>;
+  subscribe(callback: SubscriptionCallback<Entity>): Unsubscribe;
+}
+
+// ============================================================================
+// LAYER 2: DERIVED
+// ============================================================================
+
+export interface IDerivedStore {
+  getById(id: string): Promise<{ id: string; type: string; data: unknown } | null>
+  getByType(type: string): Promise<Array<{ id: string; type: string; data: unknown }>>
+  getStale(): Promise<Array<{ id: string; type: string }>>
+  create(type: string, dependencyIds: string[], data: unknown): Promise<{ id: string }>
+  markStale(id: string): Promise<void>
+  markStaleByDependency(primitiveId: string): Promise<number>
+  recompute(id: string, data: unknown): Promise<void>
+}
 
 export interface IClaimStore extends IBaseStore<Claim, CreateClaim, UpdateClaim> {
   getByState(state: ClaimState): Promise<Claim[]>;
@@ -134,42 +215,13 @@ export interface IClaimStore extends IBaseStore<Claim, CreateClaim, UpdateClaim>
 
   // Memory system methods
   getByMemoryTier(tier: MemoryTier): Promise<Claim[]>;
-  getDecayable(): Promise<Claim[]>; // All non-eternal claims
+  getDecayable(): Promise<Claim[]>;
   updateSalience(id: string, salience: number): Promise<void>;
   updateLastAccessed(id: string): Promise<void>;
   promoteToLongTerm(id: string): Promise<void>;
   markStale(id: string): Promise<void>;
   markDormant(id: string): Promise<void>;
 }
-
-// ============================================================================
-// Source Tracking Store
-// ============================================================================
-
-export interface ISourceTrackingStore
-  extends IBaseStore<SourceTracking, CreateSourceTracking, never> {
-  getByClaimId(claimId: string): Promise<SourceTracking | null>;
-  getByUnitId(unitId: string): Promise<SourceTracking[]>;
-  deleteByClaimId(claimId: string): Promise<boolean>;
-}
-
-// ============================================================================
-// Entity Store
-// ============================================================================
-
-export interface IEntityStore extends IBaseStore<Entity, CreateEntity, UpdateEntity> {
-  getByName(name: string): Promise<Entity | null>;
-  getByType(type: string): Promise<Entity[]>;
-  findByAlias(alias: string): Promise<Entity | null>;
-  incrementMentionCount(id: string): Promise<void>;
-  updateLastReferenced(id: string): Promise<void>;
-  mergeEntities(keepId: string, deleteId: string): Promise<Entity | null>;
-  subscribe(callback: SubscriptionCallback<Entity>): Unsubscribe;
-}
-
-// ============================================================================
-// Goal Store
-// ============================================================================
 
 export interface IGoalStore extends IBaseStore<Goal, CreateGoal, UpdateGoal> {
   getByStatus(status: GoalStatus): Promise<Goal[]>;
@@ -182,10 +234,6 @@ export interface IGoalStore extends IBaseStore<Goal, CreateGoal, UpdateGoal> {
   updateLastReferenced(id: string): Promise<void>;
   subscribe(callback: SubscriptionCallback<Goal>): Unsubscribe;
 }
-
-// ============================================================================
-// Observer Output Store
-// ============================================================================
 
 export interface IObserverOutputStore
   extends IBaseStore<ObserverOutput, CreateObserverOutput, UpdateObserverOutput> {
@@ -216,34 +264,7 @@ export interface IObserverOutputStore
 }
 
 // ============================================================================
-// Extension Store
-// ============================================================================
-
-export interface IExtensionStore
-  extends IBaseStore<Extension, CreateExtension, UpdateExtension> {
-  getByType(type: ExtensionType): Promise<Extension[]>;
-  getByStatus(status: ExtensionStatus): Promise<Extension[]>;
-  getProduction(): Promise<Extension[]>;
-  verify(id: string): Promise<Extension | null>;
-  subscribe(callback: SubscriptionCallback<Extension>): Unsubscribe;
-}
-
-// ============================================================================
-// Synthesis Cache Store
-// ============================================================================
-
-export interface ISynthesisCacheStore
-  extends IBaseStore<SynthesisCache, CreateSynthesisCache, UpdateSynthesisCache> {
-  getByType(type: string): Promise<SynthesisCache[]>;
-  getByCacheKey(key: string): Promise<SynthesisCache | null>;
-  getValid(type: string): Promise<SynthesisCache[]>;
-  markStale(id: string): Promise<void>;
-  cleanupExpired(): Promise<number>;
-  subscribe(callback: SubscriptionCallback<SynthesisCache>): Unsubscribe;
-}
-
-// ============================================================================
-// Extraction Program Store
+// OBSERVERS & EXTRACTORS
 // ============================================================================
 
 export interface IExtractionProgramStore
@@ -257,10 +278,6 @@ export interface IExtractionProgramStore
   subscribe(callback: SubscriptionCallback<ExtractionProgram>): Unsubscribe;
 }
 
-// ============================================================================
-// Observer Program Store
-// ============================================================================
-
 export interface IObserverProgramStore
   extends IBaseStore<ObserverProgram, CreateObserverProgram, UpdateObserverProgram> {
   getActive(): Promise<ObserverProgram[]>;
@@ -273,8 +290,27 @@ export interface IObserverProgramStore
 }
 
 // ============================================================================
-// Correction Store
+// SUPPORT
 // ============================================================================
+
+export interface IExtensionStore
+  extends IBaseStore<Extension, CreateExtension, UpdateExtension> {
+  getByType(type: ExtensionType): Promise<Extension[]>;
+  getByStatus(status: ExtensionStatus): Promise<Extension[]>;
+  getProduction(): Promise<Extension[]>;
+  verify(id: string): Promise<Extension | null>;
+  subscribe(callback: SubscriptionCallback<Extension>): Unsubscribe;
+}
+
+export interface ISynthesisCacheStore
+  extends IBaseStore<SynthesisCache, CreateSynthesisCache, UpdateSynthesisCache> {
+  getByType(type: string): Promise<SynthesisCache[]>;
+  getByCacheKey(key: string): Promise<SynthesisCache | null>;
+  getValid(type: string): Promise<SynthesisCache[]>;
+  markStale(id: string): Promise<void>;
+  cleanupExpired(): Promise<number>;
+  subscribe(callback: SubscriptionCallback<SynthesisCache>): Unsubscribe;
+}
 
 export interface ICorrectionStore
   extends IBaseStore<Correction, CreateCorrection, UpdateCorrection> {
@@ -284,10 +320,6 @@ export interface ICorrectionStore
   updateLastUsed(id: string): Promise<void>;
   subscribe(callback: SubscriptionCallback<Correction>): Unsubscribe;
 }
-
-// ============================================================================
-// Task Store
-// ============================================================================
 
 export interface ITaskStore extends IBaseStore<Task, CreateTask, UpdateTask> {
   getPending(): Promise<Task[]>;
@@ -309,17 +341,32 @@ export interface ITaskStore extends IBaseStore<Task, CreateTask, UpdateTask> {
  * Main store interface combining all stores
  */
 export interface IProgramStore {
+  // Layer 0: Stream
   sessions: ISessionStore;
   conversations: IConversationStore;
+
+  // Layer 1: Primitives
+  propositions: IPropositionStore;
+  stances: IStanceStore;
+  relations: IRelationStore;
+  spans: ISpanStore;
+  entityMentions: IEntityMentionStore;
+  primitiveEntities: IPrimitiveEntityStore;  // Legacy, keeping for backward compat
+  entities: IEntityStore;  // Layer 2: Canonical entities
+
+  // Layer 2: Derived
+  derived: IDerivedStore;
   claims: IClaimStore;
-  sourceTracking: ISourceTrackingStore;
-  entities: IEntityStore;
   goals: IGoalStore;
   observerOutputs: IObserverOutputStore;
-  extensions: IExtensionStore;
-  synthesisCache: ISynthesisCacheStore;
+
+  // Observers & Extractors
   extractionPrograms: IExtractionProgramStore;
   observerPrograms: IObserverProgramStore;
+
+  // Support
+  extensions: IExtensionStore;
+  synthesisCache: ISynthesisCacheStore;
   corrections: ICorrectionStore;
   tasks: ITaskStore;
 

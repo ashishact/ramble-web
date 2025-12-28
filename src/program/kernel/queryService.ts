@@ -31,12 +31,8 @@ export class QueryService {
   // ==========================================================================
 
   async getClaims(limit?: number): Promise<Claim[]> {
-    const allClaims = await this.store.claims.getAll()
-    if (limit === undefined) {
-      return allClaims
-    }
-    // Return last N claims (most recent)
-    return allClaims.slice(-limit)
+    // Use getRecent() which returns claims sorted by createdAt DESC (newest first)
+    return this.store.claims.getRecent(limit ?? 100)
   }
 
   async getClaimCount(): Promise<number> {
@@ -52,7 +48,8 @@ export class QueryService {
   // ==========================================================================
 
   async getEntities(): Promise<Entity[]> {
-    return this.store.entities.getAll()
+    // Use getRecent() which returns entities sorted by lastReferenced DESC (most recent first)
+    return this.store.entities.getRecent(100)
   }
 
   // ==========================================================================

@@ -14,7 +14,8 @@
 import { createProgramStore, type StoreBackend } from '../store/storeFactory'
 import type { IProgramStore } from '../interfaces/store'
 import { QueueRunner, createQueueRunner } from '../pipeline/queueRunner'
-import { runExtractionPipeline, type PipelineInput, type PipelineOutput } from '../pipeline/extractionPipeline'
+import { runPrimitivePipeline, type PrimitivePipelineOutput } from '../pipeline/primitivePipeline'
+import type { Proposition, Stance } from '../schemas/primitives'
 import { GoalManager, createGoalManager } from '../goals/goalManager'
 import { ObserverDispatcher, createStandardDispatcher, type DispatcherStats } from '../observers'
 import { CorrectionService, createCorrectionService, type ProcessTextResult } from '../corrections'
@@ -341,6 +342,16 @@ export class ProgramKernel {
     return this.queryService!.getEntities()
   }
 
+  async getPropositions(): Promise<Proposition[]> {
+    this.ensureInitialized()
+    return this.store!.propositions.getRecent(100)
+  }
+
+  async getStances(): Promise<Stance[]> {
+    this.ensureInitialized()
+    return this.store!.stances.getRecent(100)
+  }
+
   async getGoals(): Promise<Goal[]> {
     this.ensureInitialized()
     return this.queryService!.getGoals()
@@ -615,7 +626,7 @@ export class ProgramKernel {
   // ==========================================================================
 
   private registerTaskHandlers(): void {
-    this.queueRunner!.registerHandler<ExtractFromUnitPayload, PipelineOutput>(
+    this.queueRunner!.registerHandler<ExtractFromUnitPayload, PrimitivePipelineOutput>(
       'extract_from_unit',
       {
         execute: async (payload, _checkpoint) => {
@@ -631,138 +642,42 @@ export class ProgramKernel {
     })
   }
 
-  private async handleExtraction(payload: ExtractFromUnitPayload): Promise<PipelineOutput> {
+  private async handleExtraction(payload: ExtractFromUnitPayload): Promise<PrimitivePipelineOutput> {
     const unit = await this.store!.conversations.getById(payload.unitId)
     if (!unit) {
       throw new Error(`Conversation unit not found: ${payload.unitId}`)
     }
 
-    // Build pipeline input
-    const precedingContext = await this.buildPrecedingContext(payload.sessionId, unit.id)
-    const recentClaims = await this.getRecentClaimsForPipeline()
-    const knownEntities = await this.getKnownEntityInfo()
-
-    const input: PipelineInput = {
+    // Run primitive pipeline (extracts primitives + derives claims)
+    // Flow: ConversationUnit → Span → Proposition + Stance → Claim
+    const result = await runPrimitivePipeline({
       unit,
-      precedingContext,
-      recentClaims,
-      knownEntities,
       store: this.store!,
+    })
+
+    logger.info('Primitive pipeline completed', {
+      propositions: result.propositions.length,
+      stances: result.stances.length,
+      claims: result.claims.length,
+      entities: result.entities.length,
+      processingTimeMs: result.metadata.processingTimeMs,
+    })
+
+    // Trigger observers on new claims
+    if (this.dispatcher && result.claims.length > 0) {
+      await this.dispatcher.dispatch({
+        type: 'new_claim',
+        claims: result.claims,
+        sessionId: unit.sessionId,
+        timestamp: Date.now(),
+      })
     }
-
-    // Run extraction
-    const result = await runExtractionPipeline(input)
-
-    // Process results
-    await this.processExtractionResults(unit, result)
-
-    // Mark unit as processed
-    await this.store!.conversations.markProcessed(unit.id)
 
     // Update stats
     this.state.stats.totalUnitsProcessed++
     this.state.stats.totalClaimsExtracted += result.claims.length
 
     return result
-  }
-
-  private async buildPrecedingContext(sessionId: string, excludeUnitId: string): Promise<string> {
-    const units = await this.store!.conversations.getBySession(sessionId)
-    const recent = units.filter((u) => u.id !== excludeUnitId && u.processed).slice(-5)
-
-    if (recent.length === 0) return ''
-
-    return recent.map((u) => u.sanitizedText).join(' ')
-  }
-
-  private async getRecentClaimsForPipeline(): Promise<PipelineInput['recentClaims']> {
-    const claims = await this.store!.claims.getRecent(10)
-    return claims.map((c) => ({
-      statement: c.statement,
-      claimType: c.claimType,
-      subject: c.subject,
-    }))
-  }
-
-  private async getKnownEntityInfo(): Promise<PipelineInput['knownEntities']> {
-    const entities = (await this.store!.entities.getAll()).slice(0, 20)
-    return entities.map((e) => ({
-      canonicalName: e.canonicalName,
-      entityType: e.entityType,
-    }))
-  }
-
-  private async processExtractionResults(
-    unit: ConversationUnit,
-    result: PipelineOutput
-  ): Promise<void> {
-    const savedClaims: Claim[] = []
-    const extractorIds = result.extractorsRun
-
-    // Save claims
-    for (const extractedClaim of result.claims) {
-      const claim = await this.store!.claims.create({
-        statement: extractedClaim.statement,
-        subject: extractedClaim.subject,
-        claimType: extractedClaim.claimType,
-        temporality: extractedClaim.temporality || 'slowlyDecaying',
-        abstraction: extractedClaim.abstraction || 'specific',
-        sourceType: extractedClaim.sourceType || 'direct',
-        initialConfidence: extractedClaim.confidence,
-        emotionalValence: extractedClaim.emotionalValence || 0,
-        emotionalIntensity: extractedClaim.emotionalIntensity || 0,
-        stakes: extractedClaim.stakes || 'medium',
-        validFrom: extractedClaim.validFrom || now(),
-        validUntil: extractedClaim.validUntil || null,
-        extractionProgramId: extractorIds[0] || 'unknown',
-        elaborates: extractedClaim.elaborates || null,
-      })
-
-      // Save source tracking
-      if (extractedClaim.sourceTracking) {
-        await this.store!.sourceTracking.create({
-          claimId: claim.id,
-          unitId: extractedClaim.sourceTracking.unitId,
-          unitText: extractedClaim.sourceTracking.unitText,
-          textExcerpt: extractedClaim.sourceTracking.textExcerpt,
-          charStart: extractedClaim.sourceTracking.charStart,
-          charEnd: extractedClaim.sourceTracking.charEnd,
-          patternId: extractedClaim.sourceTracking.patternId,
-          llmPrompt: extractedClaim.sourceTracking.llmPrompt || '',
-          llmResponse: extractedClaim.sourceTracking.llmResponse || '',
-        })
-      }
-
-      // Link claim to conversation unit
-      await this.store!.claims.addSource({
-        claimId: claim.id,
-        unitId: unit.id,
-      })
-
-      savedClaims.push(claim)
-    }
-
-    // Save entities
-    for (const extractedEntity of result.entities) {
-      const existing = await this.store!.entities.getByName(extractedEntity.canonicalName)
-
-      if (existing) {
-        await this.store!.entities.incrementMentionCount(existing.id)
-        await this.store!.entities.updateLastReferenced(existing.id)
-      } else {
-        await this.store!.entities.create({
-          canonicalName: extractedEntity.canonicalName,
-          entityType: extractedEntity.entityType,
-          aliases: JSON.stringify(extractedEntity.aliases),
-        })
-      }
-    }
-
-    // Trigger observers
-    if (savedClaims.length > 0 && this.dispatcher) {
-      const results = await this.dispatcher.onNewClaims(savedClaims, this.state.activeSession!.id)
-      this.state.stats.totalObserverRuns += results.length
-    }
   }
 
   private schedulePeriodicDecay(): void {

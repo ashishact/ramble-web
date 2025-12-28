@@ -92,24 +92,32 @@ Respond with a JSON object in this exact format:
     {
       "statement": "The claim as a clear, standalone statement",
       "subject": "The main entity this claim is about",
-      "claim_type": "one of the valid claim types",
+      "claimType": "one of the valid claim types",
       "temporality": "eternal|slowlyDecaying|fastDecaying|pointInTime",
       "abstraction": "specific|general|universal",
-      "source_type": "direct|inferred|corrected",
+      "sourceType": "direct|inferred|corrected",
       "confidence": 0.0-1.0,
-      "emotional_valence": -1.0 to 1.0,
-      "emotional_intensity": 0.0-1.0,
+      "emotionalValence": -1.0 to 1.0,
+      "emotionalIntensity": 0.0-1.0,
       "stakes": "low|medium|high|existential"
     }
   ],
   "entities": [
     {
-      "canonical_name": "Entity Name",
-      "entity_type": "person|organization|product|place|project|role|event|concept",
+      "canonicalName": "Entity Name",
+      "entityType": "person|organization|product|place|project|role|event|concept",
       "aliases": ["alt name 1", "alt name 2"]
     }
   ]
 }
+
+CRITICAL EXTRACTION RULES:
+- sourceType "direct": ONLY for claims EXPLICITLY stated in the text
+- sourceType "inferred": For claims derived from context or implied connections
+- When in doubt, use "inferred" - it's better to be conservative
+- DO NOT create claims that connect entities in ways not stated by the speaker
+- DO NOT add information, relationships, or intentions not present in the input
+- DO NOT extrapolate or assume - only extract what was actually said
 
 Only include claims you are confident about. Return an empty claims array if no relevant claims are found.
 Do not include any text before or after the JSON object.`;

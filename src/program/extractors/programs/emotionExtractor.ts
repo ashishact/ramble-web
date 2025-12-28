@@ -61,11 +61,19 @@ class EmotionExtractor extends BaseExtractor {
 
     return `You are an expert at detecting emotional content in conversation.
 
-Extract EMOTIONS - subjective feeling states expressed or implied. Look for:
+Extract EMOTIONS - subjective feeling states. Look for:
 - Direct emotion statements ("I feel happy", "I'm so frustrated")
-- Implied emotions from context and tone
-- Reactions to events or situations
-- Emotional intensity and valence
+- Named emotions or feeling words
+- Reactions to events with explicit emotional language
+
+IMPORTANT - sourceType Rules:
+- Use "direct" ONLY for emotions EXPLICITLY named or stated
+- Use "inferred" for emotions implied by context or tone
+
+DO NOT extract:
+- Emotions you assume from context without explicit emotional language
+- Emotions attributed to the speaker based on situation alone
+- Feelings the speaker didn't actually express
 
 For each emotion claim:
 - emotionalValence: -1 (negative) to 1 (positive)
