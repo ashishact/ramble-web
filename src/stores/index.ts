@@ -5,18 +5,10 @@
  * - Plain localStorage for persistence
  * - In-memory caching for real-time performance
  * - Simple subscription pattern for reactive updates
+ *
+ * Note: conversationStore and knowledgeStore have been replaced by WatermelonDB.
+ * Only settingsStore remains for UI settings persistence.
  */
-
-export {
-  conversationHelpers,
-  type ConversationMessage,
-} from './conversationStore';
-
-export {
-  knowledgeHelpers,
-  type KnowledgeNode,
-  type KnowledgeRelationship,
-} from './knowledgeStore';
 
 export {
   settingsHelpers,

@@ -2,6 +2,11 @@
  * Extractors Index
  *
  * Re-exports all extractor-related types and utilities.
+ *
+ * Note: The extraction system has been simplified:
+ * - Patterns are consolidated in patterns.ts (used for span detection)
+ * - All LLM extraction is handled by primitiveExtractor.ts (one call)
+ * - The old individual extractor programs are no longer needed
  */
 
 // Types
@@ -9,7 +14,6 @@ export type {
   PatternMatch,
   PatternType,
   PatternDef,
-  LLMProvider,
   ExtractionResult,
   ExtractedClaim,
   ExtractedEntity,
@@ -31,11 +35,8 @@ export {
   mergeAdjacentMatches,
 } from './patternMatcher';
 
-// Base extractor
-export { BaseExtractor, parseJSONResponse } from './baseExtractor';
-
-// Extractor registry
+// Extractor registry (now loads patterns from patterns.ts automatically)
 export { extractorRegistry, registerExtractor } from './registry';
 
-// Import all programs to register them
-export * from './programs';
+// Consolidated patterns
+export { ALL_PATTERN_CONFIGS, type PatternConfig } from './patterns';

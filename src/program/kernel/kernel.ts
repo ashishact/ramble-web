@@ -37,8 +37,6 @@ import { ConversationProcessor, createConversationProcessor } from './conversati
 import { QueryService, createQueryService } from './queryService'
 import { SearchService, createSearchService, type SearchResult, type ReplaceResult } from './searchService'
 
-// Import extractors to trigger registration
-import '../extractors/programs'
 import type {
   Session,
   ConversationUnit,

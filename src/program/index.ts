@@ -205,17 +205,16 @@ export {
 export {
   extractorRegistry,
   registerExtractor,
-  BaseExtractor,
-  parseJSONResponse,
   findPatternMatches,
   getRelevantSegments,
   shouldExtractorRun,
   mergeAdjacentMatches,
   DEFAULT_TOKEN_BUDGETS,
+  ALL_PATTERN_CONFIGS,
   type PatternMatch,
   type PatternType,
   type PatternDef,
-  type LLMProvider,
+  type PatternConfig,
   type ExtractionResult,
   type ExtractedClaim,
   type ExtractedEntity,
@@ -266,4 +265,3 @@ export { createLogger, type LogLevel } from './utils/logger';
 export { generateId } from './utils/id';
 export { now, exponentialDecay, SALIENCE_HALFLIFE, HALF_LIFE } from './utils/time';
 export { estimateTokens } from './utils/tokens';
-export { replaceVariables, extractVariables, validateVariables } from './utils/template';
