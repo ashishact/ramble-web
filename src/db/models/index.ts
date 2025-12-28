@@ -20,6 +20,7 @@ export { default as Proposition } from './Proposition'
 export { default as Stance } from './Stance'
 export { default as PropositionRelation } from './PropositionRelation'
 export { default as Span } from './Span'
+export { default as EntityMention } from './EntityMention'
 export { default as PrimitiveEntity } from './PrimitiveEntity'
 export { default as Entity } from './Entity'
 

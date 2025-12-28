@@ -52,5 +52,23 @@ export const migrations = schemaMigrations({
         }),
       ],
     },
+    // v3: Add entity_mentions table for Layer 1 entity references
+    {
+      toVersion: 3,
+      steps: [
+        createTable({
+          name: 'entity_mentions',
+          columns: [
+            { name: 'text', type: 'string' },
+            { name: 'mentionType', type: 'string' },
+            { name: 'suggestedType', type: 'string' },
+            { name: 'spanId', type: 'string', isIndexed: true },
+            { name: 'conversationId', type: 'string', isIndexed: true },
+            { name: 'resolvedEntityId', type: 'string', isOptional: true, isIndexed: true },
+            { name: 'createdAt', type: 'number', isIndexed: true },
+          ],
+        }),
+      ],
+    },
   ],
 })

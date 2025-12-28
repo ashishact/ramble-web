@@ -10,7 +10,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb'
 
 export const schema = appSchema({
-  version: 2,
+  version: 3,
   tables: [
     // ========================================================================
     // SUPPORT TABLES
@@ -145,6 +145,20 @@ export const schema = appSchema({
         { name: 'matchedBy', type: 'string' },  // 'pattern' | 'rule'
         { name: 'patternId', type: 'string', isOptional: true },
         { name: 'createdAt', type: 'number' },
+      ]
+    }),
+
+    // Entity Mentions - Raw text references to entities (Layer 1)
+    tableSchema({
+      name: 'entity_mentions',
+      columns: [
+        { name: 'text', type: 'string' },                    // Raw text: "he", "John", "my boss"
+        { name: 'mentionType', type: 'string' },             // pronoun, proper_noun, common_noun, etc.
+        { name: 'suggestedType', type: 'string' },           // person, organization, project, etc.
+        { name: 'spanId', type: 'string', isIndexed: true },
+        { name: 'conversationId', type: 'string', isIndexed: true },
+        { name: 'resolvedEntityId', type: 'string', isOptional: true, isIndexed: true },
+        { name: 'createdAt', type: 'number', isIndexed: true },
       ]
     }),
 

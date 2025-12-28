@@ -35,6 +35,7 @@ export const collections = {
   stances: database.get('stances'),
   relations: database.get('relations'),
   spans: database.get('spans'),
+  entityMentions: database.get('entity_mentions'),
   primitiveEntities: database.get('primitive_entities'),
   entities: database.get('entities'),
 
