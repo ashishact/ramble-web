@@ -17,7 +17,7 @@ import {
   DEFAULT_LLM_TIER_SETTINGS,
   DEFAULT_STT_TIER_SETTINGS,
 } from '../types/llmTiers';
-import { getSettings } from '../../stores/settingsStore';
+import { settingsHelpers } from '../../stores/settingsStore';
 
 // ============================================================================
 // LLM Resolution
@@ -30,10 +30,7 @@ export function resolveLLMTier(tier: LLMTier): {
   provider: LLMProvider;
   model: string;
 } {
-  const settings = getSettings();
-  const tierSettings: LLMTierSettings =
-    settings.llmTiers || DEFAULT_LLM_TIER_SETTINGS;
-
+  const tierSettings = settingsHelpers.getLLMTiers() || DEFAULT_LLM_TIER_SETTINGS;
   const config = tierSettings[tier];
 
   if (!config) {
@@ -51,26 +48,18 @@ export function resolveLLMTier(tier: LLMTier): {
  * Get LLM tier settings (for settings UI)
  */
 export function getLLMTierSettings(): LLMTierSettings {
-  const settings = getSettings();
-  return settings.llmTiers || DEFAULT_LLM_TIER_SETTINGS;
+  return settingsHelpers.getLLMTiers() || DEFAULT_LLM_TIER_SETTINGS;
 }
 
 /**
  * Update LLM tier settings
  */
 export function updateLLMTierSettings(tierSettings: Partial<LLMTierSettings>): void {
-  const settings = getSettings();
-  const currentTierSettings = settings.llmTiers || DEFAULT_LLM_TIER_SETTINGS;
-
-  const updatedSettings = {
-    ...settings,
-    llmTiers: {
-      ...currentTierSettings,
-      ...tierSettings,
-    },
-  };
-
-  localStorage.setItem('appSettings', JSON.stringify(updatedSettings));
+  const currentTierSettings = settingsHelpers.getLLMTiers() || DEFAULT_LLM_TIER_SETTINGS;
+  settingsHelpers.setLLMTiers({
+    ...currentTierSettings,
+    ...tierSettings,
+  });
 }
 
 /**
@@ -93,10 +82,7 @@ export function resolveSTTTier(tier: STTTier): {
   provider: STTProvider;
   model?: string;
 } {
-  const settings = getSettings();
-  const tierSettings: STTTierSettings =
-    settings.sttTiers || DEFAULT_STT_TIER_SETTINGS;
-
+  const tierSettings = settingsHelpers.getSTTTiers() || DEFAULT_STT_TIER_SETTINGS;
   const config = tierSettings[tier];
 
   if (!config) {
@@ -114,26 +100,18 @@ export function resolveSTTTier(tier: STTTier): {
  * Get STT tier settings (for settings UI)
  */
 export function getSTTTierSettings(): STTTierSettings {
-  const settings = getSettings();
-  return settings.sttTiers || DEFAULT_STT_TIER_SETTINGS;
+  return settingsHelpers.getSTTTiers() || DEFAULT_STT_TIER_SETTINGS;
 }
 
 /**
  * Update STT tier settings
  */
 export function updateSTTTierSettings(tierSettings: Partial<STTTierSettings>): void {
-  const settings = getSettings();
-  const currentTierSettings = settings.sttTiers || DEFAULT_STT_TIER_SETTINGS;
-
-  const updatedSettings = {
-    ...settings,
-    sttTiers: {
-      ...currentTierSettings,
-      ...tierSettings,
-    },
-  };
-
-  localStorage.setItem('appSettings', JSON.stringify(updatedSettings));
+  const currentTierSettings = settingsHelpers.getSTTTiers() || DEFAULT_STT_TIER_SETTINGS;
+  settingsHelpers.setSTTTiers({
+    ...currentTierSettings,
+    ...tierSettings,
+  });
 }
 
 /**

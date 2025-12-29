@@ -246,6 +246,24 @@ export const settingsHelpers = {
     saveSettings(cachedSettings);
     notifyListeners();
   },
+
+  // LLM Tier settings
+  getLLMTiers: () => cachedSettings.llmTiers,
+
+  setLLMTiers: (llmTiers: AppSettings['llmTiers']) => {
+    cachedSettings = { ...cachedSettings, llmTiers };
+    saveSettings(cachedSettings);
+    notifyListeners();
+  },
+
+  // STT Tier settings
+  getSTTTiers: () => cachedSettings.sttTiers,
+
+  setSTTTiers: (sttTiers: AppSettings['sttTiers']) => {
+    cachedSettings = { ...cachedSettings, sttTiers };
+    saveSettings(cachedSettings);
+    notifyListeners();
+  },
 };
 
 // Export simple getter for use in non-reactive contexts
