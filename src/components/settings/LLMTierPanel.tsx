@@ -26,7 +26,13 @@ const AVAILABLE_PROVIDERS: Array<{ value: LLMProvider; label: string }> = [
 
 const COMMON_MODELS: Record<LLMProvider, string[]> = {
   groq: ['groq/openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'mixtral-8x7b-32768'],
-  gemini: ['google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'google/gemini-1.5-pro'],
+  gemini: [
+    'google/gemini-2.5-flash',
+    'google/gemini-2.5-flash-lite',
+    'google/gemini-3-flash-preview',
+    'google/gemini-2.5-pro',
+    'google/gemini-1.5-pro',
+  ],
   anthropic: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'claude-3-5-sonnet-20241022'],
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
 };
