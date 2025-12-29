@@ -62,7 +62,7 @@ export const appSettingsSchema = z.object({
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
 
-const STORAGE_KEY = 'amigoz-settings';
+const STORAGE_KEY = 'appSettings';
 
 // Default settings
 const DEFAULT_SETTINGS: AppSettings = {
