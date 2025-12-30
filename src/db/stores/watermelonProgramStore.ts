@@ -36,6 +36,7 @@ import {
   createExtensionStore,
   createSynthesisCacheStore,
   createCorrectionStore,
+  createVocabularyStore,
   createTaskStore,
   // Debug / Tracing
   createExtractionTraceStore,
@@ -71,6 +72,7 @@ export class WatermelonProgramStore implements IProgramStore {
   public readonly extensions
   public readonly synthesisCache
   public readonly corrections
+  public readonly vocabulary
   public readonly tasks
 
   // Debug / Tracing
@@ -104,6 +106,7 @@ export class WatermelonProgramStore implements IProgramStore {
     this.extensions = createExtensionStore(db)
     this.synthesisCache = createSynthesisCacheStore(db)
     this.corrections = createCorrectionStore(db)
+    this.vocabulary = createVocabularyStore(db)
     this.tasks = createTaskStore(db)
 
     // Debug / Tracing

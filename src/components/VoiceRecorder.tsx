@@ -79,16 +79,21 @@ export function VoiceRecorder({
 
   // Handle recording toggle
   const handleToggleRecording = useCallback(async () => {
+    console.log('[VoiceRecorder] Toggle recording - disabled:', disabled, 'isProcessing:', isProcessing, 'isRecording:', isRecording);
     if (disabled || isProcessing) return;
 
     if (isRecording) {
       setIsProcessing(true);
       try {
+        console.log('[VoiceRecorder] Stopping recording, waiting for transcript...');
         // Wait for final transcript
         const finalTranscript = await stopRecordingAndWait(10000);
+        console.log('[VoiceRecorder] Got final transcript:', finalTranscript);
 
         if (finalTranscript.trim()) {
           await onTranscript(finalTranscript.trim());
+        } else {
+          console.warn('[VoiceRecorder] Empty transcript received');
         }
       } catch (err) {
         console.error('[VoiceRecorder] Failed to process:', err);
@@ -99,13 +104,16 @@ export function VoiceRecorder({
       }
     } else {
       const groqApiKey = settingsHelpers.getApiKey('groq');
+      console.log('[VoiceRecorder] Starting recording, API key present:', !!groqApiKey, 'STT connected:', sttConnected);
       if (!groqApiKey) {
         onMissingApiKey?.();
         return;
       }
       if (!sttConnected) {
+        console.log('[VoiceRecorder] Connecting STT...');
         await connectSTT();
       }
+      console.log('[VoiceRecorder] Starting recording...');
       await startRecording();
     }
   }, [

@@ -70,5 +70,26 @@ export const migrations = schemaMigrations({
         }),
       ],
     },
+    // v4: Add vocabulary table for STT entity spelling correction
+    {
+      toVersion: 4,
+      steps: [
+        createTable({
+          name: 'vocabulary',
+          columns: [
+            { name: 'correctSpelling', type: 'string', isIndexed: true },
+            { name: 'entityType', type: 'string', isIndexed: true },
+            { name: 'contextHints', type: 'string' },
+            { name: 'phoneticPrimary', type: 'string', isIndexed: true },
+            { name: 'phoneticSecondary', type: 'string', isOptional: true },
+            { name: 'usageCount', type: 'number' },
+            { name: 'variantCountsJson', type: 'string' },
+            { name: 'createdAt', type: 'number' },
+            { name: 'lastUsed', type: 'number', isOptional: true },
+            { name: 'sourceEntityId', type: 'string', isOptional: true, isIndexed: true },
+          ],
+        }),
+      ],
+    },
   ],
 })

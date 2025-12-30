@@ -18,3 +18,11 @@ export {
   type PrimitivePipelineInput,
   type PrimitivePipelineOutput,
 } from './primitivePipeline';
+
+export {
+  getPipelineQueue,
+  resetPipelineQueue,
+  type PipelineEvent,
+  type PipelineEventType,
+  type PipelineStep,
+} from './pipelineQueue';

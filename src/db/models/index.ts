@@ -52,6 +52,7 @@ export { default as ObserverProgram } from './ObserverProgram'
 export { default as Extension } from './Extension'
 export { default as SynthesisCache } from './SynthesisCache'
 export { default as Correction } from './Correction'
+export { default as Vocabulary } from './Vocabulary'
 export { default as Task } from './Task'
 
 // ============================================================================

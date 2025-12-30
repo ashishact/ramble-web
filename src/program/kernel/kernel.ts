@@ -1,25 +1,20 @@
 /**
- * Program Kernel - Refactored
+ * Program Kernel
  *
- * Slim orchestrator that delegates to specialized services:
- * - SessionManager: Session lifecycle
- * - ConversationProcessor: Text processing
- * - QueryService: Read operations
- * - SearchService: Search & replace
- * - Store: Data persistence (WatermelonDB/TinyBase)
- * - QueueRunner: Task execution
- * - Services: Goals, Corrections, Memory, Observers, Migrations
+ * Singleton orchestrator - initializes ONCE at app startup (not in React).
+ * Uses queue-based pipeline for processing.
  */
 
 import { createProgramStore, type StoreBackend } from '../store/storeFactory'
 import type { IProgramStore } from '../interfaces/store'
-import { QueueRunner, createQueueRunner } from '../pipeline/queueRunner'
-import { runPrimitivePipeline, type PrimitivePipelineOutput } from '../pipeline/primitivePipeline'
+import { getPipelineQueue } from '../pipeline/pipelineQueue'
 import type { Proposition, Stance, Relation, EntityMention, Span } from '../schemas/primitives'
 import { GoalManager, createGoalManager } from '../goals/goalManager'
 import { ObserverDispatcher, createStandardDispatcher, type DispatcherStats } from '../observers'
 import { CorrectionService, createCorrectionService, type ProcessTextResult } from '../corrections'
 import { MemoryService, createMemoryService } from '../memory'
+import { VocabularyService, createVocabularyService, type CanonicalSuggestion } from '../services/vocabularyService'
+import type { Vocabulary, VocabularyEntityType } from '../schemas/vocabulary'
 import {
   MigrationManager,
   createMigrationManager,
@@ -59,8 +54,6 @@ const logger = createLogger('Kernel')
 export interface KernelConfig {
   storeBackend: StoreBackend
   autoObservers: boolean
-  maxConcurrentTasks: number
-  queuePollInterval: number
   debug: boolean
   autoLearnCorrections: boolean
   autoApplyCorrections: boolean
@@ -70,8 +63,6 @@ export interface KernelConfig {
 const DEFAULT_CONFIG: KernelConfig = {
   storeBackend: 'watermelon',
   autoObservers: true,
-  maxConcurrentTasks: 3,
-  queuePollInterval: 1000,
   debug: false,
   autoLearnCorrections: true,
   autoApplyCorrections: true,
@@ -85,20 +76,13 @@ const DEFAULT_CONFIG: KernelConfig = {
 export interface KernelState {
   initialized: boolean
   activeSession: Session | null
-  queueRunning: boolean
   stats: KernelStats
 }
 
 export interface KernelStats {
   totalUnitsProcessed: number
   totalClaimsExtracted: number
-  totalObserverRuns: number
   uptime: number
-}
-
-interface ExtractFromUnitPayload {
-  unitId: string
-  sessionId: string
 }
 
 // ============================================================================
@@ -115,23 +99,21 @@ export class ProgramKernel {
   private queryService: QueryService | null = null
   private searchService: SearchService | null = null
 
-  // Existing services
-  private queueRunner: QueueRunner | null = null
+  // Other services
   private goalManager: GoalManager | null = null
   private dispatcher: ObserverDispatcher | null = null
   private correctionService: CorrectionService | null = null
   private memoryService: MemoryService | null = null
+  private vocabularyService: VocabularyService | null = null
   private migrationManager: MigrationManager | null = null
   private decayIntervalId: ReturnType<typeof setInterval> | null = null
 
   private state: KernelState = {
     initialized: false,
     activeSession: null,
-    queueRunning: false,
     stats: {
       totalUnitsProcessed: 0,
       totalClaimsExtracted: 0,
-      totalObserverRuns: 0,
       uptime: 0,
     },
   }
@@ -160,6 +142,9 @@ export class ProgramKernel {
       logger.info('Initializing store', { backend: this.config.storeBackend })
       this.store = await createProgramStore({ backend: this.config.storeBackend })
 
+      // Initialize pipeline queue (singleton)
+      getPipelineQueue().initialize(this.store)
+
       // Initialize managers
       this.goalManager = createGoalManager(this.store)
       this.dispatcher = createStandardDispatcher(this.store, {
@@ -168,7 +153,7 @@ export class ProgramKernel {
 
       // Sync extractors and observers
       const syncResult = await syncAll(this.store, this.dispatcher.getObservers())
-      logger.info('Synced extractors and observers to database', syncResult)
+      logger.info('Synced extractors and observers', syncResult)
 
       // Initialize correction service
       this.correctionService = createCorrectionService(this.store.corrections, {
@@ -180,20 +165,14 @@ export class ProgramKernel {
       // Initialize memory service
       this.memoryService = createMemoryService(this.store)
 
+      // Initialize vocabulary service
+      this.vocabularyService = createVocabularyService(this.store.vocabulary, this.store.entities)
+
       // Initialize migration manager
       this.migrationManager = createMigrationManager(this.store)
       for (const migration of ALL_MIGRATIONS) {
         this.migrationManager.registerMigration(migration)
       }
-
-      // Initialize queue runner
-      this.queueRunner = createQueueRunner(this.store, {
-        maxConcurrent: this.config.maxConcurrentTasks,
-        pollInterval: this.config.queuePollInterval,
-      })
-
-      // Register task handlers
-      this.registerTaskHandlers()
 
       // Schedule periodic decay
       this.schedulePeriodicDecay()
@@ -204,7 +183,6 @@ export class ProgramKernel {
 
       this.conversationProcessor = createConversationProcessor(
         this.store,
-        this.queueRunner,
         this.correctionService
       )
 
@@ -213,16 +191,6 @@ export class ProgramKernel {
 
       // Check for active session
       this.state.activeSession = this.sessionManager.getActiveSession()
-
-      // Always start queue runner for durable execution
-      // It will process any pending tasks from previous sessions
-      logger.info('Starting queue runner for durable execution...')
-      this.queueRunner.start()
-      this.state.queueRunning = true
-
-      if (this.state.activeSession) {
-        logger.info('Found active session:', this.state.activeSession.id)
-      }
 
       this.state.initialized = true
       logger.info('Program Kernel initialized successfully')
@@ -239,16 +207,11 @@ export class ProgramKernel {
 
     logger.info('Shutting down Program Kernel...')
 
-    // Stop periodic decay
     if (this.decayIntervalId) {
       clearInterval(this.decayIntervalId)
       this.decayIntervalId = null
     }
 
-    // Stop queue runner
-    this.queueRunner?.stop()
-
-    // End active session
     await this.sessionManager?.endSession()
 
     this.state.initialized = false
@@ -256,35 +219,23 @@ export class ProgramKernel {
   }
 
   // ==========================================================================
-  // Session Management (Delegated)
+  // Session Management
   // ==========================================================================
 
   async startSession(metadata?: Record<string, unknown>): Promise<Session> {
     this.ensureInitialized()
     const session = await this.sessionManager!.startSession(metadata)
     this.state.activeSession = session
-
-    // Start queue processing
-    this.queueRunner!.start()
-    this.state.queueRunning = true
-
     return session
   }
 
   async endSession(): Promise<void> {
     this.ensureInitialized()
-
     if (!this.state.activeSession) return
 
-    // Trigger session_end observers
     await this.dispatcher?.onSessionEnd(this.state.activeSession.id)
-
     await this.sessionManager!.endSession()
     this.state.activeSession = null
-
-    // Stop queue runner
-    this.queueRunner!.stop()
-    this.state.queueRunning = false
   }
 
   getActiveSession(): Session | null {
@@ -292,14 +243,14 @@ export class ProgramKernel {
   }
 
   // ==========================================================================
-  // Conversation Processing (Delegated)
+  // Conversation Processing
   // ==========================================================================
 
   async processText(
     rawText: string,
     source: ConversationSource,
     metadata?: Record<string, unknown>
-  ): Promise<{ unit: ConversationUnit; taskId: string; correctionResult?: ProcessTextResult }> {
+  ): Promise<{ unit: ConversationUnit; correctionResult?: ProcessTextResult }> {
     this.ensureInitialized()
     this.sessionManager!.ensureActiveSession()
 
@@ -310,14 +261,24 @@ export class ProgramKernel {
       metadata
     )
 
-    // Increment session unit count
     await this.sessionManager!.incrementUnitCount()
-
     return result
   }
 
   // ==========================================================================
-  // Query API (Delegated)
+  // Pipeline Queue
+  // ==========================================================================
+
+  async getQueueStatus() {
+    return getPipelineQueue().getStatus()
+  }
+
+  subscribeToPipelineEvents(listener: (event: unknown) => void): () => void {
+    return getPipelineQueue().subscribe(listener)
+  }
+
+  // ==========================================================================
+  // Query API
   // ==========================================================================
 
   async getClaims(limit?: number): Promise<Claim[]> {
@@ -406,13 +367,10 @@ export class ProgramKernel {
   }
 
   // ==========================================================================
-  // Search & Replace (Delegated)
+  // Search & Replace
   // ==========================================================================
 
-  async searchText(
-    query: string,
-    options?: { caseSensitive?: boolean }
-  ): Promise<SearchResult[]> {
+  async searchText(query: string, options?: { caseSensitive?: boolean }): Promise<SearchResult[]> {
     this.ensureInitialized()
     return this.searchService!.searchText(query, options)
   }
@@ -425,7 +383,6 @@ export class ProgramKernel {
     this.ensureInitialized()
     const result = await this.searchService!.replaceText(searchText, replaceText, options)
 
-    // Optionally add as a correction
     if (options?.addAsCorrection) {
       await this.correctionService!.addCorrection(searchText, replaceText)
     }
@@ -434,7 +391,7 @@ export class ProgramKernel {
   }
 
   // ==========================================================================
-  // Goal Manager API (Pass-through)
+  // Goal Manager API
   // ==========================================================================
 
   async updateGoalProgress(goalId: string, value: number, reason: string) {
@@ -448,7 +405,7 @@ export class ProgramKernel {
   }
 
   // ==========================================================================
-  // Correction Service API (Pass-through)
+  // Correction Service API
   // ==========================================================================
 
   async getCorrections() {
@@ -477,7 +434,7 @@ export class ProgramKernel {
   }
 
   // ==========================================================================
-  // Memory Service API (Pass-through)
+  // Memory Service API
   // ==========================================================================
 
   async getWorkingMemory(): Promise<Claim[]> {
@@ -523,6 +480,80 @@ export class ProgramKernel {
   getMemoryService() {
     this.ensureInitialized()
     return this.memoryService!
+  }
+
+  // ==========================================================================
+  // Vocabulary Service API
+  // ==========================================================================
+
+  async getVocabulary(): Promise<Vocabulary[]> {
+    this.ensureInitialized()
+    return await this.vocabularyService!.getAll()
+  }
+
+  async getVocabularyById(id: string): Promise<Vocabulary | null> {
+    this.ensureInitialized()
+    return await this.vocabularyService!.getById(id)
+  }
+
+  async getFrequentVocabulary(limit?: number): Promise<Vocabulary[]> {
+    this.ensureInitialized()
+    return await this.vocabularyService!.getFrequentlyUsed(limit)
+  }
+
+  async addVocabulary(data: {
+    correctSpelling: string
+    entityType: VocabularyEntityType
+    contextHints?: string[]
+    sourceEntityId?: string
+  }): Promise<Vocabulary> {
+    this.ensureInitialized()
+    return await this.vocabularyService!.addVocabulary(data)
+  }
+
+  async correctCanonical(vocabId: string, newCanonical: string): Promise<Vocabulary | null> {
+    this.ensureInitialized()
+    return await this.vocabularyService!.correctCanonical(vocabId, newCanonical)
+  }
+
+  async updateVocabularyContextHints(id: string, hints: string[]): Promise<Vocabulary | null> {
+    this.ensureInitialized()
+    return await this.vocabularyService!.updateContextHints(id, hints)
+  }
+
+  async deleteVocabulary(id: string): Promise<boolean> {
+    this.ensureInitialized()
+    return await this.vocabularyService!.deleteVocabulary(id)
+  }
+
+  async getCanonicalSuggestions(): Promise<CanonicalSuggestion[]> {
+    this.ensureInitialized()
+    return await this.vocabularyService!.getCanonicalSuggestions()
+  }
+
+  async applyCanonicalSuggestion(suggestion: CanonicalSuggestion): Promise<Vocabulary | null> {
+    this.ensureInitialized()
+    return await this.vocabularyService!.applySuggestion(suggestion)
+  }
+
+  async syncVocabularyFromEntities(): Promise<number> {
+    this.ensureInitialized()
+    return await this.vocabularyService!.syncFromEntities()
+  }
+
+  async getVocabularyStats(): Promise<{
+    totalEntries: number
+    entriesWithSuggestions: number
+    totalVariants: number
+    averageVariantsPerEntry: number
+  }> {
+    this.ensureInitialized()
+    return await this.vocabularyService!.getStats()
+  }
+
+  getVocabularyService(): VocabularyService {
+    this.ensureInitialized()
+    return this.vocabularyService!
   }
 
   // ==========================================================================
@@ -610,18 +641,6 @@ export class ProgramKernel {
   // State & Status
   // ==========================================================================
 
-  async getQueueStatus() {
-    if (this.queueRunner) {
-      return await this.queueRunner.getStatus()
-    }
-    return {
-      isRunning: false,
-      activeTasks: 0,
-      pendingTasks: 0,
-      failedTasks: 0,
-    }
-  }
-
   getState(): KernelState {
     if (this.state.initialized) {
       this.state.stats.uptime = now() - this.startTime
@@ -635,85 +654,24 @@ export class ProgramKernel {
   }
 
   // ==========================================================================
-  // Task Handlers
+  // Internal Scheduling
   // ==========================================================================
-
-  private registerTaskHandlers(): void {
-    this.queueRunner!.registerHandler<ExtractFromUnitPayload, PrimitivePipelineOutput>(
-      'extract_from_unit',
-      {
-        execute: async (payload, _checkpoint) => {
-          return this.handleExtraction(payload)
-        },
-      }
-    )
-
-    this.queueRunner!.registerHandler<Record<string, never>, DecayResult>('decay_claims', {
-      execute: async () => {
-        return await this.memoryService!.runDecay()
-      },
-    })
-  }
-
-  private async handleExtraction(payload: ExtractFromUnitPayload): Promise<PrimitivePipelineOutput> {
-    const unit = await this.store!.conversations.getById(payload.unitId)
-    if (!unit) {
-      throw new Error(`Conversation unit not found: ${payload.unitId}`)
-    }
-
-    // Run primitive pipeline (extracts primitives + derives claims)
-    // Flow: ConversationUnit → Span → Proposition + Stance → Claim
-    const result = await runPrimitivePipeline({
-      unit,
-      store: this.store!,
-    })
-
-    logger.info('Primitive pipeline completed', {
-      propositions: result.propositions.length,
-      stances: result.stances.length,
-      claims: result.claims.length,
-      entities: result.entities.length,
-      processingTimeMs: result.metadata.processingTimeMs,
-    })
-
-    // Trigger observers on new claims
-    if (this.dispatcher && result.claims.length > 0) {
-      await this.dispatcher.dispatch({
-        type: 'new_claim',
-        claims: result.claims,
-        sessionId: unit.sessionId,
-        timestamp: Date.now(),
-      })
-    }
-
-    // Update stats
-    this.state.stats.totalUnitsProcessed++
-    this.state.stats.totalClaimsExtracted += result.claims.length
-
-    return result
-  }
 
   private schedulePeriodicDecay(): void {
     const DECAY_INTERVAL = 60 * 60 * 1000 // 1 hour
 
-    // Run decay after startup
     setTimeout(() => {
       if (this.state.initialized) {
         this.memoryService?.runDecay()
       }
     }, 5000)
 
-    // Schedule periodic decay
     this.decayIntervalId = setInterval(() => {
       if (this.state.initialized) {
         this.memoryService?.runDecay()
       }
     }, DECAY_INTERVAL)
   }
-
-  // ==========================================================================
-  // Helpers
-  // ==========================================================================
 
   private ensureInitialized(): void {
     if (!this.state.initialized) {
@@ -723,7 +681,7 @@ export class ProgramKernel {
 }
 
 // ============================================================================
-// Factory
+// Singleton Factory
 // ============================================================================
 
 let kernelInstance: ProgramKernel | null = null

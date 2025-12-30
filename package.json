@@ -38,6 +38,7 @@
     "react-resizable-panels": "^3.0.6",
     "react-router-dom": "^7.9.6",
     "remark-gfm": "^4.0.1",
+    "rxjs": "^7.8.2",
     "tailwindcss": "^4.1.14",
     "tinybase": "^6.7.3",
     "zod": "^4.1.12"

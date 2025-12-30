@@ -26,6 +26,8 @@ import {
 } from '../index';
 import type { Proposition, Stance, Relation, EntityMention, Span } from '../schemas/primitives';
 import type { SearchResult, ReplaceResult } from '../kernel';
+import type { Vocabulary, VocabularyEntityType } from '../schemas/vocabulary';
+import type { CanonicalSuggestion } from '../services/vocabularyService';
 
 // ============================================================================
 // Types
@@ -88,10 +90,11 @@ export interface UseProgramReturn {
 
   /** Queue status */
   queueStatus: {
-    isRunning: boolean;
-    activeTasks: number;
-    pendingTasks: number;
-    failedTasks: number;
+    isProcessing: boolean;
+    currentUnitId: string | null;
+    pendingCount: number;
+    completedCount: number;
+    failedCount: number;
   };
 
   // Memory System
@@ -115,6 +118,33 @@ export interface UseProgramReturn {
 
   /** Observer stats */
   observerStats: DispatcherStats | null;
+
+  // Vocabulary System
+  /** All vocabulary entries */
+  vocabulary: Vocabulary[];
+
+  /** Canonical spelling suggestions from voting */
+  canonicalSuggestions: CanonicalSuggestion[];
+
+  /** Vocabulary statistics */
+  vocabularyStats: {
+    totalEntries: number;
+    entriesWithSuggestions: number;
+    totalVariants: number;
+    averageVariantsPerEntry: number;
+  } | null;
+
+  /** Pipeline events (for live monitoring) */
+  pipelineEvents: Array<{
+    type: string;
+    unitId?: string;
+    step?: string;
+    timestamp: number;
+    data?: Record<string, unknown>;
+  }>;
+
+  /** Clear pipeline event history */
+  clearPipelineEvents: () => void;
 
   /** Start a new session */
   startSession: () => Promise<void>;
@@ -158,6 +188,30 @@ export interface UseProgramReturn {
 
   /** Manually refresh data */
   refresh: () => void;
+
+  // Vocabulary Operations
+  /** Add new vocabulary entry */
+  addVocabulary: (data: {
+    correctSpelling: string;
+    entityType: VocabularyEntityType;
+    contextHints?: string[];
+    sourceEntityId?: string;
+  }) => Promise<Vocabulary>;
+
+  /** Update vocabulary entry */
+  updateVocabularyContextHints: (id: string, hints: string[]) => Promise<Vocabulary | null>;
+
+  /** Delete vocabulary entry */
+  deleteVocabulary: (id: string) => Promise<boolean>;
+
+  /** Correct canonical spelling */
+  correctCanonical: (vocabId: string, newCanonical: string) => Promise<Vocabulary | null>;
+
+  /** Apply canonical suggestion from voting */
+  applyCanonicalSuggestion: (suggestion: CanonicalSuggestion) => Promise<Vocabulary | null>;
+
+  /** Sync vocabulary from existing entities */
+  syncVocabularyFromEntities: () => Promise<number>;
 }
 
 // ============================================================================
@@ -186,10 +240,11 @@ export function useProgram(): UseProgramReturn {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [corrections, setCorrections] = useState<Correction[]>([]);
   const [queueStatus, setQueueStatus] = useState({
-    isRunning: false,
-    activeTasks: 0,
-    pendingTasks: 0,
-    failedTasks: 0,
+    isProcessing: false,
+    currentUnitId: null as string | null,
+    pendingCount: 0,
+    completedCount: 0,
+    failedCount: 0,
   });
 
   // Memory System state
@@ -203,9 +258,34 @@ export function useProgram(): UseProgramReturn {
   const [observers, setObservers] = useState<Array<{ type: string; name: string; description: string; active: boolean }>>([]);
   const [observerStats, setObserverStats] = useState<DispatcherStats | null>(null);
 
+  // Vocabulary state
+  const [vocabulary, setVocabulary] = useState<Vocabulary[]>([]);
+  const [canonicalSuggestions, setCanonicalSuggestions] = useState<CanonicalSuggestion[]>([]);
+  const [vocabularyStats, setVocabularyStats] = useState<{
+    totalEntries: number;
+    entriesWithSuggestions: number;
+    totalVariants: number;
+    averageVariantsPerEntry: number;
+  } | null>(null);
+
+  // Pipeline events (for live monitoring)
+  const [pipelineEvents, setPipelineEvents] = useState<Array<{
+    type: string;
+    unitId?: string;
+    step?: string;
+    timestamp: number;
+    data?: Record<string, unknown>;
+  }>>([]);
+
+  // Clear pipeline events
+  const clearPipelineEvents = useCallback(() => {
+    setPipelineEvents([]);
+  }, []);
+
   // Initialize kernel on mount
   useEffect(() => {
     let mounted = true;
+    let unsubscribe: (() => void) | null = null;
 
     async function init() {
       if (kernelRef.current) return;
@@ -221,6 +301,19 @@ export function useProgram(): UseProgramReturn {
           kernelRef.current = kernel;
           setIsInitialized(true);
           refresh();
+
+          // Subscribe to pipeline events
+          unsubscribe = kernel.subscribeToPipelineEvents((event) => {
+            if (!mounted) return;
+            const typedEvent = event as {
+              type: string;
+              unitId?: string;
+              step?: string;
+              timestamp: number;
+              data?: Record<string, unknown>;
+            };
+            setPipelineEvents((prev) => [...prev.slice(-99), typedEvent]); // Keep last 100
+          });
         }
       } catch (err) {
         if (mounted) {
@@ -237,6 +330,9 @@ export function useProgram(): UseProgramReturn {
 
     return () => {
       mounted = false;
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, []);
 
@@ -273,6 +369,11 @@ export function useProgram(): UseProgramReturn {
       setExtractors(await kernel.getExtractionPrograms());
       setObservers(kernel.getRegisteredObservers());
       setObserverStats(kernel.getObserverStats());
+
+      // Vocabulary
+      setVocabulary(await kernel.getVocabulary());
+      setCanonicalSuggestions(await kernel.getCanonicalSuggestions());
+      setVocabularyStats(await kernel.getVocabularyStats());
     } catch (err) {
       console.error('Failed to refresh program data:', err);
     }
@@ -403,6 +504,62 @@ export function useProgram(): UseProgramReturn {
     setClaimLimit((prev) => prev + additionalCount);
   }, []);
 
+  // Vocabulary operations
+  const addVocabulary = useCallback(async (data: {
+    correctSpelling: string;
+    entityType: VocabularyEntityType;
+    contextHints?: string[];
+    sourceEntityId?: string;
+  }): Promise<Vocabulary> => {
+    const kernel = kernelRef.current;
+    if (!kernel) {
+      throw new Error('Kernel not initialized');
+    }
+    const result = await kernel.addVocabulary(data);
+    await refresh();
+    return result;
+  }, [refresh]);
+
+  const updateVocabularyContextHints = useCallback(async (id: string, hints: string[]): Promise<Vocabulary | null> => {
+    const kernel = kernelRef.current;
+    if (!kernel) return null;
+    const result = await kernel.updateVocabularyContextHints(id, hints);
+    await refresh();
+    return result;
+  }, [refresh]);
+
+  const deleteVocabulary = useCallback(async (id: string): Promise<boolean> => {
+    const kernel = kernelRef.current;
+    if (!kernel) return false;
+    const result = await kernel.deleteVocabulary(id);
+    await refresh();
+    return result;
+  }, [refresh]);
+
+  const correctCanonical = useCallback(async (vocabId: string, newCanonical: string): Promise<Vocabulary | null> => {
+    const kernel = kernelRef.current;
+    if (!kernel) return null;
+    const result = await kernel.correctCanonical(vocabId, newCanonical);
+    await refresh();
+    return result;
+  }, [refresh]);
+
+  const applyCanonicalSuggestion = useCallback(async (suggestion: CanonicalSuggestion): Promise<Vocabulary | null> => {
+    const kernel = kernelRef.current;
+    if (!kernel) return null;
+    const result = await kernel.applyCanonicalSuggestion(suggestion);
+    await refresh();
+    return result;
+  }, [refresh]);
+
+  const syncVocabularyFromEntities = useCallback(async (): Promise<number> => {
+    const kernel = kernelRef.current;
+    if (!kernel) return 0;
+    const result = await kernel.syncVocabularyFromEntities();
+    await refresh();
+    return result;
+  }, [refresh]);
+
   return {
     isInitialized,
     isInitializing,
@@ -445,5 +602,18 @@ export function useProgram(): UseProgramReturn {
     extractors,
     observers,
     observerStats,
+    // Vocabulary
+    vocabulary,
+    canonicalSuggestions,
+    vocabularyStats,
+    addVocabulary,
+    updateVocabularyContextHints,
+    deleteVocabulary,
+    correctCanonical,
+    applyCanonicalSuggestion,
+    syncVocabularyFromEntities,
+    // Pipeline events
+    pipelineEvents,
+    clearPipelineEvents,
   };
 }

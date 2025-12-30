@@ -40,6 +40,9 @@ export * from './observerProgram';
 // Corrections
 export * from './correction';
 
+// Vocabulary (STT entity spelling)
+export * from './vocabulary';
+
 // Memory System
 export * from './memory';
 

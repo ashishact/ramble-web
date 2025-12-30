@@ -14,6 +14,8 @@
 import type { IProgramStore } from '../interfaces/store'
 import type { EntityMention, CreateEntityMention, SuggestedEntityType } from '../schemas/primitives'
 import type { Entity, EntityType } from '../types'
+import type { VocabularyEntityType } from '../schemas/vocabulary'
+import { createSTTEntityMatcher } from './sttEntityMatcher'
 import { createLogger } from '../utils/logger'
 
 const logger = createLogger('Pipeline')
@@ -172,7 +174,7 @@ function resolvePronoun(
 }
 
 /**
- * Resolve proper nouns by exact/alias match or create new
+ * Resolve proper nouns by exact/alias match, STT vocabulary, or create new
  */
 async function resolveProperNoun(
   mention: CreateEntityMention,
@@ -199,7 +201,67 @@ async function resolveProperNoun(
     return { entity: byAlias, isNew: false }
   }
 
-  // Create new entity
+  // Try STT vocabulary match (phonetic + fuzzy)
+  const sttMatcher = createSTTEntityMatcher(store.vocabulary)
+  const entityType = mapSuggestedToEntityType(mention.suggestedType) as VocabularyEntityType
+  const sttMatch = await sttMatcher.match(mention.text, entityType)
+
+  if (sttMatch.matched && sttMatch.vocabularyEntry) {
+    const vocab = sttMatch.vocabularyEntry
+
+    // Find the entity with correct spelling
+    let entity = await store.entities.getByName(vocab.correctSpelling)
+    if (!entity && vocab.sourceEntityId) {
+      entity = await store.entities.getById(vocab.sourceEntityId)
+    }
+
+    if (entity) {
+      // Add STT variant as alias if not already present
+      const aliases = JSON.parse(entity.aliases || '[]') as string[]
+      const sttVariant = sttMatch.sttVariant
+      if (!aliases.includes(sttVariant) &&
+          sttVariant.toLowerCase() !== entity.canonicalName.toLowerCase()) {
+        aliases.push(sttVariant)
+        await store.entities.update(entity.id, {
+          aliases: JSON.stringify(aliases),
+          mentionCount: entity.mentionCount + 1,
+          lastReferenced: Date.now(),
+        })
+      } else {
+        await store.entities.update(entity.id, {
+          mentionCount: entity.mentionCount + 1,
+          lastReferenced: Date.now(),
+        })
+      }
+
+      // Update vocabulary usage stats
+      await store.vocabulary.incrementUsageCount(vocab.id)
+      await store.vocabulary.incrementVariantCount(vocab.id, sttVariant)
+
+      logger.debug('STT match resolved', {
+        sttText: mention.text,
+        canonical: vocab.correctSpelling,
+        matchType: sttMatch.matchType,
+        confidence: sttMatch.confidence,
+      })
+
+      return { entity, isNew: false }
+    }
+
+    // Vocabulary exists but no entity - create entity with correct spelling
+    const newEntity = await store.entities.create({
+      canonicalName: vocab.correctSpelling,
+      entityType: vocab.entityType as EntityType,
+      aliases: JSON.stringify([sttMatch.sttVariant]),
+    })
+
+    // Link vocabulary to new entity
+    await store.vocabulary.update(vocab.id, { sourceEntityId: newEntity.id })
+
+    return { entity: newEntity, isNew: true }
+  }
+
+  // Create new entity with STT text as canonical
   const newEntity = await store.entities.create({
     canonicalName: mention.text,
     entityType: mapSuggestedToEntityType(mention.suggestedType),

@@ -10,7 +10,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb'
 
 export const schema = appSchema({
-  version: 3,
+  version: 4,
   tables: [
     // ========================================================================
     // SUPPORT TABLES
@@ -430,6 +430,23 @@ export const schema = appSchema({
         { name: 'createdAt', type: 'number' },
         { name: 'lastUsed', type: 'number', isOptional: true },
         { name: 'sourceUnitId', type: 'string', isOptional: true },
+      ]
+    }),
+
+    // Vocabulary - Custom vocabulary for STT entity spelling correction
+    tableSchema({
+      name: 'vocabulary',
+      columns: [
+        { name: 'correctSpelling', type: 'string', isIndexed: true },
+        { name: 'entityType', type: 'string', isIndexed: true },
+        { name: 'contextHints', type: 'string' },  // JSON array of common nearby words
+        { name: 'phoneticPrimary', type: 'string', isIndexed: true },  // Double Metaphone primary
+        { name: 'phoneticSecondary', type: 'string', isOptional: true },  // Double Metaphone secondary
+        { name: 'usageCount', type: 'number' },
+        { name: 'variantCountsJson', type: 'string' },  // JSON: { "variant": count } for voting
+        { name: 'createdAt', type: 'number' },
+        { name: 'lastUsed', type: 'number', isOptional: true },
+        { name: 'sourceEntityId', type: 'string', isOptional: true, isIndexed: true },  // Link to entity
       ]
     }),
 

@@ -321,6 +321,25 @@ export interface ICorrectionStore
   subscribe(callback: SubscriptionCallback<Correction>): Unsubscribe;
 }
 
+import type {
+  Vocabulary,
+  CreateVocabulary,
+  UpdateVocabulary,
+  VocabularyEntityType,
+} from '../schemas/vocabulary';
+
+export interface IVocabularyStore
+  extends IBaseStore<Vocabulary, CreateVocabulary, UpdateVocabulary> {
+  getByCorrectSpelling(spelling: string): Promise<Vocabulary | null>;
+  getByPhoneticCode(code: string): Promise<Vocabulary[]>;
+  getByEntityType(type: VocabularyEntityType): Promise<Vocabulary[]>;
+  getBySourceEntity(entityId: string): Promise<Vocabulary | null>;
+  incrementUsageCount(id: string): Promise<void>;
+  incrementVariantCount(id: string, variant: string): Promise<void>;
+  getFrequentlyUsed(limit: number): Promise<Vocabulary[]>;
+  subscribe(callback: SubscriptionCallback<Vocabulary>): Unsubscribe;
+}
+
 export interface ITaskStore extends IBaseStore<Task, CreateTask, UpdateTask> {
   getPending(): Promise<Task[]>;
   getRetryable(): Promise<Task[]>;
@@ -423,6 +442,7 @@ export interface IProgramStore {
   extensions: IExtensionStore;
   synthesisCache: ISynthesisCacheStore;
   corrections: ICorrectionStore;
+  vocabulary: IVocabularyStore;
   tasks: ITaskStore;
 
   // Debug / Tracing

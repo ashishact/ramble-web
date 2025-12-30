@@ -13,3 +13,34 @@ export {
   type ProcessTextResult,
   type CorrectionServiceConfig,
 } from './correctionService';
+
+// Phonetic matching
+export {
+  doubleMetaphone,
+  phoneticMatch,
+  phoneticSimilarity,
+  type DoubleMetaphoneResult,
+} from './doubleMetaphone';
+
+// Edit distance
+export {
+  levenshteinDistance,
+  stringSimilarity,
+  isWithinEditThreshold,
+  getEditThreshold,
+  damerauLevenshteinDistance,
+  findBestMatches,
+  jaroWinklerSimilarity,
+  type FuzzyMatch,
+} from './levenshtein';
+
+// Context matching
+export {
+  extractContext,
+  calculateContextScore,
+  scoreWithContext,
+  quickPhoneticFilter,
+  findPotentialEntityWords,
+  suggestContextHints,
+  type ContextMatch,
+} from './contextMatcher';

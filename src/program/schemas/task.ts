@@ -14,7 +14,18 @@ import { z } from 'zod';
  * Task type - what kind of task to execute
  */
 export const TaskTypeSchema = z.enum([
-  // Extraction pipeline tasks
+  // Queue-based pipeline (simple sequential processing)
+  'process_unit',          // Full unit processing (preprocess → extract → resolve → derive)
+
+  // Legacy event-driven pipeline tasks (deprecated)
+  'preprocess_unit',       // JS only: sanitize + corrections + spans
+  'extract_primitives',    // LLM: single extraction call
+  'resolve_and_derive',    // JS only: entity resolution + claim derivation
+  'run_nonllm_observers',  // JS only: batched non-LLM observers
+  'run_llm_observers',     // LLM: batched LLM observers
+  'run_decay',             // Background: memory decay
+
+  // Legacy extraction pipeline tasks (deprecated, kept for compatibility)
   'extract_from_unit',
   'run_extractor', // Single extractor run
   'save_extraction_results',

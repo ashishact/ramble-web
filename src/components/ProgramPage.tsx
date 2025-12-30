@@ -10,6 +10,9 @@ import { useProgram } from '../program/hooks';
 import { VoiceRecorder } from './VoiceRecorder';
 import type { Claim, Entity, Goal, Correction } from '../program';
 import type { ExtractionTraceRecord } from '../db/stores/extractionTraceStore';
+import type { Vocabulary, VocabularyEntityType } from '../program/schemas/vocabulary';
+import type { CanonicalSuggestion } from '../program/services/vocabularyService';
+import { getVariantVotes, parseContextHints } from '../program/schemas/vocabulary';
 import { programStore } from '../program/store';
 
 // ============================================================================
@@ -275,6 +278,185 @@ function CorrectionCard({ correction, onRemove }: { correction: Correction; onRe
   );
 }
 
+function VocabularyCard({
+  vocab,
+  suggestion,
+  onDelete,
+  onApplySuggestion,
+  onCorrectCanonical,
+}: {
+  vocab: Vocabulary;
+  suggestion?: CanonicalSuggestion;
+  onDelete: (id: string) => Promise<boolean>;
+  onApplySuggestion?: (suggestion: CanonicalSuggestion) => Promise<void>;
+  onCorrectCanonical?: (id: string, newCanonical: string) => Promise<void>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [newCanonical, setNewCanonical] = useState(vocab.correctSpelling);
+
+  const variants = getVariantVotes(vocab.variantCountsJson);
+  const contextHints = parseContextHints(vocab.contextHints);
+
+  return (
+    <div className="p-3 bg-base-200 rounded-lg">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0" onClick={() => setExpanded(!expanded)}>
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-sm">{vocab.correctSpelling}</span>
+            <span className="badge badge-xs badge-outline">{vocab.entityType}</span>
+          </div>
+          <div className="flex items-center gap-2 mt-1 text-xs opacity-60">
+            <span className="font-mono">{vocab.phoneticPrimary}</span>
+            <span>•</span>
+            <span>Used {vocab.usageCount}x</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            className="btn btn-ghost btn-xs btn-square"
+            onClick={() => setExpanded(!expanded)}
+            title={expanded ? 'Collapse' : 'Expand'}
+          >
+            {expanded ? '▲' : '▼'}
+          </button>
+          <button
+            className="btn btn-ghost btn-xs btn-square text-error"
+            onClick={() => onDelete(vocab.id)}
+            title="Delete"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+
+      {/* Suggestion alert */}
+      {suggestion && (
+        <div className="mt-2 bg-warning/20 border border-warning/30 rounded p-2">
+          <div className="flex items-center justify-between">
+            <div className="text-xs">
+              <span className="opacity-70">Suggested: </span>
+              <span className="font-bold">{suggestion.suggestedCanonical}</span>
+              <span className="opacity-50 ml-1">({Math.round(suggestion.confidence * 100)}% confidence)</span>
+            </div>
+            {onApplySuggestion && (
+              <button
+                className="btn btn-xs btn-warning"
+                onClick={() => onApplySuggestion(suggestion)}
+              >
+                Apply
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Expanded details */}
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-base-300 space-y-3">
+          {/* Manual canonical correction */}
+          <div>
+            <div className="text-xs font-bold opacity-70 mb-1">Canonical Spelling</div>
+            {editing ? (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="input input-xs input-bordered flex-1"
+                  value={newCanonical}
+                  onChange={(e) => setNewCanonical(e.target.value)}
+                />
+                <button
+                  className="btn btn-xs btn-primary"
+                  onClick={async () => {
+                    if (onCorrectCanonical && newCanonical.trim() !== vocab.correctSpelling) {
+                      await onCorrectCanonical(vocab.id, newCanonical.trim());
+                    }
+                    setEditing(false);
+                  }}
+                >
+                  Save
+                </button>
+                <button
+                  className="btn btn-xs btn-ghost"
+                  onClick={() => {
+                    setNewCanonical(vocab.correctSpelling);
+                    setEditing(false);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm">{vocab.correctSpelling}</span>
+                <button
+                  className="btn btn-xs btn-ghost"
+                  onClick={() => setEditing(true)}
+                >
+                  Edit
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Context hints */}
+          {contextHints.length > 0 && (
+            <div>
+              <div className="text-xs font-bold opacity-70 mb-1">Context Hints</div>
+              <div className="flex flex-wrap gap-1">
+                {contextHints.map((hint, i) => (
+                  <span key={i} className="badge badge-xs badge-ghost">{hint}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* STT variants with votes */}
+          {variants.length > 0 && (
+            <div>
+              <div className="text-xs font-bold opacity-70 mb-1">STT Variants (votes)</div>
+              <div className="flex flex-wrap gap-1">
+                {variants.map((v, i) => (
+                  <span
+                    key={i}
+                    className={`badge badge-xs ${
+                      v.variant.toLowerCase() === vocab.correctSpelling.toLowerCase()
+                        ? 'badge-success'
+                        : 'badge-outline'
+                    }`}
+                  >
+                    {v.variant} ({v.count})
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Phonetic codes */}
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <span className="opacity-50">Primary:</span>{' '}
+              <span className="font-mono">{vocab.phoneticPrimary}</span>
+            </div>
+            {vocab.phoneticSecondary && (
+              <div>
+                <span className="opacity-50">Secondary:</span>{' '}
+                <span className="font-mono">{vocab.phoneticSecondary}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Metadata */}
+          <div className="text-xs opacity-50">
+            Created {formatRelativeTime(vocab.createdAt)}
+            {vocab.lastUsed && <> • Last used {formatRelativeTime(vocab.lastUsed)}</>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ============================================================================
 // Extraction Trace Debug Panel
 // ============================================================================
@@ -428,7 +610,7 @@ function TraceDebugPanel({ trace, onClose }: { trace: ExtractionTraceRecord; onC
 // Main Page Component
 // ============================================================================
 
-type TabType = 'l1-primitives' | 'l1-mentions' | 'l2-entities' | 'l2-derived' | 'corrections';
+type TabType = 'l1-primitives' | 'l1-mentions' | 'l2-entities' | 'l2-derived' | 'corrections' | 'vocabulary' | 'pipeline';
 
 export function ProgramPage() {
   const navigate = useNavigate();
@@ -477,6 +659,9 @@ export function ProgramPage() {
     conversations,
     corrections,
     queueStatus,
+    vocabulary,
+    canonicalSuggestions,
+    vocabularyStats,
     startSession,
     endSession,
     processText,
@@ -484,7 +669,14 @@ export function ProgramPage() {
     removeCorrection,
     searchText,
     replaceText,
+    addVocabulary,
+    deleteVocabulary,
+    correctCanonical,
+    applyCanonicalSuggestion,
+    syncVocabularyFromEntities,
     refresh,
+    pipelineEvents,
+    clearPipelineEvents,
   } = useProgram();
 
   // Session timing: Check last activity and auto-start session
@@ -611,19 +803,19 @@ export function ProgramPage() {
         <div className="flex-1 gap-2">
           <h1 className="text-xl font-bold">RAMBLE</h1>
           <div className="hidden md:flex gap-1">
-            {queueStatus.isRunning ? (
+            {queueStatus.isProcessing ? (
               <span className="badge badge-success badge-xs gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
-                Queue
+                Processing
               </span>
             ) : (
-              <span className="badge badge-warning badge-xs">Queue Paused</span>
+              <span className="badge badge-neutral badge-xs">Idle</span>
             )}
-            {queueStatus.pendingTasks > 0 && (
-              <span className="badge badge-info badge-xs">{queueStatus.pendingTasks} pending</span>
+            {queueStatus.pendingCount > 0 && (
+              <span className="badge badge-info badge-xs">{queueStatus.pendingCount} pending</span>
             )}
-            {queueStatus.failedTasks > 0 && (
-              <span className="badge badge-error badge-xs">{queueStatus.failedTasks} failed</span>
+            {queueStatus.failedCount > 0 && (
+              <span className="badge badge-error badge-xs">{queueStatus.failedCount} failed</span>
             )}
           </div>
         </div>
@@ -713,22 +905,6 @@ export function ProgramPage() {
                 </p>
               ) : (
                 <>
-                  {/* Show more button at top (for loading older conversations) */}
-                  {conversations.length > conversationsDisplayLimit && (
-                    <div className="text-center py-2">
-                      <button
-                        className="btn btn-sm btn-ghost gap-2"
-                        onClick={() => setConversationsDisplayLimit(prev => prev + 20)}
-                      >
-                        <span>↑</span>
-                        Show {Math.min(20, conversations.length - conversationsDisplayLimit)} more older
-                      </button>
-                      <div className="text-xs opacity-50 mt-1">
-                        Showing {conversationsDisplayLimit} of {conversations.length} conversations
-                      </div>
-                    </div>
-                  )}
-
                   {conversations.slice().reverse().slice(0, conversationsDisplayLimit).map((conv, index, arr) => {
                     const displayText = showRawText ? conv.rawText : conv.sanitizedText;
                     const hasChanges = conv.rawText !== conv.sanitizedText;
@@ -786,6 +962,22 @@ export function ProgramPage() {
                       </div>
                     );
                   })}
+
+                  {/* Load more button at bottom (for older conversations) */}
+                  {conversations.length > conversationsDisplayLimit && (
+                    <div className="text-center py-3 border-t border-base-300 mt-2">
+                      <button
+                        className="btn btn-sm btn-ghost gap-2"
+                        onClick={() => setConversationsDisplayLimit(prev => prev + 20)}
+                      >
+                        <span>↓</span>
+                        Load {Math.min(20, conversations.length - conversationsDisplayLimit)} older
+                      </button>
+                      <div className="text-xs opacity-50 mt-1">
+                        Showing {Math.min(conversationsDisplayLimit, conversations.length)} of {conversations.length}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -829,6 +1021,18 @@ export function ProgramPage() {
               onClick={() => setActiveTab('corrections')}
             >
               Corrections
+            </button>
+            <button
+              className={`tab tab-sm ${activeTab === 'vocabulary' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('vocabulary')}
+            >
+              Vocabulary ({vocabulary.length})
+            </button>
+            <button
+              className={`tab tab-sm ${activeTab === 'pipeline' ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab('pipeline')}
+            >
+              Pipeline {pipelineEvents.length > 0 && `(${pipelineEvents.length})`}
             </button>
           </div>
 
@@ -1338,6 +1542,401 @@ export function ProgramPage() {
                 )}
               </div>
             )}
+
+            {/* Vocabulary Tab */}
+            {activeTab === 'vocabulary' && (
+              <div className="space-y-4">
+                {/* Stats Banner */}
+                {vocabularyStats && (
+                  <div className="stats shadow bg-base-200">
+                    <div className="stat py-2 px-4">
+                      <div className="stat-title text-xs">Total Entries</div>
+                      <div className="stat-value text-lg">{vocabularyStats.totalEntries}</div>
+                    </div>
+                    <div className="stat py-2 px-4">
+                      <div className="stat-title text-xs">Suggestions</div>
+                      <div className="stat-value text-lg text-warning">{vocabularyStats.entriesWithSuggestions}</div>
+                    </div>
+                    <div className="stat py-2 px-4">
+                      <div className="stat-title text-xs">Total Variants</div>
+                      <div className="stat-value text-lg">{vocabularyStats.totalVariants}</div>
+                    </div>
+                    <div className="stat py-2 px-4">
+                      <div className="stat-title text-xs">Avg Variants/Entry</div>
+                      <div className="stat-value text-lg">{vocabularyStats.averageVariantsPerEntry.toFixed(1)}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sync from Entities */}
+                <div className="bg-base-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-sm">Sync from Entities</h3>
+                      <p className="text-xs opacity-70">
+                        Create vocabulary entries for existing entities that don't have them yet.
+                      </p>
+                    </div>
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={async () => {
+                        const count = await syncVocabularyFromEntities();
+                        if (count > 0) {
+                          alert(`Created ${count} vocabulary entries from entities.`);
+                        } else {
+                          alert('All entities already have vocabulary entries.');
+                        }
+                      }}
+                    >
+                      Sync Now
+                    </button>
+                  </div>
+                </div>
+
+                {/* Add New Vocabulary */}
+                <div className="bg-base-200 rounded-lg p-4">
+                  <h3 className="font-bold text-sm mb-3">Add Vocabulary Entry</h3>
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const form = e.target as HTMLFormElement;
+                      const spellingInput = form.elements.namedItem('spelling') as HTMLInputElement;
+                      const typeSelect = form.elements.namedItem('entityType') as HTMLSelectElement;
+                      const hintsInput = form.elements.namedItem('hints') as HTMLInputElement;
+
+                      if (spellingInput.value.trim()) {
+                        const hints = hintsInput.value
+                          .split(',')
+                          .map(h => h.trim())
+                          .filter(h => h.length > 0);
+
+                        await addVocabulary({
+                          correctSpelling: spellingInput.value.trim(),
+                          entityType: typeSelect.value as VocabularyEntityType,
+                          contextHints: hints,
+                        });
+
+                        spellingInput.value = '';
+                        hintsInput.value = '';
+                      }
+                    }}
+                    className="space-y-3"
+                  >
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <label className="label label-text text-xs py-0">Correct Spelling</label>
+                        <input
+                          type="text"
+                          name="spelling"
+                          className="input input-bordered input-sm w-full"
+                          placeholder="e.g., Michael"
+                          required
+                        />
+                      </div>
+                      <div className="w-36">
+                        <label className="label label-text text-xs py-0">Entity Type</label>
+                        <select
+                          name="entityType"
+                          className="select select-bordered select-sm w-full"
+                          defaultValue="person"
+                        >
+                          <option value="person">Person</option>
+                          <option value="organization">Organization</option>
+                          <option value="place">Place</option>
+                          <option value="project">Project</option>
+                          <option value="product">Product</option>
+                          <option value="event">Event</option>
+                          <option value="concept">Concept</option>
+                          <option value="role">Role</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="label label-text text-xs py-0">Context Hints (comma-separated)</label>
+                      <input
+                        type="text"
+                        name="hints"
+                        className="input input-bordered input-sm w-full"
+                        placeholder="e.g., engineer, friend, colleague"
+                      />
+                    </div>
+                    <button type="submit" className="btn btn-primary btn-sm">Add</button>
+                  </form>
+                </div>
+
+                {/* Vocabulary List */}
+                {vocabulary.length === 0 ? (
+                  <div className="text-center py-12 opacity-50">
+                    <div className="text-4xl mb-2">📖</div>
+                    <p>No vocabulary entries yet.</p>
+                    <p className="text-sm mt-2">
+                      Add vocabulary manually above or sync from existing entities.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <h3 className="font-bold text-sm opacity-70">
+                      Vocabulary Entries ({vocabulary.length})
+                      {canonicalSuggestions.length > 0 && (
+                        <span className="ml-2 text-warning">
+                          ({canonicalSuggestions.length} suggestions)
+                        </span>
+                      )}
+                    </h3>
+                    {vocabulary
+                      .slice()
+                      .sort((a, b) => b.usageCount - a.usageCount)
+                      .map((vocab) => {
+                        const suggestion = canonicalSuggestions.find(s => s.vocabId === vocab.id);
+                        return (
+                          <VocabularyCard
+                            key={vocab.id}
+                            vocab={vocab}
+                            suggestion={suggestion}
+                            onDelete={deleteVocabulary}
+                            onApplySuggestion={async (s) => {
+                              await applyCanonicalSuggestion(s);
+                            }}
+                            onCorrectCanonical={async (id, newCanonical) => {
+                              await correctCanonical(id, newCanonical);
+                            }}
+                          />
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Pipeline Tab */}
+            {activeTab === 'pipeline' && (() => {
+              // Compute current pipeline state from events
+              const STEPS = ['preprocess', 'extract', 'resolve', 'derive'] as const;
+              type StepStatus = 'pending' | 'running' | 'done' | 'failed';
+
+              // Find the latest events to determine current state
+              const getStepStatus = (step: string): { status: StepStatus; data?: Record<string, string | number | boolean> } => {
+                // Look for the most recent event for this step
+                for (let i = pipelineEvents.length - 1; i >= 0; i--) {
+                  const event = pipelineEvents[i];
+                  if (event.step === step) {
+                    if (event.type === 'queue:step_completed') {
+                      return { status: 'done', data: (event.data || {}) as Record<string, string | number | boolean> };
+                    }
+                    if (event.type === 'queue:item_failed') {
+                      return { status: 'failed', data: (event.data || {}) as Record<string, string | number | boolean> };
+                    }
+                    if (event.type === 'queue:step_started') {
+                      // Check if there's a later completed event for this step
+                      const hasCompleted = pipelineEvents.slice(i + 1).some(
+                        e => e.step === step && e.type === 'queue:step_completed'
+                      );
+                      if (!hasCompleted && queueStatus.isProcessing) {
+                        return { status: 'running' };
+                      }
+                      return { status: 'done' }; // Assume done if not processing
+                    }
+                  }
+                }
+                return { status: 'pending' };
+              };
+
+              // Get current text being processed
+              const currentText = pipelineEvents.length > 0
+                ? (pipelineEvents[pipelineEvents.length - 1].data as Record<string, unknown>)?.text as string
+                : null;
+
+              // Get completed units (count item_completed events)
+              const completedUnits = pipelineEvents.filter(e => e.type === 'queue:item_completed').length;
+
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-sm">Pipeline Monitor</h3>
+                      {queueStatus.isProcessing ? (
+                        <span className="badge badge-success badge-sm gap-1">
+                          <span className="loading loading-spinner loading-xs"></span>
+                          Processing
+                        </span>
+                      ) : (
+                        <span className="badge badge-neutral badge-sm">Idle</span>
+                      )}
+                    </div>
+                    <button
+                      className="btn btn-xs btn-ghost"
+                      onClick={clearPipelineEvents}
+                      disabled={pipelineEvents.length === 0}
+                    >
+                      Clear Log
+                    </button>
+                  </div>
+
+                  {/* Current Pipeline Progress */}
+                  {queueStatus.isProcessing && (
+                    <div className="bg-base-200 rounded-lg p-4">
+                      <h4 className="font-bold text-xs mb-3 opacity-70">Current Pipeline</h4>
+
+                      {/* Text being processed */}
+                      {currentText && (
+                        <div className="text-sm mb-4 p-2 bg-base-300 rounded italic truncate" title={currentText}>
+                          "{currentText}"
+                        </div>
+                      )}
+
+                      {/* Step progress */}
+                      <div className="flex items-center gap-2">
+                        {STEPS.map((step, idx) => {
+                          const { status, data } = getStepStatus(step);
+                          return (
+                            <div key={step} className="flex items-center gap-2">
+                              <div className={`flex flex-col items-center ${
+                                status === 'running' ? 'text-info' :
+                                status === 'done' ? 'text-success' :
+                                status === 'failed' ? 'text-error' :
+                                'text-base-content/30'
+                              }`}>
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${
+                                  status === 'running' ? 'border-info bg-info/20' :
+                                  status === 'done' ? 'border-success bg-success/20' :
+                                  status === 'failed' ? 'border-error bg-error/20' :
+                                  'border-base-content/20'
+                                }`}>
+                                  {status === 'running' ? (
+                                    <span className="loading loading-spinner loading-sm"></span>
+                                  ) : status === 'done' ? (
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  ) : status === 'failed' ? (
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  ) : (
+                                    <span className="text-xs">{idx + 1}</span>
+                                  )}
+                                </div>
+                                <span className="text-xs mt-1 capitalize">{step}</span>
+                                {status === 'done' && data && (
+                                  <span className="text-[10px] opacity-60">
+                                    {data.spansFound !== undefined && `${data.spansFound} spans`}
+                                    {data.propositions !== undefined && `${data.propositions} props`}
+                                    {data.mentionsResolved !== undefined && `${data.mentionsResolved} resolved`}
+                                    {data.claimsCreated !== undefined && `${data.claimsCreated} claims`}
+                                  </span>
+                                )}
+                              </div>
+                              {idx < STEPS.length - 1 && (
+                                <div className={`w-8 h-0.5 ${
+                                  getStepStatus(STEPS[idx + 1]).status !== 'pending' ? 'bg-success' : 'bg-base-content/20'
+                                }`} />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Queue Stats */}
+                  <div className="bg-base-200 rounded-lg p-4">
+                    <h4 className="font-bold text-xs mb-2 opacity-70">Queue Stats</h4>
+                    <div className="grid grid-cols-4 gap-4 text-center">
+                      <div>
+                        <div className="text-2xl font-bold text-primary">
+                          {queueStatus.isProcessing ? 1 : 0}
+                        </div>
+                        <div className="text-xs opacity-60">Active</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-info">
+                          {queueStatus.pendingCount}
+                        </div>
+                        <div className="text-xs opacity-60">Pending</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-success">
+                          {queueStatus.completedCount}
+                        </div>
+                        <div className="text-xs opacity-60">Completed</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-error">
+                          {queueStatus.failedCount}
+                        </div>
+                        <div className="text-xs opacity-60">Failed</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Completed Units Summary */}
+                  {completedUnits > 0 && !queueStatus.isProcessing && (
+                    <div className="bg-success/10 rounded-lg p-4 border border-success/30">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-5 h-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-sm font-medium">
+                          {completedUnits} unit{completedUnits !== 1 ? 's' : ''} processed successfully
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Simple Event Log */}
+                  <div className="bg-base-200 rounded-lg p-4">
+                    <h4 className="font-bold text-xs mb-2 opacity-70">Event Log ({pipelineEvents.length})</h4>
+                    {pipelineEvents.length === 0 ? (
+                      <div className="text-center py-8 opacity-50">
+                        <p>No events yet. Process some text to see pipeline events.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1 max-h-64 overflow-y-auto font-mono text-xs">
+                        {[...pipelineEvents].reverse().map((event, index) => {
+                          const data = (event.data || {}) as Record<string, string | number | boolean>;
+                          const isCompleted = event.type.includes('completed');
+                          const isFailed = event.type.includes('failed');
+
+                          // Format the event nicely
+                          let icon = '•';
+                          let color = 'opacity-50';
+                          if (isCompleted) { icon = '✓'; color = 'text-success'; }
+                          if (isFailed) { icon = '✗'; color = 'text-error'; }
+                          if (event.type.includes('started')) { icon = '→'; color = 'text-info'; }
+
+                          // Build description
+                          let desc = event.step || event.type.replace('queue:', '');
+                          if (data.description) desc = String(data.description);
+
+                          // Add stats for completed
+                          const stats: string[] = [];
+                          if (data.spansFound) stats.push(`${data.spansFound} spans`);
+                          if (data.propositions) stats.push(`${data.propositions} props`);
+                          if (data.entityMentions) stats.push(`${data.entityMentions} mentions`);
+                          if (data.claimsCreated) stats.push(`${data.claimsCreated} claims`);
+                          if (data.skipped) stats.push('skipped');
+
+                          return (
+                            <div key={`${event.timestamp}-${index}`} className="flex items-start gap-2 py-1">
+                              <span className={`${color} w-4`}>{icon}</span>
+                              <span className="opacity-40 w-16 shrink-0">
+                                {new Date(event.timestamp).toLocaleTimeString()}
+                              </span>
+                              <span className="flex-1">
+                                {desc}
+                                {stats.length > 0 && (
+                                  <span className="opacity-50 ml-2">({stats.join(', ')})</span>
+                                )}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
           </div>
         </div>

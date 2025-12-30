@@ -38,7 +38,18 @@ export type LogModule =
   | 'SearchService'
   | 'SessionManager'
   | 'PrimitivePipeline'
-  | 'ClaimDeriver';
+  | 'ClaimDeriver'
+  // Event-driven pipeline modules
+  | 'EventBus'
+  | 'EventLoop'
+  | 'PreprocessHandler'
+  | 'ExtractPrimitivesHandler'
+  | 'ResolveAndDeriveHandler'
+  | 'NonLLMObserversHandler'
+  | 'LLMObserversHandler'
+  // Queue-based pipeline
+  | 'PipelineQueue'
+  | 'UnitPipeline';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -85,6 +96,17 @@ const MODULE_COLORS: Record<LogModule, string> = {
   SessionManager: '#607D8B',
   PrimitivePipeline: '#4CAF50',
   ClaimDeriver: '#9C27B0',
+  // Event-driven pipeline modules
+  EventBus: '#00BCD4',
+  EventLoop: '#00BCD4',
+  PreprocessHandler: '#9C27B0',
+  ExtractPrimitivesHandler: '#FF5722',
+  ResolveAndDeriveHandler: '#4CAF50',
+  NonLLMObserversHandler: '#E91E63',
+  LLMObserversHandler: '#E91E63',
+  // Queue-based pipeline
+  PipelineQueue: '#00BCD4',
+  UnitPipeline: '#9C27B0',
 };
 
 interface LogConfig {
