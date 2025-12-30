@@ -15,10 +15,9 @@ import { useState, useCallback, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import { settingsHelpers, type AppSettings } from '../stores/settingsStore';
 import { ThemeSelector } from './ThemeSelector';
-import { MigrationPanel } from './MigrationPanel';
-import { getKernel } from '../program';
 import { LLMTierPanel } from './settings/LLMTierPanel';
 import { STTTierPanel } from './settings/STTTierPanel';
+import { DATABASE_NAME } from '../db/schema';
 
 type SettingsCategory =
   | 'api-keys'
@@ -350,15 +349,36 @@ export function SettingsPageNew({ onBack }: { onBack: () => void }) {
               <div>
                 <h2 className="text-2xl font-bold">Database Management</h2>
                 <p className="text-sm text-base-content/60 mt-1">
-                  Manage database schema changes and migrations
+                  View database information
                 </p>
               </div>
 
-              <MigrationPanel
-                getMigrationStatus={() => getKernel().getMigrationStatus()}
-                runMigration={(version) => getKernel().runMigration(version)}
-                runAllPending={() => getKernel().runAllPendingMigrations()}
-              />
+              <div className="card bg-base-200">
+                <div className="card-body">
+                  <h3 className="card-title">Database Info</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-base-content/60">Database Name:</span>
+                      <span className="font-mono">{DATABASE_NAME}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-base-content/60">Storage:</span>
+                      <span className="font-mono">IndexedDB (WatermelonDB)</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card bg-base-200">
+                <div className="card-body">
+                  <h3 className="card-title">Tables</h3>
+                  <div className="text-sm text-base-content/60 space-y-1">
+                    <p><strong>Core:</strong> sessions, conversations, tasks</p>
+                    <p><strong>Knowledge:</strong> entities, topics, memories, insights, goals</p>
+                    <p><strong>System:</strong> plugins, corrections, extraction_logs</p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

@@ -1,129 +1,82 @@
-/**
- * Session Store - WatermelonDB Implementation
- */
-
-import type { Database } from '@nozbe/watermelondb'
 import { Q } from '@nozbe/watermelondb'
-import type { ISessionStore, SubscriptionCallback, Unsubscribe } from '../../program/interfaces/store'
-import type { Session, CreateSession, UpdateSession } from '../../program/types'
-import SessionModel from '../models/Session'
+import { database } from '../database'
+import Session from '../models/Session'
 
-export function createSessionStore(db: Database): ISessionStore {
-  const collection = db.get<SessionModel>('sessions')
+const sessions = database.get<Session>('sessions')
 
-  return {
-    async getById(id: string): Promise<Session | null> {
-      try {
-        const model = await collection.find(id)
-        return modelToSession(model)
-      } catch {
-        return null
-      }
-    },
+export const sessionStore = {
+  async create(data: {
+    startedAt?: number
+    metadata?: Record<string, unknown>
+  }): Promise<Session> {
+    const now = Date.now()
+    return await database.write(async () => {
+      return await sessions.create((session) => {
+        session.startedAt = data.startedAt ?? now
+        session.unitCount = 0
+        session.metadata = JSON.stringify(data.metadata ?? {})
+      })
+    })
+  },
 
-    async getAll(): Promise<Session[]> {
-      const models = await collection.query().fetch()
-      return models.map(modelToSession)
-    },
+  async getById(id: string): Promise<Session | null> {
+    try {
+      return await sessions.find(id)
+    } catch {
+      return null
+    }
+  },
 
-    async count(): Promise<number> {
-      return collection.query().fetchCount()
-    },
+  async getActive(): Promise<Session | null> {
+    const results = await sessions
+      .query(Q.where('endedAt', null), Q.sortBy('startedAt', Q.desc), Q.take(1))
+      .fetch()
+    return results[0] ?? null
+  },
 
-    async create(data: CreateSession): Promise<Session> {
-      const model = await db.write(() =>
-        collection.create((session) => {
-          session.startedAt = data.startedAt ?? null
-          session.endedAt = data.endedAt ?? null
-          session.unitCount = data.unitCount ?? null
-          session.summary = data.summary ?? null
-          session.moodTrajectoryJson = data.moodTrajectoryJson ?? null
+  async getRecent(limit = 10): Promise<Session[]> {
+    return await sessions
+      .query(Q.sortBy('startedAt', Q.desc), Q.take(limit))
+      .fetch()
+  },
+
+  async endSession(id: string): Promise<Session | null> {
+    try {
+      const session = await sessions.find(id)
+      await database.write(async () => {
+        await session.update((s) => {
+          s.endedAt = Date.now()
         })
-      )
-      return modelToSession(model)
-    },
+      })
+      return session
+    } catch {
+      return null
+    }
+  },
 
-    async update(id: string, data: UpdateSession): Promise<Session | null> {
-      try {
-        const model = await collection.find(id)
-        const updated = await db.write(() =>
-          model.update((session) => {
-            if (data.endedAt !== undefined) session.endedAt = data.endedAt ?? null
-            if (data.unitCount !== undefined) session.unitCount = data.unitCount ?? null
-            if (data.summary !== undefined) session.summary = data.summary ?? null
-            if (data.moodTrajectoryJson !== undefined) session.moodTrajectoryJson = data.moodTrajectoryJson ?? null
-          })
-        )
-        return modelToSession(updated)
-      } catch {
-        return null
-      }
-    },
-
-    async delete(id: string): Promise<boolean> {
-      try {
-        const model = await collection.find(id)
-        await db.write(() => model.destroyPermanently())
-        return true
-      } catch {
-        return false
-      }
-    },
-
-    async getActive(): Promise<Session | null> {
-      const models = await collection
-        .query(Q.where('endedAt', null), Q.sortBy('startedAt', Q.desc), Q.take(1))
-        .fetch()
-      return models.length > 0 ? modelToSession(models[0]) : null
-    },
-
-    async endSession(id: string): Promise<Session | null> {
-      try {
-        const model = await collection.find(id)
-        const updated = await db.write(() =>
-          model.update((session) => {
-            session.endedAt = Date.now()
-          })
-        )
-        return modelToSession(updated)
-      } catch {
-        return null
-      }
-    },
-
-    async incrementUnitCount(id: string): Promise<void> {
-      try {
-        const model = await collection.find(id)
-        await db.write(() =>
-          model.update((session) => {
-            session.unitCount = (session.unitCount || 0) + 1
-          })
-        )
-      } catch {
-        // Ignore errors
-      }
-    },
-
-    subscribe(callback: SubscriptionCallback<Session>): Unsubscribe {
-      const subscription = collection
-        .query()
-        .observe()
-        .subscribe((models) => {
-          callback(models.map(modelToSession))
+  async incrementUnitCount(id: string): Promise<void> {
+    try {
+      const session = await sessions.find(id)
+      await database.write(async () => {
+        await session.update((s) => {
+          s.unitCount += 1
         })
+      })
+    } catch {
+      // Session not found
+    }
+  },
 
-      return () => subscription.unsubscribe()
-    },
-  }
-}
-
-function modelToSession(model: SessionModel): Session {
-  return {
-    id: model.id,
-    startedAt: model.startedAt,
-    endedAt: model.endedAt || null,
-    unitCount: model.unitCount,
-    summary: model.summary || null,
-    moodTrajectoryJson: model.moodTrajectoryJson || null,
-  }
+  async updateSummary(id: string, summary: string): Promise<void> {
+    try {
+      const session = await sessions.find(id)
+      await database.write(async () => {
+        await session.update((s) => {
+          s.summary = summary
+        })
+      })
+    } catch {
+      // Session not found
+    }
+  },
 }

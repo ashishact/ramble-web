@@ -1,19 +1,19 @@
 /**
  * WatermelonDB Database Initialization
+ *
+ * Core Loop Architecture - Fresh database: ramble_v2
  */
 
 import { Database } from '@nozbe/watermelondb'
 import LokiJSAdapter from '@nozbe/watermelondb/adapters/lokijs'
-import { schema } from './schema'
-import { migrations } from './migrations'
+import { schema, DATABASE_NAME } from './schema'
 import * as models from './models'
 
 const adapter = new LokiJSAdapter({
   schema,
-  migrations,
   useWebWorker: false,
-  useIncrementalIndexedDB: true, // Only persist changes, not entire DB
-  dbName: 'DEFAULT', // Fresh database with consolidated schema
+  useIncrementalIndexedDB: true,
+  dbName: DATABASE_NAME,
 })
 
 export const database = new Database({
@@ -23,43 +23,25 @@ export const database = new Database({
 
 // Export collections for easy access
 export const collections = {
-  // Support
+  // Core
   sessions: database.get('sessions'),
+  conversations: database.get('conversations'),
   tasks: database.get('tasks'),
 
-  // Layer 0: Stream
-  conversations: database.get('conversations'),
-
-  // Layer 1: Primitives
-  propositions: database.get('propositions'),
-  stances: database.get('stances'),
-  relations: database.get('relations'),
-  spans: database.get('spans'),
-  entityMentions: database.get('entity_mentions'),
-  primitiveEntities: database.get('primitive_entities'),
+  // Knowledge
   entities: database.get('entities'),
-
-  // Layer 2: Derived
-  derived: database.get('derived'),
-  claims: database.get('claims'),
+  topics: database.get('topics'),
+  memories: database.get('memories'),
+  insights: database.get('insights'),
   goals: database.get('goals'),
-  patterns: database.get('patterns'),
-  values: database.get('values'),
-  contradictions: database.get('contradictions'),
 
-  // Provenance
-  claimSources: database.get('claim_sources'),
-
-  // Observers & Extractors
-  observerOutputs: database.get('observer_outputs'),
-  extractionPrograms: database.get('extraction_programs'),
-  observerPrograms: database.get('observer_programs'),
-
-  // Support
-  extensions: database.get('extensions'),
-  synthesisCache: database.get('synthesis_cache'),
+  // System
+  plugins: database.get('plugins'),
   corrections: database.get('corrections'),
+  extractionLogs: database.get('extraction_logs'),
+}
 
-  // Debug / Tracing
-  extractionTraces: database.get('extraction_traces'),
+// Type-safe collection getters
+export function getCollection<T extends keyof typeof collections>(name: T) {
+  return collections[name]
 }

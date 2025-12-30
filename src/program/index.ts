@@ -1,267 +1,49 @@
 /**
- * Program Module - Main Entry Point
+ * Program Module Exports
  *
- * RAMBLE: Reasoning Architecture for Memory-Based Learning and Extraction
- *
- * This module provides a comprehensive system for:
- * - Extracting claims from conversation
- * - Organizing claims into thought chains
- * - Tracking goals and progress
- * - Detecting patterns and contradictions
- *
- * Usage:
- *   import { getKernel } from '@/program';
- *
- *   const kernel = getKernel();
- *   await kernel.initialize();
- *   kernel.startSession();
- *   await kernel.processText("I've been thinking about career changes...", 'user');
+ * Core Loop Architecture
  */
 
-// Kernel - main API
+// LLM Client
+export { callLLM, type LLMRequest, type LLMResponse } from './llmClient';
+
+// LLM Tier Resolver
 export {
-  ProgramKernel,
-  getKernel,
-  resetKernel,
-  type KernelConfig,
-  type KernelState,
-  type KernelStats,
-} from './kernel';
-
-// Types
-export type {
-  // Session
-  Session,
-  CreateSession,
-  UpdateSession,
-
-  // Conversation
-  ConversationSource,
-  ConversationUnit,
-  CreateConversationUnit,
-  UpdateConversationUnit,
-
-  // Claims
-  ClaimType,
-  Temporality,
-  Abstraction,
-  SourceType,
-  ClaimState,
-  Stakes,
-  Claim,
-  CreateClaim,
-  UpdateClaim,
-  ClaimSource,
-  CreateClaimSource,
-
-  // Entities
-  EntityType,
-  Entity,
-  CreateEntity,
-  UpdateEntity,
-
-  // Goals
-  GoalType,
-  GoalTimeframe,
-  GoalStatus,
-  ProgressType,
-  BlockerType,
-  BlockerSeverity,
-  BlockerStatus,
-  MilestoneStatus,
-  Goal,
-  CreateGoal,
-  UpdateGoal,
-  Milestone,
-  Blocker,
-
-  // Tasks
-  TaskType,
-  TaskStatus,
-  TaskPriority,
-  BackoffConfig,
-  TaskCheckpoint,
-  Task,
-  CreateTask,
-  UpdateTask,
-
-  // Observers
-  ObserverType,
-  TriggerType,
-  ObserverTrigger,
-  ObserverOutput,
-  CreateObserverOutput,
-  UpdateObserverOutput,
-  Contradiction,
-  CreateContradiction,
-  Pattern,
-  CreatePattern,
-  Value,
-  CreateValue,
-
-  // Corrections
-  Correction,
-  CreateCorrection,
-  UpdateCorrection,
-
-  // Extraction Programs (database records)
-  ExtractionProgramRecord,
-  CreateExtractionProgram,
-  UpdateExtractionProgram,
-
-  // Observer Programs (database records)
-  ObserverProgramRecord,
-  CreateObserverProgram,
-  UpdateObserverProgram,
-
-  // Memory System
-  MemoryTier,
-  SalienceFactors,
-  TopOfMind,
-  SalientTopic,
-  SalientEntity,
-  SalientGoal,
-  SalientConcern,
-  SalientQuestion,
-  EmotionalHighlight,
-  MemoryStats,
-  DecayConfig,
-  DecayResult,
-  SalienceWeights,
-  MemoryServiceConfig,
-} from './types';
-
-// LLM Tier Types
-export type {
-  LLMTier,
-  LLMTierConfig,
-  LLMTierSettings,
-  LLMProvider as ConcreteProvider,
-  STTTier,
-  STTTierConfig,
-  STTTierSettings,
-  STTProvider as ConcreteSTTProvider,
-} from './types/llmTiers';
-export {
-  DEFAULT_LLM_TIER_SETTINGS,
-  DEFAULT_STT_TIER_SETTINGS,
-  PROVIDER_DISPLAY_NAMES,
-  LLM_TIER_INFO,
-  STT_TIER_INFO,
-} from './types/llmTiers';
-
-// LLM Resolver
-export {
-  resolveLLMTier,
   getLLMTierSettings,
+  saveLLMTierSettings,
   updateLLMTierSettings,
   resetLLMTier,
-  resolveSTTTier,
+  resolveLLMTier,
+  // STT Tier Resolver
   getSTTTierSettings,
+  saveSTTTierSettings,
   updateSTTTierSettings,
   resetSTTTier,
-  getTokenBudgetForTier,
-} from './services/llmResolver';
+  resolveSTTTier,
+} from './llmResolver';
 
-// Goal Manager
+// LLM Types
 export {
-  GoalManager,
-  createGoalManager,
-  type GoalManagerConfig,
-  type GoalWithContext,
-  type GoalTreeNode,
-  type GoalProgressUpdate,
-} from './goals';
+  type LLMTier,
+  type LLMProvider,
+  type LLMTierConfig,
+  type LLMTierSettings,
+  type STTTier,
+  type STTProvider,
+  type STTTierConfig,
+  type STTTierSettings,
+  DEFAULT_LLM_TIER_SETTINGS,
+  DEFAULT_STT_TIER_SETTINGS,
+  LLM_TIER_INFO,
+  STT_TIER_INFO,
+  PROVIDER_DISPLAY_NAMES,
+} from './types/llmTiers';
 
-// Observers
-export {
-  BaseObserver,
-  ObserverDispatcher,
-  createDispatcher,
-  createStandardDispatcher,
-  ContradictionObserver,
-  PatternObserver,
-  type Observer,
-  type ObserverConfig,
-  type ObserverContext,
-  type ObserverResult,
-  type ObserverEvent,
-  type DispatcherStats,
-  type DispatcherConfig,
-} from './observers';
+// Type aliases for backward compatibility
+export type { LLMProvider as ConcreteProvider } from './types/llmTiers';
+export type { STTProvider as ConcreteSTTProvider } from './types/llmTiers';
 
-// Pipeline
-export {
-  callLLM,
-  QueueRunner,
-  createQueueRunner,
-  type LLMRequest,
-  type LLMResponse,
-  type TaskHandler,
-  type QueueRunnerConfig,
-} from './pipeline';
-
-// Extractors
-export {
-  extractorRegistry,
-  registerExtractor,
-  findPatternMatches,
-  getRelevantSegments,
-  shouldExtractorRun,
-  mergeAdjacentMatches,
-  DEFAULT_TOKEN_BUDGETS,
-  ALL_PATTERN_CONFIGS,
-  type PatternMatch,
-  type PatternType,
-  type PatternDef,
-  type PatternConfig,
-  type ExtractionResult,
-  type ExtractedClaim,
-  type ExtractedEntity,
-  type ExtractorConfig,
-  type ExtractorContext,
-  type ExtractionProgram,
-  type ExtractorRegistry,
-  type PatternMatchResult,
-  type TokenBudget,
-} from './extractors';
-
-// Store
-export { createProgramStore, type ProgramStoreInstance } from './store';
-
-// Corrections
-export {
-  CorrectionService,
-  createCorrectionService,
-  parseCorrections,
-  applyCorrections,
-  type ProcessTextResult,
-  type CorrectionServiceConfig,
-  type ParsedCorrection,
-  type CorrectionParseResult,
-  type ApplyResult,
-} from './corrections';
-
-// Memory Service
-export {
-  MemoryService,
-  createMemoryService,
-  createDecayHandler,
-} from './memory';
-
-// Sync Service
-export {
-  syncExtractors,
-  syncObservers,
-  syncAll,
-  type SyncResult,
-} from './sync';
-
-// Migrations
-export type { Migration, MigrationResult, MigrationStatus, MigrationRecord } from './migrations';
-
-// Utilities
-export { createLogger, type LogLevel } from './utils/logger';
+// Utils
+export { createLogger } from './utils/logger';
 export { generateId } from './utils/id';
-export { now, exponentialDecay, SALIENCE_HALFLIFE, HALF_LIFE } from './utils/time';
-export { estimateTokens } from './utils/tokens';
+export { now, formatRelativeTime } from './utils/time';

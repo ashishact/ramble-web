@@ -16,7 +16,7 @@ import type {
 import { DeepgramProvider } from './providers/DeepgramProvider';
 import { GroqWhisperProvider } from './providers/GroqWhisperProvider';
 import { GeminiProvider } from './providers/GeminiProvider';
-import { resolveSTTTier } from '../../program/services/llmResolver';
+import { resolveSTTTier } from '../../program';
 
 export class STTService {
   private static instance: STTService | null = null;

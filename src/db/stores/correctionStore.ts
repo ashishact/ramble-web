@@ -1,139 +1,129 @@
-/**
- * Correction Store - WatermelonDB Implementation
- */
-
-import type { Database } from '@nozbe/watermelondb'
 import { Q } from '@nozbe/watermelondb'
-import type { ICorrectionStore, SubscriptionCallback, Unsubscribe } from '../../program/interfaces/store'
-import type { Correction, CreateCorrection, UpdateCorrection } from '../../program/types'
-import CorrectionModel from '../models/Correction'
+import { database } from '../database'
+import Correction from '../models/Correction'
 
-export function createCorrectionStore(db: Database): ICorrectionStore {
-  const collection = db.get<CorrectionModel>('corrections')
+const corrections = database.get<Correction>('corrections')
 
-  return {
-    async getById(id: string): Promise<Correction | null> {
-      try {
-        const model = await collection.find(id)
-        return modelToCorrection(model)
-      } catch {
-        return null
-      }
-    },
+export const correctionStore = {
+  async create(data: {
+    wrongText: string
+    correctText: string
+    originalCase?: string
+    sourceConversationId?: string
+  }): Promise<Correction> {
+    const now = Date.now()
+    return await database.write(async () => {
+      return await corrections.create((c) => {
+        c.wrongText = data.wrongText.toLowerCase()
+        c.correctText = data.correctText
+        c.originalCase = data.originalCase ?? data.correctText
+        c.usageCount = 0
+        c.createdAt = now
+        c.sourceConversationId = data.sourceConversationId
+      })
+    })
+  },
 
-    async getAll(): Promise<Correction[]> {
-      const models = await collection.query().fetch()
-      return models.map(modelToCorrection)
-    },
+  async getById(id: string): Promise<Correction | null> {
+    try {
+      return await corrections.find(id)
+    } catch {
+      return null
+    }
+  },
 
-    async count(): Promise<number> {
-      return collection.query().fetchCount()
-    },
+  async getByWrongText(wrongText: string): Promise<Correction | null> {
+    const results = await corrections
+      .query(Q.where('wrongText', wrongText.toLowerCase()), Q.take(1))
+      .fetch()
+    return results[0] ?? null
+  },
 
-    async create(data: CreateCorrection): Promise<Correction> {
-      const now = Date.now()
-      const model = await db.write(() =>
-        collection.create((correction) => {
-          correction.wrongText = data.wrongText
-          correction.correctText = data.correctText
-          correction.originalCase = data.originalCase
-          correction.usageCount = data.usageCount || 0
-          correction.createdAt = now
-          correction.lastUsed = now
-          correction.sourceUnitId = data.sourceUnitId ?? null
+  async getAll(): Promise<Correction[]> {
+    return await corrections.query(Q.sortBy('usageCount', Q.desc)).fetch()
+  },
+
+  async getMostUsed(limit = 20): Promise<Correction[]> {
+    return await corrections
+      .query(Q.sortBy('usageCount', Q.desc), Q.take(limit))
+      .fetch()
+  },
+
+  async getRecent(limit = 20): Promise<Correction[]> {
+    return await corrections
+      .query(Q.sortBy('createdAt', Q.desc), Q.take(limit))
+      .fetch()
+  },
+
+  async recordUsage(id: string): Promise<void> {
+    try {
+      const correction = await corrections.find(id)
+      await database.write(async () => {
+        await correction.update((c) => {
+          c.usageCount += 1
+          c.lastUsed = Date.now()
         })
-      )
-      return modelToCorrection(model)
-    },
+      })
+    } catch {
+      // Not found
+    }
+  },
 
-    async update(id: string, data: UpdateCorrection): Promise<Correction | null> {
-      try {
-        const model = await collection.find(id)
-        const updated = await db.write(() =>
-          model.update((correction) => {
-            if (data.wrongText !== undefined) correction.wrongText = data.wrongText
-            if (data.correctText !== undefined) correction.correctText = data.correctText
-            if (data.originalCase !== undefined) correction.originalCase = data.originalCase
-            if (data.usageCount !== undefined) correction.usageCount = data.usageCount
-            if (data.lastUsed !== undefined) correction.lastUsed = data.lastUsed
-          })
-        )
-        return modelToCorrection(updated)
-      } catch {
-        return null
-      }
-    },
-
-    async delete(id: string): Promise<boolean> {
-      try {
-        const model = await collection.find(id)
-        await db.write(() => model.destroyPermanently())
-        return true
-      } catch {
-        return false
-      }
-    },
-
-    async getByWrongText(wrongText: string): Promise<Correction | null> {
-      const models = await collection.query(Q.where('wrongText', wrongText)).fetch()
-      return models.length > 0 ? modelToCorrection(models[0]) : null
-    },
-
-    async getFrequentlyUsed(limit: number): Promise<Correction[]> {
-      const models = await collection
-        .query(Q.sortBy('usageCount', Q.desc), Q.take(limit))
-        .fetch()
-      return models.map(modelToCorrection)
-    },
-
-    async incrementUsageCount(id: string): Promise<void> {
-      try {
-        const model = await collection.find(id)
-        await db.write(() =>
-          model.update((correction) => {
-            correction.usageCount = (correction.usageCount || 0) + 1
-          })
-        )
-      } catch {
-        // Ignore errors
-      }
-    },
-
-    async updateLastUsed(id: string): Promise<void> {
-      try {
-        const model = await collection.find(id)
-        await db.write(() =>
-          model.update((correction) => {
-            correction.lastUsed = Date.now()
-          })
-        )
-      } catch {
-        // Ignore errors
-      }
-    },
-
-    subscribe(callback: SubscriptionCallback<Correction>): Unsubscribe {
-      const subscription = collection
-        .query()
-        .observe()
-        .subscribe((models) => {
-          callback(models.map(modelToCorrection))
+  async update(id: string, data: {
+    correctText?: string
+    originalCase?: string
+  }): Promise<Correction | null> {
+    try {
+      const correction = await corrections.find(id)
+      await database.write(async () => {
+        await correction.update((c) => {
+          if (data.correctText !== undefined) c.correctText = data.correctText
+          if (data.originalCase !== undefined) c.originalCase = data.originalCase
         })
+      })
+      return correction
+    } catch {
+      return null
+    }
+  },
 
-      return () => subscription.unsubscribe()
-    },
-  }
-}
+  async delete(id: string): Promise<boolean> {
+    try {
+      const correction = await corrections.find(id)
+      await database.write(async () => {
+        await correction.destroyPermanently()
+      })
+      return true
+    } catch {
+      return false
+    }
+  },
 
-function modelToCorrection(model: CorrectionModel): Correction {
-  return {
-    id: model.id,
-    wrongText: model.wrongText,
-    correctText: model.correctText,
-    originalCase: model.originalCase,
-    usageCount: model.usageCount,
-    createdAt: model.createdAt,
-    lastUsed: model.lastUsed,
-    sourceUnitId: model.sourceUnitId ?? null,
-  }
+  async applyCorrections(text: string): Promise<{
+    corrected: string
+    applied: Array<{ from: string; to: string }>
+  }> {
+    const all = await this.getAll()
+    let corrected = text
+    const applied: Array<{ from: string; to: string }> = []
+
+    for (const c of all) {
+      const regex = new RegExp(`\\b${c.wrongText}\\b`, 'gi')
+      if (regex.test(corrected)) {
+        corrected = corrected.replace(regex, c.correctText)
+        applied.push({ from: c.wrongText, to: c.correctText })
+        await this.recordUsage(c.id)
+      }
+    }
+
+    return { corrected, applied }
+  },
+
+  async findOrCreate(wrongText: string, correctText: string): Promise<Correction> {
+    const existing = await this.getByWrongText(wrongText)
+    if (existing) {
+      return existing
+    }
+    return await this.create({ wrongText, correctText })
+  },
 }

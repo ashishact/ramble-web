@@ -1,13 +1,13 @@
 import { Model } from '@nozbe/watermelondb'
 import { field } from '@nozbe/watermelondb/decorators'
 
-export default class Entity extends Model {
-  static table = 'entities'
+export default class Topic extends Model {
+  static table = 'topics'
 
   @field('name') name!: string
-  @field('type') type!: string  // LLM-generated: person, organization, place, project, concept, etc.
-  @field('aliases') aliases!: string  // JSON array
   @field('description') description?: string
+  @field('category') category?: string  // work, personal, health, etc.
+  @field('entityIds') entityIds!: string  // JSON array
   // Temporality
   @field('firstMentioned') firstMentioned!: number
   @field('lastMentioned') lastMentioned!: number
@@ -16,9 +16,9 @@ export default class Entity extends Model {
   @field('metadata') metadata!: string  // JSON
   @field('createdAt') createdAt!: number
 
-  get aliasesParsed(): string[] {
+  get entityIdsParsed(): string[] {
     try {
-      return JSON.parse(this.aliases || '[]')
+      return JSON.parse(this.entityIds || '[]')
     } catch {
       return []
     }

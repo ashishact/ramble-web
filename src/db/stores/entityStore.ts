@@ -1,181 +1,130 @@
-/**
- * Entity Store - WatermelonDB Implementation
- */
-
-import type { Database } from '@nozbe/watermelondb'
 import { Q } from '@nozbe/watermelondb'
-import type { IEntityStore, SubscriptionCallback, Unsubscribe } from '../../program/interfaces/store'
-import type { Entity, CreateEntity, UpdateEntity, EntityType } from '../../program/types'
-import EntityModel from '../models/Entity'
+import { database } from '../database'
+import Entity from '../models/Entity'
 
-export function createEntityStore(db: Database): IEntityStore {
-  const collection = db.get<EntityModel>('entities')
+const entities = database.get<Entity>('entities')
 
-  return {
-    async getById(id: string): Promise<Entity | null> {
-      try {
-        const model = await collection.find(id)
-        return modelToEntity(model)
-      } catch {
-        return null
-      }
-    },
+export const entityStore = {
+  async create(data: {
+    name: string
+    type: string
+    aliases?: string[]
+    description?: string
+    metadata?: Record<string, unknown>
+  }): Promise<Entity> {
+    const now = Date.now()
+    return await database.write(async () => {
+      return await entities.create((e) => {
+        e.name = data.name
+        e.type = data.type
+        e.aliases = JSON.stringify(data.aliases ?? [])
+        e.description = data.description
+        e.firstMentioned = now
+        e.lastMentioned = now
+        e.mentionCount = 1
+        e.metadata = JSON.stringify(data.metadata ?? {})
+        e.createdAt = now
+      })
+    })
+  },
 
-    async getAll(): Promise<Entity[]> {
-      const models = await collection.query().fetch()
-      return models.map(modelToEntity)
-    },
-
-    async count(): Promise<number> {
-      return collection.query().fetchCount()
-    },
-
-    async create(data: CreateEntity): Promise<Entity> {
-      const model = await db.write(() =>
-        collection.create((entity) => {
-          entity.canonicalName = data.canonicalName
-          entity.entityType = data.entityType
-          entity.aliases = data.aliases
-          entity.createdAt = Date.now()
-          entity.lastReferenced = Date.now()
-          entity.mentionCount = data.mentionCount ?? 1  // Default to 1 - entity is mentioned when created
-        })
-      )
-      return modelToEntity(model)
-    },
-
-    async update(id: string, data: UpdateEntity): Promise<Entity | null> {
-      try {
-        const model = await collection.find(id)
-        const updated = await db.write(() =>
-          model.update((entity) => {
-            if (data.canonicalName !== undefined) entity.canonicalName = data.canonicalName
-            if (data.entityType !== undefined) entity.entityType = data.entityType
-            if (data.aliases !== undefined) entity.aliases = data.aliases
-            if (Date.now() !== undefined) entity.lastReferenced = Date.now()
-            if (data.mentionCount !== undefined) entity.mentionCount = data.mentionCount
-          })
-        )
-        return modelToEntity(updated)
-      } catch {
-        return null
-      }
-    },
-
-    async delete(id: string): Promise<boolean> {
-      try {
-        const model = await collection.find(id)
-        await db.write(() => model.destroyPermanently())
-        return true
-      } catch {
-        return false
-      }
-    },
-
-    async getByName(name: string): Promise<Entity | null> {
-      const models = await collection.query(Q.where('canonicalName', name)).fetch()
-      return models.length > 0 ? modelToEntity(models[0]) : null
-    },
-
-    async getByType(type: string): Promise<Entity[]> {
-      const models = await collection.query(Q.where('entityType', type)).fetch()
-      return models.map(modelToEntity)
-    },
-
-    async getRecent(limit: number): Promise<Entity[]> {
-      const models = await collection
-        .query(Q.sortBy('lastReferenced', Q.desc), Q.take(limit))
-        .fetch()
-      return models.map(modelToEntity)
-    },
-
-    async findByAlias(alias: string): Promise<Entity | null> {
-      // Search through aliases JSON
-      const allModels = await collection.query().fetch()
-      for (const model of allModels) {
-        const aliases = JSON.parse(model.aliases || '[]')
-        if (aliases.includes(alias)) {
-          return modelToEntity(model)
-        }
-      }
+  async getById(id: string): Promise<Entity | null> {
+    try {
+      return await entities.find(id)
+    } catch {
       return null
-    },
+    }
+  },
 
-    async incrementMentionCount(id: string): Promise<void> {
-      try {
-        const model = await collection.find(id)
-        await db.write(() =>
-          model.update((entity) => {
-            entity.mentionCount = (entity.mentionCount || 0) + 1
-          })
-        )
-      } catch {
-        // Ignore errors
-      }
-    },
+  async getByName(name: string): Promise<Entity | null> {
+    const results = await entities
+      .query(Q.where('name', name), Q.take(1))
+      .fetch()
+    return results[0] ?? null
+  },
 
-    async updateLastReferenced(id: string): Promise<void> {
-      try {
-        const model = await collection.find(id)
-        await db.write(() =>
-          model.update((entity) => {
-            entity.lastReferenced = Date.now()
-          })
-        )
-      } catch {
-        // Ignore errors
-      }
-    },
+  async getByType(type: string): Promise<Entity[]> {
+    return await entities
+      .query(Q.where('type', type), Q.sortBy('mentionCount', Q.desc))
+      .fetch()
+  },
 
-    async mergeEntities(keepId: string, deleteId: string): Promise<Entity | null> {
-      try {
-        const keepModel = await collection.find(keepId)
-        const deleteModel = await collection.find(deleteId)
+  async getRecent(limit = 20): Promise<Entity[]> {
+    return await entities
+      .query(Q.sortBy('lastMentioned', Q.desc), Q.take(limit))
+      .fetch()
+  },
 
-        const keepAliases = JSON.parse(keepModel.aliases || '[]')
-        const deleteAliases = JSON.parse(deleteModel.aliases || '[]')
+  async getMostMentioned(limit = 20): Promise<Entity[]> {
+    return await entities
+      .query(Q.sortBy('mentionCount', Q.desc), Q.take(limit))
+      .fetch()
+  },
 
-        const merged = await db.write(async () => {
-          const updatedModel = await keepModel.update((entity) => {
-            // Merge aliases
-            const allAliases = [...new Set([...keepAliases, deleteModel.canonicalName, ...deleteAliases])]
-            entity.aliases = JSON.stringify(allAliases)
-            // Combine mention counts
-            entity.mentionCount = (entity.mentionCount || 0) + (deleteModel.mentionCount || 0)
-            // Update last referenced
-            entity.lastReferenced = Math.max(entity.lastReferenced, deleteModel.lastReferenced)
-          })
-          await deleteModel.destroyPermanently()
-          return updatedModel
+  async getAll(): Promise<Entity[]> {
+    return await entities.query().fetch()
+  },
+
+  async recordMention(id: string): Promise<void> {
+    try {
+      const entity = await entities.find(id)
+      await database.write(async () => {
+        await entity.update((e) => {
+          e.lastMentioned = Date.now()
+          e.mentionCount += 1
         })
+      })
+    } catch {
+      // Not found
+    }
+  },
 
-        return modelToEntity(merged)
-      } catch {
-        return null
-      }
-    },
-
-    subscribe(callback: SubscriptionCallback<Entity>): Unsubscribe {
-      const subscription = collection
-        .query()
-        .observe()
-        .subscribe((models) => {
-          callback(models.map(modelToEntity))
+  async update(id: string, data: {
+    name?: string
+    type?: string
+    aliases?: string[]
+    description?: string
+    metadata?: Record<string, unknown>
+  }): Promise<Entity | null> {
+    try {
+      const entity = await entities.find(id)
+      await database.write(async () => {
+        await entity.update((e) => {
+          if (data.name !== undefined) e.name = data.name
+          if (data.type !== undefined) e.type = data.type
+          if (data.aliases !== undefined) e.aliases = JSON.stringify(data.aliases)
+          if (data.description !== undefined) e.description = data.description
+          if (data.metadata !== undefined) e.metadata = JSON.stringify(data.metadata)
         })
+      })
+      return entity
+    } catch {
+      return null
+    }
+  },
 
-      return () => subscription.unsubscribe()
-    },
-  }
-}
+  async search(query: string, limit = 10): Promise<Entity[]> {
+    const all = await entities.query().fetch()
+    const lowerQuery = query.toLowerCase()
 
-function modelToEntity(model: EntityModel): Entity {
-  return {
-    id: model.id,
-    canonicalName: model.canonicalName,
-    entityType: model.entityType as EntityType,
-    aliases: model.aliases,
-    createdAt: model.createdAt,
-    lastReferenced: model.lastReferenced,
-    mentionCount: model.mentionCount,
-  }
+    return all
+      .filter(e =>
+        e.name.toLowerCase().includes(lowerQuery) ||
+        e.aliasesParsed.some(a => a.toLowerCase().includes(lowerQuery))
+      )
+      .slice(0, limit)
+  },
+
+  async findOrCreate(data: {
+    name: string
+    type: string
+    aliases?: string[]
+  }): Promise<Entity> {
+    const existing = await this.getByName(data.name)
+    if (existing) {
+      await this.recordMention(existing.id)
+      return existing
+    }
+    return await this.create(data)
+  },
 }

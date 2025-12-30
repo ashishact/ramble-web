@@ -1,21 +1,18 @@
-/**
- * Conversation Model - Layer 0: Stream
- */
-
 import { Model } from '@nozbe/watermelondb'
-import { field, text } from '@nozbe/watermelondb/decorators'
+import { field } from '@nozbe/watermelondb/decorators'
+
+export type ConversationSource = 'speech' | 'text'
+export type Speaker = 'user' | 'agent'
 
 export default class Conversation extends Model {
   static table = 'conversations'
 
-  @text('sessionId') sessionId!: string
+  @field('sessionId') sessionId!: string
   @field('timestamp') timestamp!: number
-  @text('rawText') rawText!: string
-  @text('sanitizedText') sanitizedText!: string
-  @text('source') source!: string // 'speech' | 'text'
-  @text('speaker') speaker!: string // 'user' | 'agent'
-  @text('discourseFunction') discourseFunction!: string // 'assert' | 'question' | 'command' | 'express' | 'commit'
-  @text('precedingContextSummary') precedingContextSummary!: string
-  @field('createdAt') createdAt!: number
+  @field('rawText') rawText!: string
+  @field('sanitizedText') sanitizedText!: string
+  @field('source') source!: ConversationSource
+  @field('speaker') speaker!: Speaker
   @field('processed') processed!: boolean
+  @field('createdAt') createdAt!: number
 }

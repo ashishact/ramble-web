@@ -1,56 +1,25 @@
 /**
- * WatermelonDB Store Adapters Export
+ * Database Stores Export
  *
- * Factory functions that create store implementations compatible with IProgramStore interface
- *
- * Layered Architecture:
- * - Layer 0: Stream (conversations)
- * - Layer 1: Primitives (propositions, stances, relations, spans, entities)
- * - Layer 2: Derived (claims, goals, patterns, values, contradictions)
+ * Core Loop Architecture:
+ * - CORE: sessionStore, conversationStore, taskStore
+ * - KNOWLEDGE: entityStore, topicStore, memoryStore, insightStore, goalStore
+ * - SYSTEM: pluginStore, correctionStore, extractionLogStore
  */
 
-// ============================================================================
-// Layer 0: Stream
-// ============================================================================
-export { createSessionStore } from './sessionStore'
-export { createConversationStore } from './conversationStore'
+// Core
+export { sessionStore } from './sessionStore'
+export { conversationStore } from './conversationStore'
+export { taskStore } from './taskStore'
 
-// ============================================================================
-// Layer 1: Primitives
-// ============================================================================
-export { createPropositionStore } from './propositionStore'
-export { createStanceStore } from './stanceStore'
-export { createRelationStore } from './relationStore'
-export { createSpanStore } from './spanStore'
-export { createPrimitiveEntityStore } from './primitiveEntityStore'
-export { createEntityMentionStore } from './entityMentionStore'
-export { createEntityStore } from './entityStore'
+// Knowledge
+export { entityStore } from './entityStore'
+export { topicStore } from './topicStore'
+export { memoryStore } from './memoryStore'
+export { insightStore } from './insightStore'
+export { goalStore } from './goalStore'
 
-// ============================================================================
-// Layer 2: Derived
-// ============================================================================
-export { createDerivedStore } from './derivedStore'
-export { createClaimStore } from './claimStore'
-export { createGoalStore } from './goalStore'
-
-// ============================================================================
-// Observers & Extractors
-// ============================================================================
-export { createExtractionProgramStore } from './extractionProgramStore'
-export { createObserverProgramStore } from './observerProgramStore'
-export { createObserverOutputStore } from './observerOutputStore'
-
-// ============================================================================
-// Support
-// ============================================================================
-export { createExtensionStore } from './extensionStore'
-export { createSynthesisCacheStore } from './synthesisCacheStore'
-export { createCorrectionStore } from './correctionStore'
-export { createVocabularyStore } from './vocabularyStore'
-export { createTaskStore } from './taskStore'
-
-// ============================================================================
-// Debug / Tracing
-// ============================================================================
-export { createExtractionTraceStore } from './extractionTraceStore'
-export type { IExtractionTraceStore, ExtractionTraceRecord, CreateExtractionTrace } from './extractionTraceStore'
+// System
+export { pluginStore } from './pluginStore'
+export { correctionStore } from './correctionStore'
+export { extractionLogStore } from './extractionLogStore'

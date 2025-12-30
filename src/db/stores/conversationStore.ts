@@ -1,140 +1,101 @@
-/**
- * Conversation Store - WatermelonDB Implementation
- */
-
-import type { Database } from '@nozbe/watermelondb'
 import { Q } from '@nozbe/watermelondb'
-import type { IConversationStore, SubscriptionCallback, Unsubscribe } from '../../program/interfaces/store'
-import type { ConversationUnit, CreateConversationUnit, UpdateConversationUnit } from '../../program/types'
-import ConversationModel from '../models/Conversation'
+import { database } from '../database'
+import Conversation, { type ConversationSource, type Speaker } from '../models/Conversation'
 
-export function createConversationStore(db: Database): IConversationStore {
-  const collection = db.get<ConversationModel>('conversations')
+const conversations = database.get<Conversation>('conversations')
 
-  return {
-    async getById(id: string): Promise<ConversationUnit | null> {
-      try {
-        const model = await collection.find(id)
-        return modelToConversation(model)
-      } catch {
-        return null
-      }
-    },
+export const conversationStore = {
+  async create(data: {
+    sessionId: string
+    rawText: string
+    sanitizedText?: string
+    source: ConversationSource
+    speaker: Speaker
+  }): Promise<Conversation> {
+    const now = Date.now()
+    return await database.write(async () => {
+      return await conversations.create((c) => {
+        c.sessionId = data.sessionId
+        c.timestamp = now
+        c.rawText = data.rawText
+        c.sanitizedText = data.sanitizedText ?? data.rawText
+        c.source = data.source
+        c.speaker = data.speaker
+        c.processed = false
+        c.createdAt = now
+      })
+    })
+  },
 
-    async getAll(): Promise<ConversationUnit[]> {
-      const models = await collection.query().fetch()
-      return models.map(modelToConversation)
-    },
+  async getById(id: string): Promise<Conversation | null> {
+    try {
+      return await conversations.find(id)
+    } catch {
+      return null
+    }
+  },
 
-    async count(): Promise<number> {
-      return collection.query().fetchCount()
-    },
-
-    async create(data: CreateConversationUnit): Promise<ConversationUnit> {
-      const now = Date.now()
-      const model = await db.write(() =>
-        collection.create((conversation) => {
-          conversation.sessionId = data.sessionId ?? null
-          conversation.timestamp = data.timestamp ?? null
-          conversation.rawText = data.rawText ?? null
-          conversation.sanitizedText = data.sanitizedText ?? null
-          conversation.source = data.source ?? null
-          conversation.speaker = data.speaker ?? 'user'
-          conversation.discourseFunction = data.discourseFunction ?? 'assert'
-          conversation.precedingContextSummary = data.precedingContextSummary ?? null
-          conversation.createdAt = now
-          conversation.processed = data.processed || false
-        })
+  async getBySession(sessionId: string): Promise<Conversation[]> {
+    return await conversations
+      .query(
+        Q.where('sessionId', sessionId),
+        Q.sortBy('timestamp', Q.asc)
       )
-      return modelToConversation(model)
-    },
+      .fetch()
+  },
 
-    async update(id: string, data: UpdateConversationUnit): Promise<ConversationUnit | null> {
-      try {
-        const model = await collection.find(id)
-        const updated = await db.write(() =>
-          model.update((conversation) => {
-            if (data.sanitizedText !== undefined) conversation.sanitizedText = data.sanitizedText ?? null
-            if (data.precedingContextSummary !== undefined)
-              conversation.precedingContextSummary = data.precedingContextSummary ?? null
-            if (data.processed !== undefined) conversation.processed = data.processed ?? null
-          })
-        )
-        return modelToConversation(updated)
-      } catch {
-        return null
-      }
-    },
+  async getUnprocessed(limit = 10): Promise<Conversation[]> {
+    return await conversations
+      .query(
+        Q.where('processed', false),
+        Q.sortBy('createdAt', Q.asc),
+        Q.take(limit)
+      )
+      .fetch()
+  },
 
-    async delete(id: string): Promise<boolean> {
-      try {
-        const model = await collection.find(id)
-        await db.write(() => model.destroyPermanently())
-        return true
-      } catch {
-        return false
-      }
-    },
+  async getRecent(limit = 50): Promise<Conversation[]> {
+    return await conversations
+      .query(Q.sortBy('timestamp', Q.desc), Q.take(limit))
+      .fetch()
+  },
 
-    async getBySession(sessionId: string): Promise<ConversationUnit[]> {
-      const models = await collection
-        .query(Q.where('sessionId', sessionId), Q.sortBy('timestamp', Q.asc))
-        .fetch()
-      return models.map(modelToConversation)
-    },
-
-    async getUnprocessed(): Promise<ConversationUnit[]> {
-      const models = await collection
-        .query(Q.where('processed', false), Q.sortBy('createdAt', Q.asc))
-        .fetch()
-      return models.map(modelToConversation)
-    },
-
-    async markProcessed(id: string): Promise<void> {
-      try {
-        const model = await collection.find(id)
-        await db.write(() =>
-          model.update((conversation) => {
-            conversation.processed = true
-          })
-        )
-      } catch {
-        // Ignore errors
-      }
-    },
-
-    async getRecent(limit: number): Promise<ConversationUnit[]> {
-      const models = await collection
-        .query(Q.sortBy('timestamp', Q.desc), Q.take(limit))
-        .fetch()
-      return models.map(modelToConversation)
-    },
-
-    subscribe(sessionId: string, callback: SubscriptionCallback<ConversationUnit>): Unsubscribe {
-      const subscription = collection
-        .query(Q.where('sessionId', sessionId), Q.sortBy('timestamp', Q.asc))
-        .observe()
-        .subscribe((models) => {
-          callback(models.map(modelToConversation))
+  async markProcessed(id: string): Promise<void> {
+    try {
+      const conv = await conversations.find(id)
+      await database.write(async () => {
+        await conv.update((c) => {
+          c.processed = true
         })
+      })
+    } catch {
+      // Not found
+    }
+  },
 
-      return () => subscription.unsubscribe()
-    },
-  }
-}
+  async updateSanitizedText(id: string, sanitizedText: string): Promise<void> {
+    try {
+      const conv = await conversations.find(id)
+      await database.write(async () => {
+        await conv.update((c) => {
+          c.sanitizedText = sanitizedText
+        })
+      })
+    } catch {
+      // Not found
+    }
+  },
 
-function modelToConversation(model: ConversationModel): ConversationUnit {
-  return {
-    id: model.id,
-    sessionId: model.sessionId,
-    timestamp: model.timestamp,
-    rawText: model.rawText,
-    sanitizedText: model.sanitizedText,
-    source: model.source as 'speech' | 'text',
-    speaker: (model.speaker as 'user' | 'agent') || 'user',
-    discourseFunction: (model.discourseFunction as 'assert' | 'question' | 'command' | 'express' | 'commit') || 'assert',
-    precedingContextSummary: model.precedingContextSummary,
-    createdAt: model.createdAt,
-    processed: model.processed,
-  }
+  async search(query: string, limit = 20): Promise<Conversation[]> {
+    // Simple text search - WatermelonDB doesn't have full-text search
+    // For production, consider SQLite FTS or external search
+    const all = await conversations
+      .query(Q.sortBy('timestamp', Q.desc), Q.take(500))
+      .fetch()
+
+    const lowerQuery = query.toLowerCase()
+    return all
+      .filter(c => c.sanitizedText.toLowerCase().includes(lowerQuery))
+      .slice(0, limit)
+  },
 }

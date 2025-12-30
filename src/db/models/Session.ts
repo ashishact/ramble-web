@@ -1,16 +1,20 @@
-/**
- * Session Model
- */
-
 import { Model } from '@nozbe/watermelondb'
-import { field, text } from '@nozbe/watermelondb/decorators'
+import { field } from '@nozbe/watermelondb/decorators'
 
 export default class Session extends Model {
   static table = 'sessions'
 
   @field('startedAt') startedAt!: number
-  @field('endedAt') endedAt!: number | null
+  @field('endedAt') endedAt?: number
   @field('unitCount') unitCount!: number
-  @text('summary') summary!: string | null
-  @text('moodTrajectoryJson') moodTrajectoryJson!: string | null
+  @field('summary') summary?: string
+  @field('metadata') metadata!: string  // JSON
+
+  get metadataParsed(): Record<string, unknown> {
+    try {
+      return JSON.parse(this.metadata || '{}')
+    } catch {
+      return {}
+    }
+  }
 }
