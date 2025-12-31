@@ -36,6 +36,10 @@ export const conversationStore = {
   },
 
   async getBySession(sessionId: string): Promise<Conversation[]> {
+    if (!sessionId) {
+      console.warn('getBySession called with empty sessionId')
+      return []
+    }
     return await conversations
       .query(
         Q.where('sessionId', sessionId),
@@ -98,4 +102,37 @@ export const conversationStore = {
       .filter(c => c.sanitizedText.toLowerCase().includes(lowerQuery))
       .slice(0, limit)
   },
+
+  /**
+   * Mark all unprocessed conversations as processed
+   * Useful for recovery from errors
+   */
+  async markAllProcessed(): Promise<number> {
+    const unprocessed = await this.getUnprocessed(100)
+    for (const conv of unprocessed) {
+      await this.markProcessed(conv.id)
+    }
+    return unprocessed.length
+  },
+}
+
+// Expose for debugging in browser console
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).fixStuckConversations = async () => {
+    const count = await conversationStore.markAllProcessed()
+    console.log(`Fixed ${count} stuck conversations`)
+    return count
+  }
+
+  (window as unknown as Record<string, unknown>).debugStuckConversations = async () => {
+    const unprocessed = await conversationStore.getUnprocessed(100)
+    console.log('Unprocessed conversations:', unprocessed.length)
+    for (const c of unprocessed) {
+      console.log(`  - ${c.id}:`)
+      console.log(`    sessionId: "${c.sessionId}" (type: ${typeof c.sessionId})`)
+      console.log(`    source: "${c.source}"`)
+      console.log(`    text: "${c.sanitizedText.slice(0, 50)}..."`)
+    }
+    return unprocessed
+  }
 }

@@ -182,4 +182,20 @@ export const memoryStore = {
       })
       .slice(0, limit)
   },
+
+  async getAll(): Promise<Memory[]> {
+    return await memories.query().fetch()
+  },
+}
+
+// Expose for debugging in browser console
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).debugMemories = async () => {
+    const all = await memoryStore.getAll()
+    console.log('All memories:', all.length)
+    for (const m of all) {
+      console.log(`  - [${m.type}] ${m.content.slice(0, 60)}... (supersededBy: ${m.supersededBy ?? 'none'})`)
+    }
+    return all
+  }
 }

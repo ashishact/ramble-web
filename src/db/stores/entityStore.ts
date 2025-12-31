@@ -127,4 +127,77 @@ export const entityStore = {
     }
     return await this.create(data)
   },
+
+  async delete(id: string): Promise<boolean> {
+    try {
+      const entity = await entities.find(id)
+      await database.write(async () => {
+        await entity.destroyPermanently()
+      })
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  /**
+   * Merge source entity into target entity
+   * - Combines aliases
+   * - Sums mention counts
+   * - Keeps earliest firstMentioned
+   * - Keeps latest lastMentioned
+   * - Deletes source entity
+   */
+  async merge(targetId: string, sourceId: string): Promise<Entity | null> {
+    try {
+      const target = await entities.find(targetId)
+      const source = await entities.find(sourceId)
+
+      await database.write(async () => {
+        // Combine aliases (include source name as alias)
+        const targetAliases = target.aliasesParsed
+        const sourceAliases = source.aliasesParsed
+        const allAliases = [...new Set([...targetAliases, ...sourceAliases, source.name])]
+          .filter(a => a !== target.name) // Don't include target name as alias
+
+        await target.update((e) => {
+          e.aliases = JSON.stringify(allAliases)
+          e.mentionCount = target.mentionCount + source.mentionCount
+          e.firstMentioned = Math.min(target.firstMentioned, source.firstMentioned)
+          e.lastMentioned = Math.max(target.lastMentioned, source.lastMentioned)
+          // Merge descriptions if target doesn't have one
+          if (!e.description && source.description) {
+            e.description = source.description
+          }
+        })
+
+        // Delete source
+        await source.destroyPermanently()
+      })
+
+      return target
+    } catch {
+      return null
+    }
+  },
+
+  async getStats(): Promise<{
+    total: number
+    byType: Record<string, number>
+    topMentioned: Array<{ name: string; count: number }>
+  }> {
+    const all = await entities.query().fetch()
+
+    const byType: Record<string, number> = {}
+    for (const e of all) {
+      byType[e.type] = (byType[e.type] || 0) + 1
+    }
+
+    const topMentioned = all
+      .sort((a, b) => b.mentionCount - a.mentionCount)
+      .slice(0, 10)
+      .map(e => ({ name: e.name, count: e.mentionCount }))
+
+    return { total: all.length, byType, topMentioned }
+  },
 }

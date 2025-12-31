@@ -4,6 +4,18 @@
  * Core Loop Architecture
  */
 
+// Kernel
+export {
+  getKernel,
+  type KernelState,
+  type InputResult,
+  processInput,
+  type ProcessingResult,
+  buildContext,
+  formatContextForLLM,
+  type Context,
+} from './kernel';
+
 // LLM Client
 export { callLLM, type LLMRequest, type LLMResponse } from './llmClient';
 

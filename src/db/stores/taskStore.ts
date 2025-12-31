@@ -150,4 +150,21 @@ export const taskStore = {
       return false
     }
   },
+
+  async getAll(): Promise<Task[]> {
+    return await tasks.query().fetch()
+  },
+}
+
+// Expose for debugging in browser console
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).debugTasks = async () => {
+    const all = await taskStore.getAll()
+    console.log('All tasks:', all.length)
+    for (const t of all) {
+      console.log(`  - ${t.id} [${t.status}] ${t.taskType}`)
+      console.log(`    payload:`, t.payloadParsed)
+    }
+    return all
+  }
 }

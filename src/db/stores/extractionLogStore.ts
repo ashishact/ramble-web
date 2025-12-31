@@ -67,6 +67,10 @@ export const extractionLogStore = {
   },
 
   async getBySession(sessionId: string, limit = 100): Promise<ExtractionLog[]> {
+    if (!sessionId) {
+      console.warn('extractionLogStore.getBySession called with empty sessionId')
+      return []
+    }
     return await extractionLogs
       .query(
         Q.where('sessionId', sessionId),
@@ -134,4 +138,30 @@ export const extractionLogStore = {
 
     return old.length
   },
+
+  async getAll(): Promise<ExtractionLog[]> {
+    return await extractionLogs.query(Q.sortBy('createdAt', Q.desc)).fetch()
+  },
+}
+
+// Expose for debugging in browser console
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).debugExtractions = async (limit = 5) => {
+    const all = await extractionLogStore.getAll()
+    console.log('Total extraction logs:', all.length)
+    for (const log of all.slice(0, limit)) {
+      console.log(`\n--- ${new Date(log.createdAt).toLocaleTimeString()} [${log.success ? 'OK' : 'FAIL'}] ---`)
+      console.log('Input:', log.inputText.slice(0, 100) + '...')
+      try {
+        const output = JSON.parse(log.outputJson)
+        console.log('Output:', output)
+        if (output.memories) console.log('  Memories extracted:', output.memories.length)
+        if (output.entities) console.log('  Entities extracted:', output.entities.length)
+      } catch {
+        console.log('Output (raw):', log.outputJson)
+      }
+      if (log.error) console.log('Error:', log.error)
+    }
+    return all.slice(0, limit)
+  }
 }
