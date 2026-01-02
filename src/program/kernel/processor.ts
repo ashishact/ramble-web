@@ -242,7 +242,8 @@ const SYSTEM_PROMPT = `You are analyzing a conversation to extract structured kn
 
 Given the user's latest input and the context, extract:
 
-1. **entities**: People, places, organizations, projects, or concepts mentioned
+1. **entities**: People, places, organizations, projects, or named concepts.
+   Do NOT include: dates, times, numbers, or temporal expressions.
 2. **topics**: Themes or subjects being discussed
 3. **memories**: Facts, beliefs, preferences, concerns, or intentions to remember
 4. **goals**: Any goals mentioned (new, progress updates, or achievements)
