@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { handleRambleAPI } from "./ramble-api";
 
 /**
  * BrokenAI Worker - API endpoints for the BrokenAI application
@@ -36,6 +37,12 @@ export default {
 		// Handle CORS preflight
 		if (request.method === 'OPTIONS') {
 			return new Response(null, { headers: CORS_HEADERS });
+		}
+
+		// Route: /api/ramble/* - Ramble speech-to-text and correction API
+		if (url.pathname.startsWith('/api/ramble/')) {
+			const response = await handleRambleAPI(request, env, url.pathname);
+			if (response) return response;
 		}
 
 		// Route: /api/cf-gateway - Proxy to Cloudflare AI Gateway with streaming
