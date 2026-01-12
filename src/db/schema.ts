@@ -11,7 +11,7 @@
  *
  * Tables:
  * - CORE: sessions, conversations, tasks (durable execution)
- * - KNOWLEDGE: entities, topics, memories, insights, goals
+ * - KNOWLEDGE: entities, topics, memories, goals
  * - SYSTEM: plugins, extraction_logs, corrections
  */
 
@@ -142,22 +142,6 @@ export const schema = appSchema({
         // Metadata
         { name: 'metadata', type: 'string' },       // JSON for emotions, stakes, etc.
         { name: 'createdAt', type: 'number', isIndexed: true },
-      ]
-    }),
-
-    // Insights - High-level patterns from introspection
-    tableSchema({
-      name: 'insights',
-      columns: [
-        { name: 'content', type: 'string' },
-        { name: 'type', type: 'string', isIndexed: true },  // pattern, relationship, synthesis, prediction
-        { name: 'sourceMemoryIds', type: 'string' },  // JSON array
-        // Temporality
-        { name: 'generatedAt', type: 'number', isIndexed: true },
-        { name: 'revisedAt', type: 'number', isOptional: true },
-        { name: 'confidence', type: 'number' },
-        // Metadata
-        { name: 'metadata', type: 'string' },
       ]
     }),
 

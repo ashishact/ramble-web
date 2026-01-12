@@ -54,10 +54,6 @@ export const appSettingsSchema = z.object({
     prefixPaddingMs: z.number().default(300),
   }),
   currentNodeId: z.number().nullable().default(null),
-  ui: z.object({
-    theme: z.enum(['light', 'dark', 'system']).default('system'),
-    showTranscripts: z.boolean().default(true),
-  }),
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -84,10 +80,6 @@ const DEFAULT_SETTINGS: AppSettings = {
     prefixPaddingMs: 300,
   },
   currentNodeId: null,
-  ui: {
-    theme: 'system',
-    showTranscripts: true,
-  },
 };
 
 // Load settings from localStorage
@@ -228,16 +220,6 @@ export const settingsHelpers = {
 
   getCurrentNodeId: (): number | null => {
     return cachedSettings.currentNodeId;
-  },
-
-  // UI preferences
-  setTheme: (theme: AppSettings['ui']['theme']) => {
-    cachedSettings = {
-      ...cachedSettings,
-      ui: { ...cachedSettings.ui, theme },
-    };
-    saveSettings(cachedSettings);
-    notifyListeners();
   },
 
   // Reset to defaults

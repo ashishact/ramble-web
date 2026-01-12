@@ -32,7 +32,6 @@ export const collections = {
   entities: database.get('entities'),
   topics: database.get('topics'),
   memories: database.get('memories'),
-  insights: database.get('insights'),
   goals: database.get('goals'),
 
   // System

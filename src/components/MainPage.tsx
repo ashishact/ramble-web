@@ -15,6 +15,7 @@ import { ConversationList } from './ConversationList';
 import { EntityManager } from './EntityManager';
 import { WorkingMemory } from './WorkingMemory';
 import { useKernel } from '../program/hooks';
+import { formatRelativeTime } from '../program/utils';
 import { entityStore, topicStore, memoryStore, goalStore, conversationStore } from '../db/stores';
 import type { ProcessingResult } from '../program';
 import type Entity from '../db/models/Entity';
@@ -28,19 +29,6 @@ interface Stats {
   topics: number;
   memories: number;
   goals: number;
-}
-
-// Helper to format relative time
-function timeAgo(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(timestamp).toLocaleDateString();
 }
 
 type TabType = 'entities' | 'topics' | 'memories' | 'goals';
@@ -400,8 +388,8 @@ export function MainPage() {
                           <td className="font-medium">{e.name}</td>
                           <td><span className="badge badge-ghost badge-sm">{e.type}</span></td>
                           <td>{e.mentionCount}</td>
-                          <td className="text-xs opacity-60">{timeAgo(e.firstMentioned)}</td>
-                          <td className="text-xs opacity-60">{timeAgo(e.lastMentioned)}</td>
+                          <td className="text-xs opacity-60">{formatRelativeTime(e.firstMentioned)}</td>
+                          <td className="text-xs opacity-60">{formatRelativeTime(e.lastMentioned)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -444,8 +432,8 @@ export function MainPage() {
                           <td className="font-medium">{t.name}</td>
                           <td><span className="badge badge-ghost badge-sm">{t.category || 'general'}</span></td>
                           <td>{t.mentionCount}</td>
-                          <td className="text-xs opacity-60">{timeAgo(t.firstMentioned)}</td>
-                          <td className="text-xs opacity-60">{timeAgo(t.lastMentioned)}</td>
+                          <td className="text-xs opacity-60">{formatRelativeTime(t.firstMentioned)}</td>
+                          <td className="text-xs opacity-60">{formatRelativeTime(t.lastMentioned)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -482,7 +470,7 @@ export function MainPage() {
                             <span>Confidence: {Math.round(m.confidence * 100)}%</span>
                             <span>Importance: {Math.round(m.importance * 100)}%</span>
                             <span>Reinforced {m.reinforcementCount}x</span>
-                            <span>{timeAgo(m.lastReinforced)}</span>
+                            <span>{formatRelativeTime(m.lastReinforced)}</span>
                           </div>
                         </div>
                       </div>
@@ -533,9 +521,9 @@ export function MainPage() {
                       </div>
                       <div className="flex gap-4 text-xs opacity-60">
                         <span>Type: {g.type}</span>
-                        <span>First: {timeAgo(g.firstExpressed)}</span>
-                        <span>Last: {timeAgo(g.lastReferenced)}</span>
-                        {g.achievedAt && <span>Achieved: {timeAgo(g.achievedAt)}</span>}
+                        <span>First: {formatRelativeTime(g.firstExpressed)}</span>
+                        <span>Last: {formatRelativeTime(g.lastReferenced)}</span>
+                        {g.achievedAt && <span>Achieved: {formatRelativeTime(g.achievedAt)}</span>}
                       </div>
                     </div>
                   ))}

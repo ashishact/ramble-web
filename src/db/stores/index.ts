@@ -3,7 +3,7 @@
  *
  * Core Loop Architecture:
  * - CORE: sessionStore, conversationStore, taskStore
- * - KNOWLEDGE: entityStore, topicStore, memoryStore, insightStore, goalStore
+ * - KNOWLEDGE: entityStore, topicStore, memoryStore, goalStore
  * - SYSTEM: pluginStore, correctionStore, extractionLogStore
  */
 
@@ -16,7 +16,6 @@ export { taskStore } from './taskStore'
 export { entityStore } from './entityStore'
 export { topicStore } from './topicStore'
 export { memoryStore } from './memoryStore'
-export { insightStore } from './insightStore'
 export { goalStore } from './goalStore'
 
 // System

@@ -3,7 +3,7 @@
  *
  * Core Loop Architecture:
  * - CORE: Session, Conversation, Task
- * - KNOWLEDGE: Entity, Topic, Memory, Insight, Goal
+ * - KNOWLEDGE: Entity, Topic, Memory, Goal
  * - SYSTEM: Plugin, Correction, ExtractionLog
  */
 
@@ -16,7 +16,6 @@ export { default as Task } from './Task'
 export { default as Entity } from './Entity'
 export { default as Topic } from './Topic'
 export { default as Memory } from './Memory'
-export { default as Insight } from './Insight'
 export { default as Goal } from './Goal'
 
 // System
