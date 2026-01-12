@@ -246,13 +246,18 @@ Given the user's latest input and the context, extract:
    Do NOT include: dates, times, numbers, or temporal expressions.
 2. **topics**: Themes or subjects being discussed
 3. **memories**: Facts, beliefs, preferences, concerns, or intentions to remember
-4. **goals**: Any goals mentioned (new, progress updates, or achievements)
+4. **goals**: Goals mentioned - can be new goals, progress updates, or completions
 5. **corrections**: STT errors you can identify
 
 IMPORTANT:
 - Check if names in the input might be mishearings of Known Entities listed in the context.
 - Speech-to-text often mishears names. If a name sounds similar to a known entity, use the known entity.
 - Prefer matching against existing entities rather than creating duplicates.
+
+GOALS - Active goals are listed in the context. Goal extraction format:
+- {"statement": "...", "type": "personal|work|health|etc"} - for new goals
+- {"statement": "...", "status": "achieved"} - when a goal is completed
+- {"statement": "...", "status": "progress", "progress": 0-100} - for progress updates
 
 Respond with a JSON object. Only include fields with actual content.
 
