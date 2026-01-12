@@ -32,6 +32,7 @@
     "d3": "^7.9.0",
     "daisyui": "^5.3.10",
     "jsonrepair": "^3.13.1",
+    "lucide-react": "^0.562.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
