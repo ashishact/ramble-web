@@ -12,6 +12,10 @@
 
 const STT_MODEL = 'whisper-large-v3-turbo';
 const LLM_MODEL = 'openai/gpt-oss-120b';
+const GEMINI_TRANSFORM_MODEL = 'gemini-2.5-flash-lite';
+
+// Default Gemini API key for transformations
+const DEFAULT_GEMINI_KEY = 'AIzaSyC5ncFqk73XGX5t1vgHJ0W6KDsI19GajLQ';
 
 // Cloudflare AI Gateway base URL
 const GATEWAY_BASE = 'https://gateway.ai.cloudflare.com/v1/f107b4eef4a9b8eb99a9d1df6fac9ff2/brokenai';
@@ -25,6 +29,7 @@ const CORS_HEADERS = {
 
 interface Env {
 	GROQ_API_KEY?: string;
+	GEMINI_API_KEY?: string;
 }
 
 /**
@@ -158,6 +163,79 @@ async function handleCorrect(request: Request, env: Env): Promise<Response> {
 		}
 
 		const text = data.choices?.[0]?.message?.content || '';
+
+		return new Response(JSON.stringify({ text }), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+		});
+	} catch (error: any) {
+		return new Response(JSON.stringify({ error: error.message }), {
+			status: 500,
+			headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+		});
+	}
+}
+
+/**
+ * Text Transform endpoint (using Gemini 2.5 Flash Lite)
+ * POST /api/ramble/transform
+ *
+ * Body (JSON):
+ * - system: system prompt (required)
+ * - user: text to transform (required)
+ * - apiKey: Gemini API key (optional, falls back to server key)
+ *
+ * Returns: { text: string }
+ */
+async function handleTransform(request: Request, env: Env): Promise<Response> {
+	try {
+		const body = await request.json();
+		const { system, user, apiKey: clientApiKey } = body;
+
+		// Use client key, env key, or default key
+		const apiKey = clientApiKey || env.GEMINI_API_KEY || DEFAULT_GEMINI_KEY;
+
+		if (!system || !user) {
+			return new Response(JSON.stringify({ error: 'system and user prompts are required' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+			});
+		}
+
+		// Call Gemini through Cloudflare AI Gateway
+		const geminiUrl = `${GATEWAY_BASE}/google-ai-studio/v1beta/models/${GEMINI_TRANSFORM_MODEL}:generateContent`;
+
+		const response = await fetch(geminiUrl, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'x-goog-api-key': apiKey,
+			},
+			body: JSON.stringify({
+				contents: [
+					{
+						role: 'user',
+						parts: [{ text: user }],
+					},
+				],
+				systemInstruction: {
+					parts: [{ text: system }],
+				},
+			}),
+		});
+
+		const data = await response.json();
+
+		if (!response.ok) {
+			const errorMsg = data.error?.message || JSON.stringify(data);
+			return new Response(JSON.stringify({ error: errorMsg }), {
+				status: response.status,
+				headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+			});
+		}
+
+		// Extract text from Gemini response
+		const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
 		return new Response(JSON.stringify({ text }), {
 			status: 200,
@@ -308,6 +386,8 @@ export async function handleRambleAPI(request: Request, env: Env, pathname: stri
 			return handleCorrect(request, env);
 		case '/api/ramble/transcribe':
 			return handleTranscribe(request, env);
+		case '/api/ramble/transform':
+			return handleTransform(request, env);
 		default:
 			return null; // Not a Ramble endpoint
 	}
