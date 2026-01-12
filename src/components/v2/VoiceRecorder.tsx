@@ -9,8 +9,8 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSTT } from '../services/stt/useSTT';
-import { settingsHelpers } from '../stores/settingsStore';
+import { useSTT } from '../../services/stt/useSTT';
+import { settingsHelpers } from '../../stores/settingsStore';
 
 export interface VoiceRecorderProps {
   /** Called when recording completes with the final transcript */

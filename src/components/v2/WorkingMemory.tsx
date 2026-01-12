@@ -7,19 +7,19 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
-import { useKernel } from '../program/hooks';
+import { useKernel } from '../../program/hooks';
 import {
   conversationStore,
   entityStore,
   topicStore,
   memoryStore,
   goalStore,
-} from '../db/stores';
-import type Entity from '../db/models/Entity';
-import type Topic from '../db/models/Topic';
-import type Memory from '../db/models/Memory';
-import type Goal from '../db/models/Goal';
-import type Conversation from '../db/models/Conversation';
+} from '../../db/stores';
+import type Entity from '../../db/models/Entity';
+import type Topic from '../../db/models/Topic';
+import type Memory from '../../db/models/Memory';
+import type Goal from '../../db/models/Goal';
+import type Conversation from '../../db/models/Conversation';
 
 interface WorkingMemoryProps {
   maxConversations?: number;

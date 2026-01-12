@@ -10,7 +10,7 @@
 
 import { useState } from 'react';
 import { Icon } from '@iconify/react';
-import type Conversation from '../db/models/Conversation';
+import type Conversation from '../../db/models/Conversation';
 
 interface ConversationListProps {
   conversations: Conversation[];

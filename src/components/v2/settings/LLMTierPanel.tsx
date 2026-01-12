@@ -1,58 +1,64 @@
 /**
- * STT Tier Settings Panel
+ * LLM Tier Settings Panel
  *
- * Configure which provider backs each STT tier (small/medium/large/live)
+ * Configure which provider/model backs each LLM tier (small/medium/large)
  */
 
 import { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import {
-  getSTTTierSettings,
-  updateSTTTierSettings,
-  resetSTTTier,
-  DEFAULT_STT_TIER_SETTINGS,
-  STT_TIER_INFO,
-  type STTTier,
-  type STTTierSettings,
-  type ConcreteSTTProvider,
-} from '../../program';
+  getLLMTierSettings,
+  updateLLMTierSettings,
+  resetLLMTier,
+  DEFAULT_LLM_TIER_SETTINGS,
+  LLM_TIER_INFO,
+  type LLMTier,
+  type LLMTierSettings,
+  type ConcreteProvider as LLMProvider,
+} from '../../../program';
 
-const AVAILABLE_STT_PROVIDERS: Array<{ value: ConcreteSTTProvider; label: string }> = [
-  { value: 'groq-whisper', label: 'Groq Whisper' },
+const AVAILABLE_PROVIDERS: Array<{ value: LLMProvider; label: string }> = [
+  { value: 'groq', label: 'Groq' },
   { value: 'gemini', label: 'Google Gemini' },
-  { value: 'deepgram-nova', label: 'Deepgram Nova (v1)' },
-  { value: 'deepgram-flux', label: 'Deepgram Flux (v2)' },
+  { value: 'anthropic', label: 'Anthropic Claude' },
+  { value: 'openai', label: 'OpenAI' },
 ];
 
-const STT_MODELS: Record<ConcreteSTTProvider, string[]> = {
-  'groq-whisper': ['whisper-large-v3', 'whisper-large-v3-turbo'],
-  'gemini': ['gemini-2.5-flash', 'gemini-2.5-pro'],
-  'deepgram-nova': ['nova-2', 'nova-3'],
-  'deepgram-flux': ['flux-general-en', 'flux-medical-en'],
+const COMMON_MODELS: Record<LLMProvider, string[]> = {
+  groq: ['groq/openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'mixtral-8x7b-32768'],
+  gemini: [
+    'google/gemini-2.5-flash',
+    'google/gemini-2.5-flash-lite',
+    'google/gemini-3-flash-preview',
+    'google/gemini-2.5-pro',
+    'google/gemini-1.5-pro',
+  ],
+  anthropic: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'claude-3-5-sonnet-20241022'],
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
 };
 
-export function STTTierPanel() {
-  const [tierSettings, setTierSettings] = useState<STTTierSettings>(getSTTTierSettings);
+export function LLMTierPanel() {
+  const [tierSettings, setTierSettings] = useState<LLMTierSettings>(getLLMTierSettings);
   const [hasChanges, setHasChanges] = useState(false);
 
   useEffect(() => {
-    setTierSettings(getSTTTierSettings());
+    setTierSettings(getLLMTierSettings());
   }, []);
 
-  const handleProviderChange = (tier: STTTier, provider: ConcreteSTTProvider) => {
+  const handleProviderChange = (tier: LLMTier, provider: LLMProvider) => {
     const newSettings = {
       ...tierSettings,
       [tier]: {
         ...tierSettings[tier],
         provider,
-        model: STT_MODELS[provider][0], // Set first model as default
+        model: COMMON_MODELS[provider][0], // Set first model as default
       },
     };
     setTierSettings(newSettings);
     setHasChanges(true);
   };
 
-  const handleModelChange = (tier: STTTier, model: string) => {
+  const handleModelChange = (tier: LLMTier, model: string) => {
     const newSettings = {
       ...tierSettings,
       [tier]: {
@@ -65,31 +71,31 @@ export function STTTierPanel() {
   };
 
   const handleSave = () => {
-    updateSTTTierSettings(tierSettings);
+    updateLLMTierSettings(tierSettings);
     setHasChanges(false);
   };
 
-  const handleReset = (tier: STTTier) => {
-    resetSTTTier(tier);
-    setTierSettings(getSTTTierSettings());
+  const handleReset = (tier: LLMTier) => {
+    resetLLMTier(tier);
+    setTierSettings(getLLMTierSettings());
     setHasChanges(false);
   };
 
   const handleResetAll = () => {
-    updateSTTTierSettings(DEFAULT_STT_TIER_SETTINGS);
-    setTierSettings(DEFAULT_STT_TIER_SETTINGS);
+    updateLLMTierSettings(DEFAULT_LLM_TIER_SETTINGS);
+    setTierSettings(DEFAULT_LLM_TIER_SETTINGS);
     setHasChanges(false);
   };
 
-  const tiers: STTTier[] = ['small', 'medium', 'large', 'live'];
+  const tiers: LLMTier[] = ['small', 'medium', 'large'];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">STT Tier Configuration</h2>
+          <h2 className="text-2xl font-bold">LLM Tier Configuration</h2>
           <p className="text-sm text-base-content/60 mt-1">
-            Map speech-to-text tiers to specific STT providers. Use tiers in your app instead of hardcoded providers.
+            Map intelligence tiers to specific LLM providers. All extractors use these tiers instead of hardcoded providers.
           </p>
         </div>
         <button
@@ -103,9 +109,9 @@ export function STTTierPanel() {
 
       <div className="space-y-4">
         {tiers.map((tier) => {
-          const tierInfo = STT_TIER_INFO[tier];
+          const tierInfo = LLM_TIER_INFO[tier];
           const config = tierSettings[tier];
-          const availableModels = STT_MODELS[config.provider];
+          const availableModels = COMMON_MODELS[config.provider];
 
           return (
             <div key={tier} className="card bg-base-200 shadow-sm">
@@ -135,10 +141,10 @@ export function STTTierPanel() {
                     </label>
                     <select
                       value={config.provider}
-                      onChange={(e) => handleProviderChange(tier, e.target.value as ConcreteSTTProvider)}
+                      onChange={(e) => handleProviderChange(tier, e.target.value as LLMProvider)}
                       className="select select-bordered w-full"
                     >
-                      {AVAILABLE_STT_PROVIDERS.map(({ value, label }) => (
+                      {AVAILABLE_PROVIDERS.map(({ value, label }) => (
                         <option key={value} value={value}>
                           {label}
                         </option>
@@ -152,28 +158,23 @@ export function STTTierPanel() {
                       <span className="label-text font-medium">Model</span>
                     </label>
                     <select
-                      value={config.model || availableModels[0]}
+                      value={config.model}
                       onChange={(e) => handleModelChange(tier, e.target.value)}
                       className="select select-bordered w-full"
                     >
                       {availableModels.map((model) => (
                         <option key={model} value={model}>
-                          {model}
+                          {model.split('/').pop()}
                         </option>
                       ))}
                     </select>
                   </div>
                 </div>
 
-                {/* Current Configuration */}
+                {/* Current Full Model Path */}
                 <div className="mt-2">
                   <p className="text-xs text-base-content/50">
-                    Provider: <code className="bg-base-300 px-2 py-0.5 rounded">{config.provider}</code>
-                    {config.model && (
-                      <>
-                        {' '} Model: <code className="bg-base-300 px-2 py-0.5 rounded">{config.model}</code>
-                      </>
-                    )}
+                    Full path: <code className="bg-base-300 px-2 py-0.5 rounded">{config.model}</code>
                   </p>
                 </div>
               </div>

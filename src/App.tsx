@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { SettingsPageNew } from "./components/SettingsPageNew";
-import { MainPage } from "./components/MainPage";
+import { SettingsPageNew } from "./components/v2/SettingsPageNew";
+import { MainPage } from "./components/v2/MainPage";
 
 function App() {
   return (

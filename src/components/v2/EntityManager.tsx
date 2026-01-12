@@ -4,8 +4,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
-import { entityStore } from '../db/stores';
-import type Entity from '../db/models/Entity';
+import { entityStore } from '../../db/stores';
+import type Entity from '../../db/models/Entity';
 
 // Helper to format relative time
 function timeAgo(timestamp: number): string {

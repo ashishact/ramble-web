@@ -14,15 +14,15 @@ import { VoiceRecorder } from './VoiceRecorder';
 import { ConversationList } from './ConversationList';
 import { EntityManager } from './EntityManager';
 import { WorkingMemory } from './WorkingMemory';
-import { useKernel } from '../program/hooks';
-import { formatRelativeTime } from '../program/utils';
-import { entityStore, topicStore, memoryStore, goalStore, conversationStore } from '../db/stores';
-import type { ProcessingResult } from '../program';
-import type Entity from '../db/models/Entity';
-import type Topic from '../db/models/Topic';
-import type Memory from '../db/models/Memory';
-import type Goal from '../db/models/Goal';
-import type Conversation from '../db/models/Conversation';
+import { useKernel } from '../../program/hooks';
+import { formatRelativeTime } from '../../program/utils';
+import { entityStore, topicStore, memoryStore, goalStore, conversationStore } from '../../db/stores';
+import type { ProcessingResult } from '../../program';
+import type Entity from '../../db/models/Entity';
+import type Topic from '../../db/models/Topic';
+import type Memory from '../../db/models/Memory';
+import type Goal from '../../db/models/Goal';
+import type Conversation from '../../db/models/Conversation';
 
 interface Stats {
   entities: number;

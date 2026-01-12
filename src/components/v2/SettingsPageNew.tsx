@@ -13,11 +13,11 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { Icon } from '@iconify/react';
-import { settingsHelpers, type AppSettings } from '../stores/settingsStore';
+import { settingsHelpers, type AppSettings } from '../../stores/settingsStore';
 import { ThemeSelector } from './ThemeSelector';
 import { LLMTierPanel } from './settings/LLMTierPanel';
 import { STTTierPanel } from './settings/STTTierPanel';
-import { DATABASE_NAME } from '../db/schema';
+import { DATABASE_NAME } from '../../db/schema';
 
 type SettingsCategory =
   | 'api-keys'
