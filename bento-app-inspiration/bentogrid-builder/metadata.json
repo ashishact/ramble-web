@@ -1,5 +1,0 @@
-{
-  "name": "BentoGrid Builder",
-  "description": "A recursive, Blender-style UI grid layout builder where you can split, resize, and manage panes dynamically.",
-  "requestFramePermissions": []
-}
