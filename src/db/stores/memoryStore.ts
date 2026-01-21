@@ -187,6 +187,18 @@ export const memoryStore = {
   async getAll(): Promise<Memory[]> {
     return await memories.query().fetch()
   },
+
+  async delete(id: string): Promise<boolean> {
+    try {
+      const memory = await memories.find(id)
+      await database.write(async () => {
+        await memory.destroyPermanently()
+      })
+      return true
+    } catch {
+      return false
+    }
+  },
 }
 
 // Expose for debugging in browser console

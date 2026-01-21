@@ -157,4 +157,20 @@ export const goalStore = {
       .filter(g => g.statement.toLowerCase().includes(lowerQuery))
       .slice(0, limit)
   },
+
+  async delete(id: string): Promise<boolean> {
+    try {
+      const goal = await goals.find(id)
+      await database.write(async () => {
+        await goal.destroyPermanently()
+      })
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  async getAll(): Promise<Goal[]> {
+    return await goals.query().fetch()
+  },
 }

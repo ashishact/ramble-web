@@ -22,14 +22,24 @@ import type Goal from '../../db/models/Goal';
 import type Conversation from '../../db/models/Conversation';
 
 interface WorkingMemoryProps {
-  maxConversations?: number;
-  maxEntities?: number;
-  maxTopics?: number;
-  maxMemories?: number;
-  maxGoals?: number;
   // Optional refresh trigger - increment to force refresh
   refreshTrigger?: number;
 }
+
+// Size presets
+type ContextSize = 'small' | 'medium' | 'large';
+
+const SIZE_LIMITS: Record<ContextSize, {
+  conversations: number;
+  entities: number;
+  topics: number;
+  memories: number;
+  goals: number;
+}> = {
+  small:  { conversations: 5,  entities: 15, topics: 5,  memories: 5,  goals: 3  },
+  medium: { conversations: 10, entities: 15, topics: 10, memories: 10, goals: 5  },
+  large:  { conversations: 15, entities: 15, topics: 15, memories: 20, goals: 10 },
+};
 
 // Compact time format
 function timeAgo(timestamp: number): string {
@@ -46,19 +56,18 @@ function timeAgo(timestamp: number): string {
 type SectionType = 'conversations' | 'entities' | 'topics' | 'memories' | 'goals';
 
 export function WorkingMemory({
-  maxConversations = 10,
-  maxEntities = 10,
-  maxTopics = 5,
-  maxMemories = 15,
-  maxGoals = 5,
   refreshTrigger = 0,
 }: WorkingMemoryProps) {
   // Get current session from kernel
   const { currentSession, isProcessing } = useKernel();
   const sessionId = currentSession?.id ?? null;
 
+  const [contextSize, setContextSize] = useState<ContextSize>('medium');
   const [expandedSection, setExpandedSection] = useState<SectionType | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Get limits based on selected size
+  const limits = SIZE_LIMITS[contextSize];
 
   // State for fetched data
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -83,24 +92,24 @@ export function WorkingMemory({
       // Fetch all data in parallel - same queries as contextBuilder
       const [convs, ents, tops, mems, gls] = await Promise.all([
         conversationStore.getBySession(sessionId),
-        entityStore.getRecent(maxEntities),
-        topicStore.getRecent(maxTopics),
-        memoryStore.getMostImportant(maxMemories),
+        entityStore.getRecent(limits.entities),
+        topicStore.getRecent(limits.topics),
+        memoryStore.getMostImportant(limits.memories),
         goalStore.getActive(),
       ]);
 
       // Apply same limits as contextBuilder
-      setConversations(convs.slice(-maxConversations));
+      setConversations(convs.slice(-limits.conversations));
       setEntities(ents);
-      setTopics(tops.slice(0, maxTopics));
+      setTopics(tops.slice(0, limits.topics));
       setMemories(mems);
-      setGoals(gls.slice(0, maxGoals));
+      setGoals(gls.slice(0, limits.goals));
     } catch (error) {
       console.error('WorkingMemory: Failed to fetch data', error);
     } finally {
       setLoading(false);
     }
-  }, [sessionId, maxConversations, maxEntities, maxTopics, maxMemories, maxGoals]);
+  }, [sessionId, limits]);
 
   // Fetch on mount and when sessionId changes
   // Also refresh when processing completes (isProcessing goes from true to false)
@@ -172,7 +181,25 @@ export function WorkingMemory({
           <Icon icon="mdi:memory" className="w-3.5 h-3.5 text-primary/60" />
           <span className="font-medium text-[11px]">Working Memory</span>
         </div>
-        <span className="text-[9px] opacity-40">~{Math.round(estimatedTokens)} tok</span>
+        <div className="flex items-center gap-2">
+          {/* Size selector */}
+          <div className="flex gap-0.5">
+            {(['small', 'medium', 'large'] as ContextSize[]).map((size) => (
+              <button
+                key={size}
+                onClick={() => setContextSize(size)}
+                className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${
+                  contextSize === size
+                    ? 'bg-primary/20 text-primary font-medium'
+                    : 'text-base-content/40 hover:bg-base-200/50'
+                }`}
+              >
+                {size[0].toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <span className="text-[9px] opacity-40">~{Math.round(estimatedTokens)} tok</span>
+        </div>
       </div>
 
       <div className="p-1.5 space-y-0.5">
@@ -182,7 +209,7 @@ export function WorkingMemory({
           icon="mdi:message-text"
           title="Recent Conversation"
           count={conversations.length}
-          max={maxConversations}
+          max={limits.conversations}
           color="text-primary"
         />
         {expandedSection === 'conversations' && (
@@ -209,7 +236,7 @@ export function WorkingMemory({
           icon="mdi:account-group"
           title="Known Entities"
           count={entities.length}
-          max={maxEntities}
+          max={limits.entities}
           color="text-info"
         />
         {expandedSection === 'entities' && (
@@ -232,7 +259,7 @@ export function WorkingMemory({
           icon="mdi:tag-multiple"
           title="Active Topics"
           count={topics.length}
-          max={maxTopics}
+          max={limits.topics}
           color="text-secondary"
         />
         {expandedSection === 'topics' && (
@@ -255,7 +282,7 @@ export function WorkingMemory({
           icon="mdi:brain"
           title="Active Memories"
           count={memories.length}
-          max={maxMemories}
+          max={limits.memories}
           color="text-accent"
         />
         {expandedSection === 'memories' && (
@@ -280,7 +307,7 @@ export function WorkingMemory({
           icon="mdi:target"
           title="Active Goals"
           count={goals.length}
-          max={maxGoals}
+          max={limits.goals}
           color="text-success"
         />
         {expandedSection === 'goals' && (

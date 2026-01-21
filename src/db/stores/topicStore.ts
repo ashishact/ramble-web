@@ -140,4 +140,49 @@ export const topicStore = {
     }
     return await this.create(data)
   },
+
+  async delete(id: string): Promise<boolean> {
+    try {
+      const topic = await topics.find(id)
+      await database.write(async () => {
+        await topic.destroyPermanently()
+      })
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  async merge(targetId: string, sourceId: string): Promise<boolean> {
+    try {
+      const target = await topics.find(targetId)
+      const source = await topics.find(sourceId)
+
+      await database.write(async () => {
+        // Add source's mention count to target
+        await target.update((t) => {
+          t.mentionCount += source.mentionCount
+          // Keep earlier firstMentioned
+          if (source.firstMentioned < t.firstMentioned) {
+            t.firstMentioned = source.firstMentioned
+          }
+          // Keep later lastMentioned
+          if (source.lastMentioned > t.lastMentioned) {
+            t.lastMentioned = source.lastMentioned
+          }
+          // Merge entity IDs
+          const targetEntityIds = t.entityIdsParsed
+          const sourceEntityIds = source.entityIdsParsed
+          const mergedEntityIds = [...new Set([...targetEntityIds, ...sourceEntityIds])]
+          t.entityIds = JSON.stringify(mergedEntityIds)
+        })
+
+        // Delete source
+        await source.destroyPermanently()
+      })
+      return true
+    } catch {
+      return false
+    }
+  },
 }
