@@ -28,7 +28,8 @@ export type WidgetType =
   | 'goals'           // Goals with progress
   | 'stats'           // Quick stats
   | 'settings'        // Settings panel
-  | 'working-memory'; // Full context view
+  | 'working-memory'  // Full context view
+  | 'suggestions';    // AI-powered suggestions (volatile, not saved)
 
 export interface LeafNode extends BaseNode {
   type: 'leaf';

@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { LeafNode, WidgetType } from './types';
 import {
   MoreVertical, Trash2, Columns, Rows, GripHorizontal, AlertTriangle, X, Check, Palette, Type,
-  Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool
+  Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, Lightbulb
 } from 'lucide-react';
 
 interface BentoLeafProps {
   node: LeafNode;
+  editMode: boolean;
   onSplit: (id: string, direction: 'horizontal' | 'vertical', ratio?: number) => void;
   onRemove: (id: string) => void;
   onSwap: (id1: string, id2: string) => void;
@@ -34,11 +35,12 @@ const WIDGET_OPTIONS: { type: WidgetType; label: string; icon: React.ReactNode }
     { type: 'memories', label: 'Memories', icon: <Brain size={18} /> },
     { type: 'goals', label: 'Goals', icon: <Target size={18} /> },
     { type: 'stats', label: 'Stats', icon: <BarChart3 size={18} /> },
+    { type: 'suggestions', label: 'Suggestions', icon: <Lightbulb size={18} /> },
     { type: 'settings', label: 'Settings', icon: <Settings size={18} /> },
     { type: 'working-memory', label: 'Context', icon: <Eye size={18} /> },
 ];
 
-export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, onSplit, onRemove, onSwap, onColorChange, onContentChange, onWidgetChange, renderWidget, isRoot }) => {
+export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, onRemove, onSwap, onColorChange, onContentChange, onWidgetChange, renderWidget, isRoot }) => {
   const [showControls, setShowControls] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [pendingSplit, setPendingSplit] = useState<'horizontal' | 'vertical' | null>(null);
@@ -84,11 +86,13 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, onSplit, onRemove, o
   }, [pendingSplit]);
 
   useEffect(() => {
+    // Only enable keyboard shortcuts in edit mode
+    if (!editMode) return;
     if (!isHovered && !pendingSplit) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-        
+
         if (e.key === 'Escape') {
             setPendingSplit(null);
             setShowControls(false);
@@ -98,20 +102,20 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, onSplit, onRemove, o
         }
 
         if (showControls || showDeleteConfirm || isRenaming || isSetupMode) return;
-        if (pendingSplit) return; 
+        if (pendingSplit) return;
 
         if (e.key.toLowerCase() === 'h') {
-            setPendingSplit('horizontal'); 
+            setPendingSplit('horizontal');
             splitRatioRef.current = 0.5;
         } else if (e.key.toLowerCase() === 'v') {
-            setPendingSplit('vertical'); 
+            setPendingSplit('vertical');
             splitRatioRef.current = 0.5;
         }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isHovered, pendingSplit, showControls, showDeleteConfirm, isRenaming, isSetupMode]);
+  }, [editMode, isHovered, pendingSplit, showControls, showDeleteConfirm, isRenaming, isSetupMode]);
 
   const handleMouseMoveSplit = (e: React.MouseEvent) => {
       if (!pendingSplit) return;
@@ -184,18 +188,18 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, onSplit, onRemove, o
   }
 
   return (
-    <div 
-      className={`relative w-full h-full flex flex-col overflow-hidden ${node.color} text-slate-800 border border-slate-200/50 group transition-all duration-200 
-      ${isHovered && !isDragOver ? 'ring-1 ring-inset ring-blue-500/20 shadow-inner' : ''}
+    <div
+      className={`relative w-full h-full flex flex-col overflow-hidden ${node.color} text-slate-800 border border-slate-200/50 group transition-all duration-200
+      ${editMode && isHovered && !isDragOver ? 'ring-1 ring-inset ring-blue-500/20 shadow-inner' : ''}
       `}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      onDragOver={editMode ? handleDragOver : undefined}
+      onDragLeave={editMode ? handleDragLeave : undefined}
+      onDrop={editMode ? handleDrop : undefined}
     >
-      {/* Drop Zone Visual Overlay */}
-      {isDragOver && (
+      {/* Drop Zone Visual Overlay (edit mode only) */}
+      {editMode && isDragOver && (
           <div className="absolute inset-1.5 z-40 border-2 border-dashed border-blue-500 bg-blue-500/5 rounded-lg pointer-events-none animate-in fade-in duration-150" />
       )}
 
@@ -224,8 +228,8 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, onSplit, onRemove, o
         </div>
       )}
 
-      {/* Visualization Overlay for Pending Split */}
-      {pendingSplit && !showDeleteConfirm && (
+      {/* Visualization Overlay for Pending Split (edit mode only) */}
+      {editMode && pendingSplit && !showDeleteConfirm && (
           <div 
              className="absolute inset-0 z-20 bg-blue-500/5 cursor-crosshair animate-in fade-in duration-150 select-none"
              onMouseMove={handleMouseMoveSplit}
@@ -254,8 +258,9 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, onSplit, onRemove, o
           </div>
       )}
 
-      {/* --- PANEL HEADER --- */}
-      <div 
+      {/* --- PANEL HEADER (edit mode only) --- */}
+      {editMode && (
+      <div
         className="h-8 min-h-[32px] w-full bg-slate-100/60 border-b border-black/5 flex items-center justify-between px-2 cursor-grab active:cursor-grabbing select-none group/header hover:bg-slate-200/40 transition-colors"
         draggable={!isRenaming}
         onDragStart={handleDragStart}
@@ -355,9 +360,10 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, onSplit, onRemove, o
             )}
         </div>
       </div>
+      )}
 
       {/* --- PANEL BODY --- */}
-      <div className="flex-1 relative overflow-auto">
+      <div className="@container flex-1 w-full relative overflow-auto">
         {isSetupMode ? (
             <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-white/40 overflow-auto">
                 <div className="mb-5 text-center">
@@ -365,7 +371,7 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, onSplit, onRemove, o
                     <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">Choose what to display</p>
                 </div>
 
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5 mb-5 w-full max-w-[400px]">
+                <div className="grid grid-cols-3 @sm:grid-cols-5 gap-2.5 mb-5 w-full max-w-[400px]">
                     {WIDGET_OPTIONS.map((widget) => (
                         <button
                             key={widget.type}
@@ -391,7 +397,7 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, onSplit, onRemove, o
                 )}
             </div>
         ) : renderWidget ? (
-            <div className="w-full h-full overflow-auto">
+            <div className="w-full h-full">
                 {renderWidget(node)}
             </div>
         ) : (
@@ -407,7 +413,7 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, onSplit, onRemove, o
         )}
       </div>
       
-      {isRoot && !pendingSplit && !showDeleteConfirm && !isSetupMode && (
+      {editMode && isRoot && !pendingSplit && !showDeleteConfirm && !isSetupMode && (
         <div className="absolute bottom-6 left-0 right-0 text-center text-slate-400 text-xs pointer-events-none opacity-60 z-20 font-medium">
            Press <span className="text-slate-900 font-bold bg-white shadow-sm border border-slate-200 px-1.5 rounded mx-0.5">H</span> or <span className="text-slate-900 font-bold bg-white shadow-sm border border-slate-200 px-1.5 rounded mx-0.5">V</span> to start splitting
         </div>

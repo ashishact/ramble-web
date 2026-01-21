@@ -1,7 +1,7 @@
 /**
  * WatermelonDB Database Initialization
  *
- * Core Loop Architecture - Fresh database: ramble_v2
+ * Core Loop Architecture - Fresh database: ramble_v3
  */
 
 import { Database } from '@nozbe/watermelondb'

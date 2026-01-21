@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import type { WidgetProps } from '../types';
-import { goalStore } from '../../db/stores';
-import type Goal from '../../db/models/Goal';
+import { database } from '../../db/database';
+import Goal from '../../db/models/Goal';
+import { Q } from '@nozbe/watermelondb';
 import { formatRelativeTime } from '../../program/utils';
 import { Target, CheckCircle2 } from 'lucide-react';
 
@@ -9,15 +10,18 @@ export const GoalsWidget: React.FC<WidgetProps> = () => {
   const [goals, setGoals] = useState<Goal[]>([]);
 
   useEffect(() => {
-    const loadGoals = async () => {
-      const active = await goalStore.getActive();
-      setGoals(active);
-    };
-    loadGoals();
+    const query = database
+      .get<Goal>('goals')
+      .query(
+        Q.where('status', 'active'),
+        Q.sortBy('lastReferenced', Q.desc)
+      );
 
-    // Poll for updates
-    const interval = setInterval(loadGoals, 5000);
-    return () => clearInterval(interval);
+    const subscription = query.observe().subscribe((results) => {
+      setGoals(results);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   if (goals.length === 0) {

@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import type { WidgetProps } from '../types';
-import { entityStore, topicStore, memoryStore, goalStore, conversationStore } from '../../db/stores';
+import { database } from '../../db/database';
+import Entity from '../../db/models/Entity';
+import Topic from '../../db/models/Topic';
+import Memory from '../../db/models/Memory';
+import Goal from '../../db/models/Goal';
+import Conversation from '../../db/models/Conversation';
+import { Q } from '@nozbe/watermelondb';
+import { combineLatest } from 'rxjs';
 import { Users, Hash, Brain, Target, MessageSquare } from 'lucide-react';
 
 interface Stats {
@@ -21,27 +28,31 @@ export const StatsWidget: React.FC<WidgetProps> = () => {
   });
 
   useEffect(() => {
-    const loadStats = async () => {
-      const [entities, topics, memories, goals, conversations] = await Promise.all([
-        entityStore.getAll(),
-        topicStore.getAll(),
-        memoryStore.getMostImportant(100),
-        goalStore.getActive(),
-        conversationStore.getRecent(100),
-      ]);
+    const entities$ = database.get<Entity>('entities').query().observeCount();
+    const topics$ = database.get<Topic>('topics').query().observeCount();
+    const memories$ = database.get<Memory>('memories').query().observe();
+    const goals$ = database.get<Goal>('goals').query(Q.where('status', 'active')).observeCount();
+    const conversations$ = database.get<Conversation>('conversations').query().observeCount();
 
+    const subscription = combineLatest([
+      entities$,
+      topics$,
+      memories$,
+      goals$,
+      conversations$,
+    ]).subscribe(([entityCount, topicCount, memoriesArr, goalCount, conversationCount]) => {
+      // Filter active memories (not superseded)
+      const activeMemories = memoriesArr.filter((m) => !m.supersededBy);
       setStats({
-        entities: entities.length,
-        topics: topics.length,
-        memories: memories.length,
-        goals: goals.length,
-        conversations: conversations.length,
+        entities: entityCount,
+        topics: topicCount,
+        memories: activeMemories.length,
+        goals: goalCount,
+        conversations: conversationCount,
       });
-    };
-    loadStats();
+    });
 
-    const interval = setInterval(loadStats, 5000);
-    return () => clearInterval(interval);
+    return () => subscription.unsubscribe();
   }, []);
 
   const statItems = [

@@ -72,8 +72,8 @@ export const conversationStore = {
           c.processed = true
         })
       })
-    } catch {
-      // Not found
+    } catch (error) {
+      console.error('Failed to mark conversation as processed:', id, error)
     }
   },
 
@@ -83,6 +83,19 @@ export const conversationStore = {
       await database.write(async () => {
         await conv.update((c) => {
           c.sanitizedText = sanitizedText
+        })
+      })
+    } catch {
+      // Not found
+    }
+  },
+
+  async updateSummary(id: string, summary: string): Promise<void> {
+    try {
+      const conv = await conversations.find(id)
+      await database.write(async () => {
+        await conv.update((c) => {
+          c.summary = summary
         })
       })
     } catch {

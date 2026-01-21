@@ -11,6 +11,7 @@ export default class Conversation extends Model {
   @field('timestamp') timestamp!: number
   @field('rawText') rawText!: string
   @field('sanitizedText') sanitizedText!: string
+  @field('summary') summary?: string  // LLM-generated summary for large texts
   @field('source') source!: ConversationSource
   @field('speaker') speaker!: Speaker
   @field('processed') processed!: boolean

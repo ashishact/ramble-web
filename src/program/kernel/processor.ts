@@ -8,7 +8,7 @@
  */
 
 import { callLLM } from '../llmClient';
-import { buildContext, formatContextForLLM, type Context } from './contextBuilder';
+import { workingMemory, type WorkingMemoryData } from '../WorkingMemory';
 import { findPhoneticMatches, findSpellingMatches, formatMatchesForLLM } from '../services/phoneticMatcher';
 import { parseLLMJSON } from '../utils/jsonUtils';
 import {
@@ -18,6 +18,7 @@ import {
   goalStore,
   extractionLogStore,
   correctionStore,
+  conversationStore,
 } from '../../db/stores';
 import { runPlugins, type PluginOutput } from '../plugins';
 import { createLogger } from '../utils/logger';
@@ -73,8 +74,9 @@ interface NormalizedExtraction {
   entities: Array<{ name: string; type: string }>;
   topics: Array<{ name: string; category?: string }>;
   memories: Array<{ content: string; type: string; importance?: number; subject?: string }>;
-  goals: Array<{ statement: string; type: string; status?: string; progress?: number }>;
+  goals: Array<{ statement: string; type: string; status?: string; progress?: number; shortId?: string }>;
   corrections: Array<{ wrong: string; correct: string }>;
+  summary?: string;  // LLM-generated summary for large inputs
 }
 
 /**
@@ -135,8 +137,9 @@ function normalizeMemory(m: unknown): { content: string; type: string; importanc
 
 /**
  * Normalize a single goal (handles string or object with statement/content)
+ * Now supports shortId for referencing existing goals (g1, g2, etc.)
  */
-function normalizeGoal(g: unknown): { statement: string; type: string; status?: string; progress?: number } | null {
+function normalizeGoal(g: unknown): { statement: string; type: string; status?: string; progress?: number; shortId?: string } | null {
   if (typeof g === 'string' && g.trim()) {
     return { statement: g.trim(), type: 'general' };
   }
@@ -151,6 +154,7 @@ function normalizeGoal(g: unknown): { statement: string; type: string; status?: 
         type: typeof obj.type === 'string' ? obj.type : 'general',
         status: typeof obj.status === 'string' ? obj.status : undefined,
         progress: typeof obj.progress === 'number' ? obj.progress : undefined,
+        shortId: typeof obj.shortId === 'string' ? obj.shortId : undefined,
       };
     }
   }
@@ -231,6 +235,11 @@ function normalizeExtraction(raw: unknown): NormalizedExtraction {
     }
   }
 
+  // Extract summary if present
+  if (typeof obj.summary === 'string' && obj.summary.trim()) {
+    result.summary = obj.summary.trim();
+  }
+
   return result;
 }
 
@@ -254,10 +263,11 @@ IMPORTANT:
 - Speech-to-text often mishears names. If a name sounds similar to a known entity, use the known entity.
 - Prefer matching against existing entities rather than creating duplicates.
 
-GOALS - Active goals are listed in the context. Goal extraction format:
+GOALS - Active goals are listed in the context with short IDs (g1, g2, etc.). Goal extraction format:
 - {"statement": "...", "type": "personal|work|health|etc"} - for new goals
-- {"statement": "...", "status": "achieved"} - when a goal is completed
-- {"statement": "...", "status": "progress", "progress": 0-100} - for progress updates
+- {"shortId": "g1", "status": "achieved"} - when an existing goal is completed (use the short ID)
+- {"shortId": "g1", "status": "progress", "progress": 0-100} - for progress updates on existing goals
+- For existing goals, prefer using the shortId instead of repeating the statement
 
 Respond with a JSON object. Only include fields with actual content.
 
@@ -290,9 +300,13 @@ export async function processInput(
 
   logger.info('Processing input', { sessionId, inputLength: inputText.length, source });
 
-  // 1. Build context
-  const context = await buildContext(sessionId, inputText);
-  const contextPrompt = formatContextForLLM(context);
+  // 1. Build context using unified WorkingMemory
+  const wmData = await workingMemory.fetch({ size: 'medium', sessionId });
+  const contextPrompt = workingMemory.formatForLLM(wmData);
+
+  // Check if input needs summary (>= 50 words)
+  const wordCount = inputText.split(/\s+/).filter(w => w.length > 0).length;
+  const needsSummary = wordCount >= 50;
 
   // 2. Run correction analysis based on source
   let correctionSection = '';
@@ -313,13 +327,17 @@ export async function processInput(
   }
 
   // 3. Build prompt
+  const summaryInstruction = needsSummary
+    ? '\n\nAlso provide a brief summary (1-2 sentences) of the input in a "summary" field.'
+    : '';
+
   const userPrompt = `## Context
 ${contextPrompt}
 ${correctionSection}
 ## New Input
 ${inputText}
 
-Extract entities, topics, memories, and goals from the new input. Respond with JSON only.`;
+Extract entities, topics, memories, and goals from the new input. Respond with JSON only.${summaryInstruction}`;
 
   // 4. Call LLM
   let llmResponse: string;
@@ -377,7 +395,12 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
   });
 
   // 5. Save to DB (extraction is now normalized and validated)
-  const result = await saveExtraction(sessionId, conversationId, extraction, context);
+  const result = await saveExtraction(sessionId, conversationId, extraction, wmData);
+
+  // 5.1 Save summary if generated
+  if (needsSummary && extraction.summary) {
+    await conversationStore.updateSummary(conversationId, extraction.summary);
+  }
 
   // 6. Log success
   await extractionLogStore.create({
@@ -433,13 +456,14 @@ async function handlePluginOutputs(outputs: PluginOutput[]): Promise<void> {
 
 /**
  * Save extraction results to DB
- * Extraction is already normalized and validated by Zod
+ * Extraction is already normalized and validated
+ * Uses WorkingMemoryData for goal short ID lookups
  */
 async function saveExtraction(
   _sessionId: string,
   conversationId: string,
   extraction: NormalizedExtraction,
-  _context: Context
+  wmData: WorkingMemoryData
 ): Promise<Omit<ProcessingResult, 'rawResponse' | 'pluginOutputs'>> {
   const result: Omit<ProcessingResult, 'rawResponse' | 'pluginOutputs'> = {
     entities: [],
@@ -502,6 +526,7 @@ async function saveExtraction(
   }
 
   // Handle goals (already normalized)
+  // Now supports short IDs (g1, g2...) for referencing existing goals
   for (const g of extraction.goals) {
     if (g.status === 'new' || !g.status) {
       // Create new goal
@@ -513,19 +538,35 @@ async function saveExtraction(
       });
       result.goalUpdates.push({ id: goal.id, type: 'new' });
     } else {
-      // Try to find and update existing goal
-      const existingGoals = await goalStore.search(g.statement, 1);
-      if (existingGoals.length > 0) {
-        const goal = existingGoals[0];
+      // Try to find existing goal by short ID first, then by text search
+      let existingGoalId: string | null = null;
+
+      if (g.shortId) {
+        // Use short ID to find goal from WorkingMemoryData
+        const goalRef = workingMemory.findGoalByShortId(wmData, g.shortId);
+        if (goalRef) {
+          existingGoalId = goalRef.id;
+        }
+      }
+
+      // Fall back to text search if no short ID or short ID not found
+      if (!existingGoalId) {
+        const existingGoals = await goalStore.search(g.statement, 1);
+        if (existingGoals.length > 0) {
+          existingGoalId = existingGoals[0].id;
+        }
+      }
+
+      if (existingGoalId) {
         if (g.status === 'achieved') {
-          await goalStore.updateStatus(goal.id, 'achieved');
-          result.goalUpdates.push({ id: goal.id, type: 'achieved' });
+          await goalStore.updateStatus(existingGoalId, 'achieved');
+          result.goalUpdates.push({ id: existingGoalId, type: 'achieved' });
         } else if (g.status === 'progress' && g.progress !== undefined) {
-          await goalStore.updateProgress(goal.id, g.progress);
-          result.goalUpdates.push({ id: goal.id, type: 'progress' });
+          await goalStore.updateProgress(existingGoalId, g.progress);
+          result.goalUpdates.push({ id: existingGoalId, type: 'progress' });
         } else {
-          await goalStore.recordReference(goal.id);
-          result.goalUpdates.push({ id: goal.id, type: 'referenced' });
+          await goalStore.recordReference(existingGoalId);
+          result.goalUpdates.push({ id: existingGoalId, type: 'referenced' });
         }
       }
     }

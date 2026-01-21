@@ -136,52 +136,46 @@ export function WorkingMemory({
     color: string;
   }) => (
     <button
-      className={`flex items-center justify-between w-full p-2 rounded-lg hover:bg-base-200 transition-colors ${
-        expandedSection === section ? 'bg-base-200' : ''
+      className={`flex items-center justify-between w-full px-1.5 py-1 rounded hover:bg-base-200/50 transition-colors ${
+        expandedSection === section ? 'bg-base-200/50' : ''
       }`}
       onClick={() => toggleSection(section)}
     >
-      <div className="flex items-center gap-2">
-        <Icon icon={icon} className={`w-4 h-4 ${color}`} />
-        <span className="font-medium text-sm">{title}</span>
-        <span className="badge badge-ghost badge-xs">
-          {count}/{max}
-        </span>
+      <div className="flex items-center gap-1.5">
+        <Icon icon={icon} className={`w-3 h-3 ${color} opacity-70`} />
+        <span className="font-medium text-[11px]">{title}</span>
+        <span className="text-[9px] text-base-content/40">{count}/{max}</span>
       </div>
       <Icon
         icon={expandedSection === section ? 'mdi:chevron-up' : 'mdi:chevron-down'}
-        className="w-4 h-4 opacity-50"
+        className="w-3 h-3 opacity-30"
       />
     </button>
   );
 
   if (loading) {
     return (
-      <div className="bg-gradient-to-br from-base-200 to-base-100 rounded-lg border border-base-300 p-4">
-        <div className="flex items-center gap-2 text-sm opacity-50">
-          <Icon icon="mdi:loading" className="w-4 h-4 animate-spin" />
-          Loading working memory...
+      <div className="bg-base-100 rounded border border-base-200 p-2">
+        <div className="flex items-center gap-1.5 text-[10px] opacity-40">
+          <Icon icon="mdi:loading" className="w-3 h-3 animate-spin" />
+          Loading...
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-gradient-to-br from-base-200 to-base-100 rounded-lg border border-base-300 overflow-hidden">
-      {/* Header */}
-      <div className="bg-base-300/50 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Icon icon="mdi:memory" className="w-5 h-5 text-primary" />
-          <span className="font-bold">Working Memory</span>
-          <span className="text-xs opacity-50">(LLM Context)</span>
+    <div className="bg-base-100 rounded border border-base-200 overflow-hidden">
+      {/* Header - Compact */}
+      <div className="bg-base-200/30 px-2 py-1 flex items-center justify-between border-b border-base-200">
+        <div className="flex items-center gap-1.5">
+          <Icon icon="mdi:memory" className="w-3.5 h-3.5 text-primary/60" />
+          <span className="font-medium text-[11px]">Working Memory</span>
         </div>
-        <div className="flex items-center gap-2 text-xs opacity-60">
-          <Icon icon="mdi:approximately-equal" className="w-4 h-4" />
-          ~{Math.round(estimatedTokens)} tokens
-        </div>
+        <span className="text-[9px] opacity-40">~{Math.round(estimatedTokens)} tok</span>
       </div>
 
-      <div className="p-3 space-y-1">
+      <div className="p-1.5 space-y-0.5">
         {/* Recent Conversations */}
         <SectionHeader
           section="conversations"
@@ -192,17 +186,17 @@ export function WorkingMemory({
           color="text-primary"
         />
         {expandedSection === 'conversations' && (
-          <div className="ml-6 mb-2 space-y-1 text-sm">
+          <div className="ml-4 mb-1">
             {conversations.length === 0 ? (
-              <p className="text-xs opacity-50 italic">No conversation yet</p>
+              <p className="text-[9px] opacity-40 italic px-1">No conversation yet</p>
             ) : (
-              conversations.map((c) => (
-                <div key={c.id} className="flex gap-2 p-2 bg-base-100 rounded text-xs">
-                  <span className={`font-mono ${c.speaker === 'user' ? 'text-primary' : 'text-secondary'}`}>
+              conversations.map((c, i) => (
+                <div key={c.id} className={`flex gap-1.5 px-1.5 py-1 rounded text-[10px] ${i % 2 === 1 ? 'bg-base-200/40' : ''}`}>
+                  <span className={`font-mono shrink-0 ${c.speaker === 'user' ? 'text-primary/70' : 'text-secondary/70'}`}>
                     {c.speaker}:
                   </span>
-                  <span className="flex-1 truncate">{c.sanitizedText}</span>
-                  <span className="opacity-50 shrink-0">{timeAgo(c.timestamp)}</span>
+                  <span className="flex-1 truncate text-base-content/70">{c.sanitizedText}</span>
+                  <span className="opacity-40 shrink-0">{timeAgo(c.timestamp)}</span>
                 </div>
               ))
             )}
@@ -219,14 +213,13 @@ export function WorkingMemory({
           color="text-info"
         />
         {expandedSection === 'entities' && (
-          <div className="ml-6 mb-2 flex flex-wrap gap-1">
+          <div className="ml-4 mb-1 flex flex-wrap gap-0.5 px-1">
             {entities.length === 0 ? (
-              <p className="text-xs opacity-50 italic">No entities yet</p>
+              <p className="text-[9px] opacity-40 italic">No entities yet</p>
             ) : (
               entities.map((e) => (
-                <span key={e.id} className="badge badge-sm gap-1">
-                  {e.name}
-                  <span className="opacity-50">({e.type})</span>
+                <span key={e.id} className="text-[9px] px-1.5 py-0.5 bg-base-200/50 rounded text-base-content/60">
+                  {e.name} <span className="opacity-50">({e.type})</span>
                 </span>
               ))
             )}
@@ -243,14 +236,13 @@ export function WorkingMemory({
           color="text-secondary"
         />
         {expandedSection === 'topics' && (
-          <div className="ml-6 mb-2 flex flex-wrap gap-1">
+          <div className="ml-4 mb-1 flex flex-wrap gap-0.5 px-1">
             {topics.length === 0 ? (
-              <p className="text-xs opacity-50 italic">No topics yet</p>
+              <p className="text-[9px] opacity-40 italic">No topics yet</p>
             ) : (
               topics.map((t) => (
-                <span key={t.id} className="badge badge-secondary badge-sm">
-                  {t.name}
-                  {t.category && <span className="opacity-50 ml-1">[{t.category}]</span>}
+                <span key={t.id} className="text-[9px] px-1.5 py-0.5 bg-secondary/10 text-secondary/70 rounded">
+                  {t.name}{t.category && <span className="opacity-50"> [{t.category}]</span>}
                 </span>
               ))
             )}
@@ -267,15 +259,15 @@ export function WorkingMemory({
           color="text-accent"
         />
         {expandedSection === 'memories' && (
-          <div className="ml-6 mb-2 space-y-1">
+          <div className="ml-4 mb-1">
             {memories.length === 0 ? (
-              <p className="text-xs opacity-50 italic">No memories yet</p>
+              <p className="text-[9px] opacity-40 italic px-1">No memories yet</p>
             ) : (
-              memories.map((m) => (
-                <div key={m.id} className="flex gap-2 p-2 bg-base-100 rounded text-xs">
-                  <span className="badge badge-accent badge-xs shrink-0">{m.type}</span>
-                  <span className="flex-1">{m.content}</span>
-                  <span className="opacity-50 shrink-0">{Math.round(m.importance * 100)}%</span>
+              memories.map((m, i) => (
+                <div key={m.id} className={`flex gap-1.5 px-1.5 py-1 rounded text-[10px] ${i % 2 === 1 ? 'bg-base-200/40' : ''}`}>
+                  <span className="text-accent/60 shrink-0">[{m.type}]</span>
+                  <span className="flex-1 text-base-content/70">{m.content}</span>
+                  <span className="opacity-40 shrink-0">{Math.round(m.importance * 100)}%</span>
                 </div>
               ))
             )}
@@ -292,21 +284,21 @@ export function WorkingMemory({
           color="text-success"
         />
         {expandedSection === 'goals' && (
-          <div className="ml-6 mb-2 space-y-1">
+          <div className="ml-4 mb-1">
             {goals.length === 0 ? (
-              <p className="text-xs opacity-50 italic">No goals yet</p>
+              <p className="text-[9px] opacity-40 italic px-1">No goals yet</p>
             ) : (
-              goals.map((g) => (
-                <div key={g.id} className="flex items-center gap-2 p-2 bg-base-100 rounded text-xs">
-                  <span className={`badge badge-xs ${
-                    g.status === 'achieved' ? 'badge-success' :
-                    g.status === 'blocked' ? 'badge-error' :
-                    'badge-info'
+              goals.map((g, i) => (
+                <div key={g.id} className={`flex items-center gap-1.5 px-1.5 py-1 rounded text-[10px] ${i % 2 === 1 ? 'bg-base-200/40' : ''}`}>
+                  <span className={`shrink-0 ${
+                    g.status === 'achieved' ? 'text-success/60' :
+                    g.status === 'blocked' ? 'text-error/60' :
+                    'text-info/60'
                   }`}>
-                    {g.status}
+                    [{g.status}]
                   </span>
-                  <span className="flex-1">{g.statement}</span>
-                  <span className="font-mono opacity-50">{g.progress}%</span>
+                  <span className="flex-1 text-base-content/70">{g.statement}</span>
+                  <span className="font-mono opacity-40">{g.progress}%</span>
                 </div>
               ))
             )}
@@ -314,13 +306,13 @@ export function WorkingMemory({
         )}
       </div>
 
-      {/* Footer - summary */}
-      <div className="bg-base-300/30 px-4 py-2 text-xs opacity-60 flex gap-4">
-        <span>{conversations.length} convs</span>
-        <span>{entities.length} entities</span>
-        <span>{topics.length} topics</span>
-        <span>{memories.length} memories</span>
-        <span>{goals.length} goals</span>
+      {/* Footer - compact summary */}
+      <div className="bg-base-200/20 px-2 py-1 text-[9px] opacity-40 flex gap-2 border-t border-base-200">
+        <span>{conversations.length}c</span>
+        <span>{entities.length}e</span>
+        <span>{topics.length}t</span>
+        <span>{memories.length}m</span>
+        <span>{goals.length}g</span>
       </div>
     </div>
   );

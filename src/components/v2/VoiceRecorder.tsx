@@ -11,6 +11,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSTT } from '../../services/stt/useSTT';
 import { settingsHelpers } from '../../stores/settingsStore';
+import { rambleChecker } from '../../services/stt/rambleChecker';
+import { useRamblePaste } from '../../hooks/useRamblePaste';
+import { showTranscriptReview } from '../TranscriptReview';
 
 export interface VoiceRecorderProps {
   /** Called when recording completes with the final transcript */
@@ -50,6 +53,12 @@ export function VoiceRecorder({
     stopRecordingAndWait,
     clearTranscript,
   } = useSTT({ config: sttConfig });
+
+  // Handle paste from Ramble (registers once, never re-registers)
+  useRamblePaste((text) => {
+    console.log('[VoiceRecorder] Received transcript from Ramble paste');
+    onTranscript(text);
+  });
 
   // Update transcript display
   useEffect(() => {
@@ -91,7 +100,10 @@ export function VoiceRecorder({
         console.log('[VoiceRecorder] Got final transcript:', finalTranscript);
 
         if (finalTranscript.trim()) {
-          await onTranscript(finalTranscript.trim());
+          // Show transcript review instead of direct submit
+          showTranscriptReview(finalTranscript.trim(), (reviewedText) => {
+            onTranscript(reviewedText);
+          });
         } else {
           console.warn('[VoiceRecorder] Empty transcript received');
         }
@@ -130,12 +142,19 @@ export function VoiceRecorder({
   ]);
 
   // Keyboard shortcut: Right Command key toggles recording
+  // Only handles cloud STT when Ramble is not available
   useEffect(() => {
     const handleKeyUp = (event: KeyboardEvent) => {
       // Right Command key on Mac
       if (event.code === 'MetaRight') {
+        // If Ramble is available, let it handle the keyboard
+        if (rambleChecker.isRambleAvailable()) {
+          console.log('[VoiceRecorder] Right Command - Ramble available, letting it handle');
+          return;
+        }
+
         event.preventDefault();
-        console.log('[VoiceRecorder] Right Command - toggling recording');
+        console.log('[VoiceRecorder] Right Command - toggling cloud STT recording');
         handleToggleRecording();
       }
     };

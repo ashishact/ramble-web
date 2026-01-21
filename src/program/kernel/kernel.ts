@@ -14,6 +14,7 @@ import { sessionStore, conversationStore, taskStore, correctionStore } from '../
 import { processInput, type ProcessingResult } from './processor';
 import { seedCorePlugins } from '../plugins';
 import { createLogger } from '../utils/logger';
+import { pipelineStatus } from './pipelineStatus';
 import type Session from '../../db/models/Session';
 
 const logger = createLogger('Kernel');
@@ -188,14 +189,20 @@ class Kernel {
     }
     const sessionId = this.currentSession.id;
 
+    // Start pipeline tracking
+    pipelineStatus.start();
+    pipelineStatus.step('input', 'running');
+
     // 1. Apply corrections (for STT)
     let sanitizedText = text;
     if (source === 'speech') {
       const { corrected } = await correctionStore.applyCorrections(text);
       sanitizedText = corrected;
     }
+    pipelineStatus.step('input', 'success');
 
     // 2. Save conversation unit
+    pipelineStatus.step('save', 'running');
     const conversation = await conversationStore.create({
       sessionId,
       rawText: text,
@@ -218,8 +225,10 @@ class Kernel {
       },
       sessionId,
     });
+    pipelineStatus.step('save', 'success');
 
-    // 5. Process immediately (or queue for later if we want background processing)
+    // 5. Process immediately
+    pipelineStatus.step('process', 'running');
     try {
       await taskStore.start(task.id);
 
@@ -230,13 +239,6 @@ class Kernel {
         source
       );
 
-      // Mark conversation as processed FIRST (before completing task)
-      // This ensures if we crash after this, the conversation is marked
-      // Recovery will clean up any orphaned completed tasks
-      //
-      // TODO: Make this atomic - batch both markProcessed and taskStore.complete
-      // in a single database.write() call to be truly crash-safe. Currently there's
-      // still a tiny window where we could crash between these two operations.
       await conversationStore.markProcessed(conversation.id);
 
       await taskStore.complete(task.id, {
@@ -245,6 +247,9 @@ class Kernel {
         memories: processingResult.memories.length,
       });
 
+      pipelineStatus.step('process', 'success');
+      pipelineStatus.step('done', 'success');
+
       return {
         conversationId: conversation.id,
         processingResult,
@@ -252,6 +257,9 @@ class Kernel {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       await taskStore.fail(task.id, errorMessage);
+
+      pipelineStatus.step('process', 'error');
+      pipelineStatus.step('done', 'error');
 
       return {
         conversationId: conversation.id,

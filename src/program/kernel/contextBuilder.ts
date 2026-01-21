@@ -1,6 +1,22 @@
 /**
  * Context Builder
  *
+ * @deprecated Use WorkingMemory class from '../WorkingMemory' instead.
+ * This module is kept for backward compatibility but will be removed in a future version.
+ *
+ * The new WorkingMemory class provides:
+ * - Size tiers (small/medium/large) for controlling token budget
+ * - Time travel support (query context as of a specific timestamp)
+ * - Short IDs for goals (g1, g2...) for easy LLM reference
+ * - Unified interface for both UI and LLM processing
+ *
+ * Migration:
+ *   Before: const context = await buildContext(sessionId, inputText);
+ *           const prompt = formatContextForLLM(context);
+ *
+ *   After:  const data = await workingMemory.fetch({ sessionId });
+ *           const prompt = workingMemory.formatForLLM(data);
+ *
  * Gathers relevant context for the LLM:
  * - Recent conversation history
  * - Relevant entities (mentioned or related)

@@ -36,6 +36,7 @@ export const memoryStore = {
         m.lastReinforced = now
         m.reinforcementCount = 1
         m.supersedes = data.supersedes
+        m.supersededBy = undefined // Explicitly set for query compatibility
         m.metadata = JSON.stringify(data.metadata ?? {})
         m.createdAt = now
       })

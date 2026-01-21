@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import type { WidgetProps } from '../types';
-import { topicStore } from '../../db/stores';
-import type Topic from '../../db/models/Topic';
+import { database } from '../../db/database';
+import Topic from '../../db/models/Topic';
+import { Q } from '@nozbe/watermelondb';
 import { formatRelativeTime } from '../../program/utils';
 import { Hash } from 'lucide-react';
 
@@ -9,15 +10,15 @@ export const TopicsWidget: React.FC<WidgetProps> = () => {
   const [topics, setTopics] = useState<Topic[]>([]);
 
   useEffect(() => {
-    const loadTopics = async () => {
-      const all = await topicStore.getAll();
-      setTopics(all);
-    };
-    loadTopics();
+    const query = database
+      .get<Topic>('topics')
+      .query(Q.sortBy('lastMentioned', Q.desc), Q.take(50));
 
-    // Poll for updates
-    const interval = setInterval(loadTopics, 5000);
-    return () => clearInterval(interval);
+    const subscription = query.observe().subscribe((results) => {
+      setTopics(results);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   if (topics.length === 0) {

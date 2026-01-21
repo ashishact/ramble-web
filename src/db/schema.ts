@@ -1,7 +1,7 @@
 /**
  * WatermelonDB Schema v1 - Core Loop Architecture
  *
- * DATABASE NAME: ramble_v2
+ * DATABASE NAME: ramble_v3
  *
  * Philosophy:
  * - Everything has TEMPORALITY (when true, when last reinforced)
@@ -13,12 +13,15 @@
  * - CORE: sessions, conversations, tasks (durable execution)
  * - KNOWLEDGE: entities, topics, memories, goals
  * - SYSTEM: plugins, extraction_logs, corrections
+ *
+ * Fresh start - no migrations needed.
+ * Includes summary column for conversation summaries.
  */
 
 import { appSchema, tableSchema } from '@nozbe/watermelondb'
 
-// Database name - separate from old schema
-export const DATABASE_NAME = 'ramble_v2'
+// Database name - fresh start
+export const DATABASE_NAME = 'ramble_v3'
 
 export const schema = appSchema({
   version: 1,
@@ -47,6 +50,7 @@ export const schema = appSchema({
         { name: 'timestamp', type: 'number', isIndexed: true },
         { name: 'rawText', type: 'string' },
         { name: 'sanitizedText', type: 'string' },
+        { name: 'summary', type: 'string', isOptional: true },  // LLM-generated summary for large texts
         { name: 'source', type: 'string' },      // 'speech' | 'text'
         { name: 'speaker', type: 'string' },      // 'user' | 'agent'
         { name: 'processed', type: 'boolean', isIndexed: true },

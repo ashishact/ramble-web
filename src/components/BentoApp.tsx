@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   BentoNodeComponent,
   createInitialTree,
@@ -26,13 +26,42 @@ import {
   SettingsWidget,
   PlaceholderWidget,
 } from '../widgets';
-import { RotateCcw } from 'lucide-react';
+import { SuggestionWidget } from '../widgets/on-demand';
+import { RotateCcw, PencilRuler } from 'lucide-react';
+import { TranscriptReview, registerTranscriptReview } from './TranscriptReview';
+import { PipelineBreadcrumb } from './PipelineBreadcrumb';
 
 export const BentoApp: React.FC = () => {
   const [tree, setTree] = useState<BentoTree>(() => {
     const savedTree = loadTreeFromStorage();
     return savedTree ?? createInitialTree();
   });
+  const [editMode, setEditMode] = useState(false);
+
+  // Transcript review state
+  const [reviewText, setReviewText] = useState<string | null>(null);
+  const reviewCallbackRef = useRef<((text: string) => void) | null>(null);
+
+  // Register the transcript review handler
+  useEffect(() => {
+    registerTranscriptReview((text, onSubmit) => {
+      setReviewText(text);
+      reviewCallbackRef.current = onSubmit;
+    });
+  }, []);
+
+  const handleReviewSubmit = useCallback((text: string) => {
+    if (reviewCallbackRef.current) {
+      reviewCallbackRef.current(text);
+    }
+    setReviewText(null);
+    reviewCallbackRef.current = null;
+  }, []);
+
+  const handleReviewCancel = useCallback(() => {
+    setReviewText(null);
+    reviewCallbackRef.current = null;
+  }, []);
 
   // Persist tree to localStorage on changes
   useEffect(() => {
@@ -99,6 +128,8 @@ export const BentoApp: React.FC = () => {
         return <SettingsWidget {...props} />;
       case 'working-memory':
         return <WorkingMemoryWidget {...props} />;
+      case 'suggestions':
+        return <SuggestionWidget />;
       default:
         return <PlaceholderWidget nodeId={node.id} widgetType={node.widgetType} />;
     }
@@ -108,16 +139,33 @@ export const BentoApp: React.FC = () => {
     <div className="w-screen h-screen flex flex-col bg-slate-100">
       {/* Header */}
       <header className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4 flex-shrink-0">
-        <h1 className="text-sm font-bold text-slate-700">Bento Journal</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-sm font-bold text-slate-700">Bento Journal</h1>
+          <PipelineBreadcrumb />
+        </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={handleReset}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
-            title="Reset layout to default"
+            onClick={() => setEditMode((prev) => !prev)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+              editMode
+                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+            title={editMode ? 'Exit edit mode' : 'Enter edit mode to split, drag, and configure panels'}
           >
-            <RotateCcw size={14} />
-            Reset
+            <PencilRuler size={14} />
+            {editMode ? 'Done' : 'Edit Layout'}
           </button>
+          {editMode && (
+            <button
+              onClick={handleReset}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
+              title="Reset layout to default"
+            >
+              <RotateCcw size={14} />
+              Reset
+            </button>
+          )}
         </div>
       </header>
 
@@ -126,6 +174,7 @@ export const BentoApp: React.FC = () => {
         <BentoNodeComponent
           tree={tree}
           nodeId={tree.rootId}
+          editMode={editMode}
           onSplit={handleSplit}
           onRemove={handleRemove}
           onResize={handleResize}
@@ -136,6 +185,15 @@ export const BentoApp: React.FC = () => {
           renderWidget={renderWidget}
         />
       </main>
+
+      {/* Transcript Review Overlay */}
+      {reviewText !== null && (
+        <TranscriptReview
+          initialText={reviewText}
+          onSubmit={handleReviewSubmit}
+          onCancel={handleReviewCancel}
+        />
+      )}
     </div>
   );
 };

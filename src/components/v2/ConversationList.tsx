@@ -6,23 +6,29 @@
  * - Session markers
  * - Processing status indicators
  * - Load more pagination
+ * - Summary display (if available)
+ * - Expandable long text with show more/less
  */
 
 import { useState } from 'react';
 import { Icon } from '@iconify/react';
 import type Conversation from '../../db/models/Conversation';
+import { ExpandableText } from '../ui/ExpandableText';
 
 interface ConversationListProps {
   conversations: Conversation[];
-  onClose: () => void;
+  onClose?: () => void;
 }
+
+// Truncate text if longer than this many characters
+const TRUNCATE_LENGTH = 150;
 
 export function ConversationList({ conversations, onClose }: ConversationListProps) {
   const [showRawText, setShowRawText] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(20);
 
   return (
-    <div className="w-80 border-r border-base-300 bg-base-100 flex flex-col shrink-0">
+    <div className="w-full h-full bg-base-100 flex flex-col">
       {/* Header */}
       <div className="p-3 border-b border-base-300 flex justify-between items-center">
         <h2 className="font-bold text-sm">Conversation</h2>
@@ -44,9 +50,11 @@ export function ConversationList({ conversations, onClose }: ConversationListPro
               Clean
             </button>
           </div>
-          <button className="btn btn-ghost btn-xs" onClick={onClose}>
-            <Icon icon="mdi:close" className="w-4 h-4" />
-          </button>
+          {onClose && (
+            <button className="btn btn-ghost btn-xs" onClick={onClose}>
+              <Icon icon="mdi:close" className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -96,7 +104,17 @@ export function ConversationList({ conversations, onClose }: ConversationListPro
                       conv.processed ? 'bg-base-200' : 'bg-warning/10 border border-warning/30'
                     }`}
                   >
-                    <p className="leading-relaxed">{displayText}</p>
+                    <ExpandableText text={displayText} truncateLength={TRUNCATE_LENGTH} />
+                    {/* Show summary if it exists */}
+                    {conv.summary && (
+                      <div className="mt-2 p-2 bg-base-300/50 rounded text-xs border-l-2 border-primary/50">
+                        <div className="flex items-center gap-1 text-primary/70 mb-1">
+                          <Icon icon="mdi:text-box-outline" className="w-3 h-3" />
+                          <span className="font-medium">Summary</span>
+                        </div>
+                        <p className="opacity-80 leading-relaxed">{conv.summary}</p>
+                      </div>
+                    )}
                     {/* Show diff indicator when there are changes */}
                     {hasChanges && (
                       <div className="mt-1 text-xs">

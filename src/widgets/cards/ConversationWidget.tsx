@@ -1,30 +1,30 @@
 import { useState, useEffect } from 'react';
 import type { WidgetProps } from '../types';
 import { ConversationList } from '../../components/v2/ConversationList';
-import { conversationStore } from '../../db/stores';
-import type Conversation from '../../db/models/Conversation';
+import { database } from '../../db/database';
+import Conversation from '../../db/models/Conversation';
+import { Q } from '@nozbe/watermelondb';
 
 export const ConversationWidget: React.FC<WidgetProps> = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
 
   useEffect(() => {
-    const loadConversations = async () => {
-      const recent = await conversationStore.getRecent(50);
-      setConversations(recent);
-    };
-    loadConversations();
+    // Use WatermelonDB's reactive observation instead of polling
+    const query = database
+      .get<Conversation>('conversations')
+      .query(Q.sortBy('timestamp', Q.desc), Q.take(50));
 
-    // Set up polling for updates
-    const interval = setInterval(loadConversations, 5000);
-    return () => clearInterval(interval);
+    // Subscribe to changes - this updates immediately when data changes
+    const subscription = query.observe().subscribe((results) => {
+      setConversations(results);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   return (
     <div className="w-full h-full overflow-auto">
-      <ConversationList
-        conversations={conversations}
-        onClose={() => {}} // No-op since we're in a widget, not a modal
-      />
+      <ConversationList conversations={conversations} />
     </div>
   );
 };

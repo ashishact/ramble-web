@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import type { WidgetProps } from '../types';
-import { entityStore } from '../../db/stores';
-import type Entity from '../../db/models/Entity';
+import { database } from '../../db/database';
+import Entity from '../../db/models/Entity';
+import { Q } from '@nozbe/watermelondb';
 import { formatRelativeTime } from '../../program/utils';
 import { Users } from 'lucide-react';
 
@@ -9,15 +10,15 @@ export const EntitiesWidget: React.FC<WidgetProps> = () => {
   const [entities, setEntities] = useState<Entity[]>([]);
 
   useEffect(() => {
-    const loadEntities = async () => {
-      const all = await entityStore.getAll();
-      setEntities(all);
-    };
-    loadEntities();
+    const query = database
+      .get<Entity>('entities')
+      .query(Q.sortBy('lastMentioned', Q.desc), Q.take(50));
 
-    // Poll for updates
-    const interval = setInterval(loadEntities, 5000);
-    return () => clearInterval(interval);
+    const subscription = query.observe().subscribe((results) => {
+      setEntities(results);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   if (entities.length === 0) {

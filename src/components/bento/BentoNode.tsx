@@ -6,6 +6,7 @@ import { Resizer } from './Resizer';
 interface BentoNodeProps {
   tree: BentoTree;
   nodeId: string;
+  editMode: boolean;
   onSplit: (id: string, direction: 'horizontal' | 'vertical', ratio?: number) => void;
   onRemove: (id: string) => void;
   onResize: (id: string, ratio: number) => void;
@@ -19,6 +20,7 @@ interface BentoNodeProps {
 export const BentoNodeComponent: React.FC<BentoNodeProps> = ({
   tree,
   nodeId,
+  editMode,
   onSplit,
   onRemove,
   onResize,
@@ -38,6 +40,7 @@ export const BentoNodeComponent: React.FC<BentoNodeProps> = ({
     return (
       <BentoLeaf
         node={node as LeafNode}
+        editMode={editMode}
         onSplit={onSplit}
         onRemove={onRemove}
         onSwap={onSwap}
@@ -81,6 +84,7 @@ export const BentoNodeComponent: React.FC<BentoNodeProps> = ({
         <BentoNodeComponent
           tree={tree}
           nodeId={first}
+          editMode={editMode}
           onSplit={onSplit}
           onRemove={onRemove}
           onResize={onResize}
@@ -104,6 +108,7 @@ export const BentoNodeComponent: React.FC<BentoNodeProps> = ({
         <BentoNodeComponent
           tree={tree}
           nodeId={second}
+          editMode={editMode}
           onSplit={onSplit}
           onRemove={onRemove}
           onResize={onResize}
