@@ -19,12 +19,13 @@
  */
 
 import { appSchema, tableSchema } from '@nozbe/watermelondb'
+import { createTable, schemaMigrations } from '@nozbe/watermelondb/Schema/migrations'
 
 // Database name - fresh start
 export const DATABASE_NAME = 'ramble_v3'
 
 export const schema = appSchema({
-  version: 1,
+  version: 2,
   tables: [
     // ========================================================================
     // CORE - Foundation (Keep from v4)
@@ -221,6 +222,22 @@ export const schema = appSchema({
       ]
     }),
 
+    // Learned Corrections - Context-aware STT corrections (v2)
+    // Tracks corrections with surrounding context for smarter matching
+    tableSchema({
+      name: 'learned_corrections',
+      columns: [
+        { name: 'original', type: 'string', isIndexed: true },     // The wrong word/phrase
+        { name: 'corrected', type: 'string' },                      // What it was corrected to
+        { name: 'leftContext', type: 'string' },                    // JSON array of 3 words before
+        { name: 'rightContext', type: 'string' },                   // JSON array of 3 words after
+        { name: 'count', type: 'number' },                          // Times this exact correction was made
+        { name: 'confidence', type: 'number' },                     // Calculated confidence score
+        { name: 'createdAt', type: 'number', isIndexed: true },
+        { name: 'lastUsedAt', type: 'number', isOptional: true },
+      ]
+    }),
+
     // ========================================================================
     // DEBUG - Tracing and logging
     // ========================================================================
@@ -248,4 +265,29 @@ export const schema = appSchema({
       ]
     }),
   ]
+})
+
+// Migrations - IMPORTANT: Only additive changes to preserve data
+export const migrations = schemaMigrations({
+  migrations: [
+    {
+      // v1 → v2: Add learned_corrections table
+      toVersion: 2,
+      steps: [
+        createTable({
+          name: 'learned_corrections',
+          columns: [
+            { name: 'original', type: 'string', isIndexed: true },
+            { name: 'corrected', type: 'string' },
+            { name: 'leftContext', type: 'string' },
+            { name: 'rightContext', type: 'string' },
+            { name: 'count', type: 'number' },
+            { name: 'confidence', type: 'number' },
+            { name: 'createdAt', type: 'number', isIndexed: true },
+            { name: 'lastUsedAt', type: 'number', isOptional: true },
+          ]
+        }),
+      ],
+    },
+  ],
 })

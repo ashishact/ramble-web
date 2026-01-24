@@ -30,9 +30,8 @@
 	"observability": {
 		"enabled": true
 	},
-	"vars": {
-		"GROQ_API_KEY": "REDACTED"
-	}
+	// Use `wrangler secret put GROQ_API_KEY` to set secrets
+	"vars": {}
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

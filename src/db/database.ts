@@ -6,11 +6,12 @@
 
 import { Database } from '@nozbe/watermelondb'
 import LokiJSAdapter from '@nozbe/watermelondb/adapters/lokijs'
-import { schema, DATABASE_NAME } from './schema'
+import { schema, migrations, DATABASE_NAME } from './schema'
 import * as models from './models'
 
 const adapter = new LokiJSAdapter({
   schema,
+  migrations,  // IMPORTANT: Enables safe schema upgrades without data loss
   useWebWorker: false,
   useIncrementalIndexedDB: true,
   dbName: DATABASE_NAME,
@@ -37,6 +38,7 @@ export const collections = {
   // System
   plugins: database.get('plugins'),
   corrections: database.get('corrections'),
+  learnedCorrections: database.get('learned_corrections'),
   extractionLogs: database.get('extraction_logs'),
 }
 

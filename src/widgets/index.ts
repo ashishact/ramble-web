@@ -12,3 +12,4 @@ export { StatsWidget } from './cards/StatsWidget';
 export { TextInputWidget } from './cards/TextInputWidget';
 export { WorkingMemoryWidget } from './cards/WorkingMemoryWidget';
 export { SettingsWidget } from './cards/SettingsWidget';
+export { LearnedCorrectionsWidget } from './cards/LearnedCorrectionsWidget';

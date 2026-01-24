@@ -18,18 +18,19 @@ export interface SplitNode extends BaseNode {
 
 // Widget types that can be rendered in a bento card
 export type WidgetType =
-  | 'empty'           // Widget picker placeholder
-  | 'voice-recorder'  // Voice recording input
-  | 'text-input'      // Text input field
-  | 'conversation'    // Conversation history
-  | 'entities'        // Entity list/browser
-  | 'topics'          // Active topics
-  | 'memories'        // Active memories
-  | 'goals'           // Goals with progress
-  | 'stats'           // Quick stats
-  | 'settings'        // Settings panel
-  | 'working-memory'  // Full context view
-  | 'suggestions';    // AI-powered suggestions (volatile, not saved)
+  | 'empty'               // Widget picker placeholder
+  | 'voice-recorder'      // Voice recording input
+  | 'text-input'          // Text input field
+  | 'conversation'        // Conversation history
+  | 'entities'            // Entity list/browser
+  | 'topics'              // Active topics
+  | 'memories'            // Active memories
+  | 'goals'               // Goals with progress
+  | 'stats'               // Quick stats
+  | 'settings'            // Settings panel
+  | 'working-memory'      // Full context view
+  | 'suggestions'         // AI-powered suggestions (volatile, not saved)
+  | 'learned-corrections'; // Manage learned STT corrections
 
 export interface LeafNode extends BaseNode {
   type: 'leaf';

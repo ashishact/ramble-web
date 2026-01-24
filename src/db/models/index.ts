@@ -21,6 +21,7 @@ export { default as Goal } from './Goal'
 // System
 export { default as Plugin } from './Plugin'
 export { default as Correction } from './Correction'
+export { default as LearnedCorrection } from './LearnedCorrection'
 export { default as ExtractionLog } from './ExtractionLog'
 
 // Re-export types

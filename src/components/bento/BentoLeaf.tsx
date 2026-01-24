@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { LeafNode, WidgetType } from './types';
 import {
   MoreVertical, Trash2, Columns, Rows, GripHorizontal, AlertTriangle, X, Check, Palette, Type,
-  Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, Lightbulb
+  Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, Lightbulb, Pencil
 } from 'lucide-react';
 
 interface BentoLeafProps {
@@ -38,6 +38,7 @@ const WIDGET_OPTIONS: { type: WidgetType; label: string; icon: React.ReactNode }
     { type: 'suggestions', label: 'Suggestions', icon: <Lightbulb size={18} /> },
     { type: 'settings', label: 'Settings', icon: <Settings size={18} /> },
     { type: 'working-memory', label: 'Context', icon: <Eye size={18} /> },
+    { type: 'learned-corrections', label: 'Corrections', icon: <Pencil size={18} /> },
 ];
 
 export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, onRemove, onSwap, onColorChange, onContentChange, onWidgetChange, renderWidget, isRoot }) => {
