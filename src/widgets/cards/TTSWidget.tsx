@@ -172,11 +172,13 @@ export const TTSWidget: React.FC<WidgetProps> = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [playNext, playPrev, playbackState]);
 
-  // Update gradient progress - use polling to ensure we always have the right audio element
+  // Reset gradient progress when chunk changes (separate from polling)
   useEffect(() => {
-    // Reset progress when part changes
     setGradientProgress(0);
+  }, [currentPartId]);
 
+  // Poll for gradient progress updates while playing
+  useEffect(() => {
     if (playbackState !== 'playing') return;
 
     // Poll for progress updates - more reliable than event listeners across audio element changes
@@ -199,7 +201,7 @@ export const TTSWidget: React.FC<WidgetProps> = () => {
     return () => {
       clearInterval(intervalId);
     };
-  }, [getPlayingAudioElement, currentPartId, playbackState]);
+  }, [getPlayingAudioElement, playbackState]);
 
   // Auto-scroll to current part
   useEffect(() => {
