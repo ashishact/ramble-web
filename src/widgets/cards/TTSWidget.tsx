@@ -244,7 +244,6 @@ export const TTSWidget: React.FC<WidgetProps> = () => {
       return {
         background: 'color-mix(in srgb, var(--color-primary) 15%, transparent)',
         borderRadius: '0.375rem',
-        padding: '0 0.25rem',
       };
     }
 
@@ -259,7 +258,6 @@ export const TTSWidget: React.FC<WidgetProps> = () => {
     return {
       background: `linear-gradient(to right, ${baseColor} 0%, ${bandOuter} ${start}%, ${bandCenter} ${middle}%, ${bandOuter} ${end}%, ${baseColor} 100%)`,
       borderRadius: '0.375rem',
-      padding: '0 0.25rem',
       transition: 'background 100ms',
     };
   };
