@@ -15,7 +15,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext } from 'react';
 import { useSTT } from '../services/stt/useSTT';
 import { settingsHelpers } from '../stores/settingsStore';
-import { rambleChecker } from '../services/stt/rambleChecker';
+import { rambleNative } from '../services/stt/rambleNative';
 import { useKernel } from '../program/hooks';
 import { TranscriptReview, type RambleMetadata } from './TranscriptReview';
 
@@ -217,6 +217,8 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
         await connectSTT();
       }
       console.log('[GlobalSTT] Starting recording...');
+      // Stop TTS when user starts recording - user input takes priority
+      window.dispatchEvent(new CustomEvent('tts:stop'));
       await startRecording();
     }
   }, [
@@ -237,7 +239,7 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
       // Right Command key on Mac
       if (event.code === 'MetaRight') {
         // If Ramble is available, let it handle the keyboard
-        if (rambleChecker.isRambleAvailable()) {
+        if (rambleNative.isRambleAvailable()) {
           console.log('[GlobalSTT] Right Command - Ramble available, letting it handle');
           return;
         }
@@ -256,7 +258,7 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
       // Only handle paste when ramble is available
-      if (!rambleChecker.isRambleAvailable()) return;
+      if (!rambleNative.isRambleAvailable()) return;
 
       // Don't intercept if an input element is focused
       const activeElement = document.activeElement;

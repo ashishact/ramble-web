@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { rambleChecker } from '../services/stt/rambleChecker';
+import { rambleNative } from '../services/stt/rambleNative';
 import { showTranscriptReview, type RambleMetadata } from '../components/TranscriptReview';
 
 /**
@@ -53,7 +53,7 @@ export function useRamblePaste(onTranscript: (text: string) => void): void {
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
       // Only handle paste when ramble is available
-      if (!rambleChecker.isRambleAvailable()) return;
+      if (!rambleNative.isRambleAvailable()) return;
 
       // Don't intercept if an input element is focused - let paste happen naturally
       const activeElement = document.activeElement;

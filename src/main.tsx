@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './style.css'
 import App from './App.tsx'
-import { rambleChecker } from './services/stt/rambleChecker'
+import { rambleNative } from './services/stt/rambleNative'
 import { startBackupScheduler } from './db/backup'
 import { initializeDatabase } from './db'
 import { getCurrentProfile } from './lib/profile'
@@ -12,8 +12,8 @@ const profile = getCurrentProfile()
 initializeDatabase(profile)
 console.log(`[App] Starting with profile: ${profile}`)
 
-// Check for Ramble availability on app load
-rambleChecker.checkAvailability()
+// Connect to Ramble native app (maintains persistent WebSocket connection)
+rambleNative.connect()
 
 // Start hourly database backup scheduler
 startBackupScheduler()

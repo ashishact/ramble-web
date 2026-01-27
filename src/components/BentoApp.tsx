@@ -31,6 +31,7 @@ import { SuggestionWidget } from '../widgets/on-demand';
 import { RotateCcw, PencilRuler, Loader2 } from 'lucide-react';
 import { GlobalSTTController } from './GlobalSTTController';
 import { PipelineBreadcrumb } from './PipelineBreadcrumb';
+import { RambleNativeStatus } from './RambleNativeStatus';
 
 // Lazy-loaded TTS Widget
 const TTSWidget = lazy(() =>
@@ -137,6 +138,7 @@ export const BentoApp: React.FC = () => {
           <div className="flex items-center gap-3">
             <h1 className="text-xs font-bold text-slate-700">Ramble</h1>
             <PipelineBreadcrumb />
+            <RambleNativeStatus />
           </div>
           <div className="flex items-center gap-2">
             <button

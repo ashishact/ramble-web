@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSTT } from '../../services/stt/useSTT';
 import { settingsHelpers } from '../../stores/settingsStore';
-import { rambleChecker } from '../../services/stt/rambleChecker';
+import { rambleNative } from '../../services/stt/rambleNative';
 import { useRamblePaste } from '../../hooks/useRamblePaste';
 import { showTranscriptReview } from '../TranscriptReview';
 
@@ -148,7 +148,7 @@ export function VoiceRecorder({
       // Right Command key on Mac
       if (event.code === 'MetaRight') {
         // If Ramble is available, let it handle the keyboard
-        if (rambleChecker.isRambleAvailable()) {
+        if (rambleNative.isRambleAvailable()) {
           console.log('[VoiceRecorder] Right Command - Ramble available, letting it handle');
           return;
         }

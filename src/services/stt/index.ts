@@ -5,7 +5,7 @@
  */
 
 export { STTService, getSTTService } from './STTService';
-export { rambleChecker } from './rambleChecker';
+export { rambleNative, rambleChecker } from './rambleNative';
 export type {
   STTProvider,
   STTConfig,
