@@ -19,6 +19,37 @@ import {
 import { profileStorage } from '../../lib/profileStorage';
 
 const TTS_TEXT_STORAGE_KEY = 'tts-widget-text';
+const TTS_VOICE_SETTINGS_KEY = 'tts-voice-settings';
+
+interface VoiceSettings {
+  language: LanguageCode;
+  voice: string;
+}
+
+/**
+ * Load and validate voice settings from storage
+ * Returns defaults if stored data is invalid or missing
+ */
+function loadVoiceSettings(): VoiceSettings {
+  const defaultVoiceDef = voices.find(v => v.id === DEFAULT_VOICE);
+  const defaults: VoiceSettings = {
+    language: defaultVoiceDef?.language || 'en-gb',
+    voice: DEFAULT_VOICE,
+  };
+
+  const stored = profileStorage.getJSON<VoiceSettings>(TTS_VOICE_SETTINGS_KEY);
+  if (!stored) return defaults;
+
+  // Validate: voice must exist and belong to the stored language
+  const voiceDef = voices.find(v => v.id === stored.voice);
+  if (!voiceDef || voiceDef.language !== stored.language) {
+    // Invalid data - clear and use defaults
+    profileStorage.removeItem(TTS_VOICE_SETTINGS_KEY);
+    return defaults;
+  }
+
+  return stored;
+}
 
 
 export const TTSWidget: React.FC<WidgetProps> = () => {
@@ -44,7 +75,20 @@ export const TTSWidget: React.FC<WidgetProps> = () => {
   const [text, setText] = useState(() => {
     return profileStorage.getItem(TTS_TEXT_STORAGE_KEY) || '';
   });
-  const [selectedLanguage, setSelectedLanguage] = useState<LanguageCode>('en-gb');
+
+  // Load and validate voice settings from storage, set voice immediately
+  const [selectedLanguage, setSelectedLanguage] = useState<LanguageCode>(() => {
+    const settings = loadVoiceSettings();
+    // Set voice synchronously during initialization - no effect needed
+    setVoice(settings.voice);
+    return settings.language;
+  });
+  const isInitialized = useRef(false);
+
+  // Mark as initialized after first render completes
+  useEffect(() => {
+    isInitialized.current = true;
+  }, []);
   const [gradientProgress, setGradientProgress] = useState(0);
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
 
@@ -104,21 +148,31 @@ export const TTSWidget: React.FC<WidgetProps> = () => {
     [selectedLanguage]
   );
 
-  // Ensure current voice matches language on language change
+  // Ensure current voice matches language when user changes language
+  // Only runs after initialization completes, not on initial load
   useEffect(() => {
+    if (!isInitialized.current) return;
+
     const voiceInLang = availableVoices.find(v => v.id === currentVoice);
     if (!voiceInLang && availableVoices.length > 0) {
       setVoice(availableVoices[0].id);
     }
   }, [selectedLanguage, availableVoices, currentVoice, setVoice]);
 
-  // Initialize language from default voice
+  // Save voice settings when language or voice changes
+  // Skip on initial mount - don't overwrite saved settings during initialization
   useEffect(() => {
-    const defaultVoiceDef = voices.find(v => v.id === DEFAULT_VOICE);
-    if (defaultVoiceDef) {
-      setSelectedLanguage(defaultVoiceDef.language);
+    if (!isInitialized.current) return;
+
+    // Only save if voice belongs to selected language (valid state)
+    const voiceDef = voices.find(v => v.id === currentVoice);
+    if (voiceDef && voiceDef.language === selectedLanguage) {
+      profileStorage.setJSON<VoiceSettings>(TTS_VOICE_SETTINGS_KEY, {
+        language: selectedLanguage,
+        voice: currentVoice,
+      });
     }
-  }, []);
+  }, [selectedLanguage, currentVoice]);
 
   // Listen for cross-widget TTS events
   useEffect(() => {
