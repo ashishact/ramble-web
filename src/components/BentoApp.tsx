@@ -32,6 +32,7 @@ import { RotateCcw, PencilRuler, Loader2 } from 'lucide-react';
 import { GlobalSTTController } from './GlobalSTTController';
 import { PipelineBreadcrumb } from './PipelineBreadcrumb';
 import { RambleNativeStatus } from './RambleNativeStatus';
+import { HelpStrip } from './HelpStrip';
 
 // Lazy-loaded TTS Widget
 const TTSWidget = lazy(() =>
@@ -184,6 +185,9 @@ export const BentoApp: React.FC = () => {
             renderWidget={renderWidget}
           />
         </main>
+
+        {/* Help Strip */}
+        <HelpStrip />
       </div>
     </GlobalSTTController>
   );

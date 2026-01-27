@@ -105,7 +105,7 @@ export function HelpStrip() {
   }, []);
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 h-6 bg-base-200 border-t border-base-300 flex items-center px-3 gap-2 z-50">
+    <div className="h-6 bg-base-200 border-t border-base-300 flex items-center px-3 gap-2 flex-shrink-0">
       {docInfo ? (
         <>
           {docInfo.icon && (

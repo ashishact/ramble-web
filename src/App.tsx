@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { SettingsPageNew } from "./components/v2/SettingsPageNew";
 import { BentoApp } from "./components/BentoApp";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
-import { HelpStrip } from "./components/HelpStrip";
 
 function App() {
   return (
@@ -18,8 +17,6 @@ function App() {
       </Routes>
       {/* Global dialogs */}
       <RestoreConfirmDialog />
-      {/* Help strip at bottom */}
-      <HelpStrip />
     </BrowserRouter>
   );
 }
