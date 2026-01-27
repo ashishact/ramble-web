@@ -12,12 +12,22 @@
  * - checksum: simple hash to detect changes
  */
 
-import { database } from './database';
+import { database, getActiveProfile } from './database';
 
-// Backup database name (separate from main DB)
-const BACKUP_DB_NAME = 'ramble_backups';
+// Backup database name (separate from main DB, profile-specific)
 const BACKUP_STORE_NAME = 'backups';
 const BACKUP_DB_VERSION = 1;
+
+/**
+ * Get the backup database name for the current profile
+ */
+function getBackupDBName(): string {
+  const profile = getActiveProfile();
+  if (profile === 'default') {
+    return 'ramble_backups'; // Backward compatibility for default profile
+  }
+  return `ramble_backups_${profile}`;
+}
 
 // How many backups to keep
 const MAX_BACKUPS = 10;
@@ -64,7 +74,7 @@ export interface BackupMetadata {
 
 function openBackupDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(BACKUP_DB_NAME, BACKUP_DB_VERSION);
+    const request = indexedDB.open(getBackupDBName(), BACKUP_DB_VERSION);
 
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);

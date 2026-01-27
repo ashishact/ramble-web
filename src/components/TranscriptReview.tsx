@@ -25,12 +25,34 @@ import {
   computeWordDiff,
   type WordCorrection,
 } from '../services/phoneticMatcher';
-import { ArrowRight, Check, Brain, Sparkles, Pencil } from 'lucide-react';
+import { ArrowRight, Check, Brain, Sparkles, Pencil, Mic } from 'lucide-react';
+
+/**
+ * Ramble metadata from clipboard (compact format)
+ *
+ * HTML format:
+ *   <span data-ramble='{"s":"ramble","v":"1.9","ts":1706367000000,"t":"t","d":5.2}'>Hello world</span>
+ *
+ * Keys:
+ *   s   - source (always "ramble")
+ *   v   - version
+ *   ts  - timestamp (unix ms)
+ *   t   - type: "t"=transcription, "x"=transformation
+ *   d   - duration in seconds (optional)
+ */
+export interface RambleMetadata {
+  source: string;  // e.g., 'ramble', 'whisper', etc.
+  version: string;
+  timestamp: number;  // unix ms
+  type: 'transcription' | 'transformation';
+  duration?: number;
+}
 
 interface TranscriptReviewProps {
   initialText: string;
   onSubmit: (text: string) => void;
   onCancel: () => void;
+  rambleMetadata?: RambleMetadata | null;
 }
 
 interface EntityData {
@@ -54,7 +76,7 @@ interface LiveEdit {
   rightContext: string[];
 }
 
-export function TranscriptReview({ initialText, onSubmit, onCancel }: TranscriptReviewProps) {
+export function TranscriptReview({ initialText, onSubmit, onCancel, rambleMetadata }: TranscriptReviewProps) {
   // Keep original text for diff computation on submit
   const originalTextRef = useRef(initialText);
   const [text, setText] = useState(initialText);
@@ -456,6 +478,27 @@ export function TranscriptReview({ initialText, onSubmit, onCancel }: Transcript
       <div className={`w-full mx-4 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 ${
         showPanels ? 'max-w-6xl' : 'max-w-2xl'
       }`}>
+        {/* Ramble metadata bar */}
+        {rambleMetadata && (
+          <div className="px-4 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-100 flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-purple-600">
+              <Mic size={14} />
+              <span className="text-xs font-semibold capitalize">{rambleMetadata.source}</span>
+              <span className="text-[10px] text-purple-400">v{rambleMetadata.version}</span>
+            </div>
+            <div className="h-3 w-px bg-purple-200" />
+            <div className="flex items-center gap-3 text-[11px] text-slate-600">
+              <span className="capitalize">{rambleMetadata.type}</span>
+              {rambleMetadata.duration && (
+                <span>
+                  <span className="text-slate-400">Duration:</span>{' '}
+                  {rambleMetadata.duration.toFixed(1)}s
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Panel layout - single or three-panel based on corrections */}
         <div className={`flex ${showPanels ? 'min-h-[300px]' : 'min-h-[150px]'} max-h-[70vh]`}>
           {/* Source Text Panel */}
@@ -667,15 +710,15 @@ export function TranscriptReview({ initialText, onSubmit, onCancel }: Transcript
 // Global state for showing the transcript review
 type TranscriptCallback = (text: string) => void;
 
-let showReviewFn: ((text: string, onSubmit: TranscriptCallback) => void) | null = null;
+let showReviewFn: ((text: string, onSubmit: TranscriptCallback, metadata?: RambleMetadata | null) => void) | null = null;
 
-export function registerTranscriptReview(fn: (text: string, onSubmit: TranscriptCallback) => void) {
+export function registerTranscriptReview(fn: (text: string, onSubmit: TranscriptCallback, metadata?: RambleMetadata | null) => void) {
   showReviewFn = fn;
 }
 
-export function showTranscriptReview(text: string, onSubmit: TranscriptCallback) {
+export function showTranscriptReview(text: string, onSubmit: TranscriptCallback, metadata?: RambleMetadata | null) {
   if (showReviewFn) {
-    showReviewFn(text, onSubmit);
+    showReviewFn(text, onSubmit, metadata);
   } else {
     // Fallback: directly submit if review not registered
     console.warn('[TranscriptReview] Not registered, submitting directly');

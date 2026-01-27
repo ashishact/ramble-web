@@ -758,13 +758,33 @@ export function computeWordDiff(
   const ops = computeEditOperations(origArr, editArr);
 
   // Convert operations to DetectedChange format
+  // Use two passes: first identify word splits, then handle remaining changes
   const changes: DetectedChange[] = [];
 
-  let i = 0;
-  while (i < ops.length) {
-    const op = ops[i];
+  // Pass 1: Pre-process to detect word splits
+  // A word split is when: insert(s) + substitute where original contains substitute target
+  // e.g., "Charantandi" → insert "Charan" + substitute "Charantandi"→"Tandi"
+  // Should become: "Charantandi" → "Charan Tandi"
+  const processedOps = detectWordSplits(ops, origArr, editArr);
 
-    if (op.type === 'substitute') {
+  let i = 0;
+  while (i < processedOps.length) {
+    const op = processedOps[i];
+
+    if (op.type === 'split') {
+      // Word split detected
+      const leftContext = getWordContext(origArr.map(w => w.toLowerCase()), op.origIdx, 'left', 3);
+      const rightContext = getWordContext(origArr.map(w => w.toLowerCase()), op.origIdx, 'right', 3);
+
+      changes.push({
+        original: origArr[op.origIdx],
+        corrected: op.combined,
+        leftContext,
+        rightContext,
+        originalIndex: op.origIdx,
+      });
+      i++;
+    } else if (op.type === 'substitute') {
       // Simple replacement
       const leftContext = getWordContext(origArr.map(w => w.toLowerCase()), op.origIdx, 'left', 3);
       const rightContext = getWordContext(origArr.map(w => w.toLowerCase()), op.origIdx, 'right', 3);
@@ -779,11 +799,10 @@ export function computeWordDiff(
       i++;
     } else if (op.type === 'delete') {
       // Check if this delete is followed by inserts (word split scenario)
-      // e.g., delete "Charantandi" + insert "Charan" + insert "Tandi"
       const inserts: number[] = [];
       let j = i + 1;
-      while (j < ops.length && ops[j].type === 'insert') {
-        inserts.push((ops[j] as { type: 'insert'; editIdx: number }).editIdx);
+      while (j < processedOps.length && processedOps[j].type === 'insert') {
+        inserts.push((processedOps[j] as { type: 'insert'; editIdx: number }).editIdx);
         j++;
       }
 
@@ -806,8 +825,7 @@ export function computeWordDiff(
         i++;
       }
     } else if (op.type === 'insert') {
-      // Check if followed by a delete (reverse split - merge scenario)
-      // For now, skip pure insertions - we mainly care about corrections
+      // Skip pure insertions - we mainly care about corrections
       i++;
     } else {
       // Match - no change
@@ -816,6 +834,131 @@ export function computeWordDiff(
   }
 
   return changes;
+}
+
+/**
+ * Extended operation type that includes word splits
+ */
+type ProcessedOp = EditOp | { type: 'split'; origIdx: number; combined: string };
+
+/**
+ * Detect word splits in the operation sequence
+ *
+ * A word split occurs when:
+ * - Pattern 1: insert(s) followed by substitute, where original word contains the substitute target
+ *   e.g., "Charantandi" → insert "Charan" + sub "Charantandi"→"Tandi"
+ *   The original "Charantandi" contains "Tandi", so this is a split
+ *
+ * - Pattern 2: substitute followed by insert(s), where original word starts with substitute target
+ *   e.g., sub "Charantandi"→"Charan" + insert "Tandi"
+ */
+function detectWordSplits(ops: EditOp[], origArr: string[], editArr: string[]): ProcessedOp[] {
+  const result: ProcessedOp[] = [];
+  let i = 0;
+
+  while (i < ops.length) {
+    const op = ops[i];
+
+    // Pattern 1: insert(s) + substitute where original contains substitute target
+    if (op.type === 'insert') {
+      const insertedWords: string[] = [editArr[op.editIdx]];
+      let j = i + 1;
+
+      // Collect consecutive inserts
+      while (j < ops.length && ops[j].type === 'insert') {
+        insertedWords.push(editArr[(ops[j] as { type: 'insert'; editIdx: number }).editIdx]);
+        j++;
+      }
+
+      // Check if followed by a substitute
+      if (j < ops.length && ops[j].type === 'substitute') {
+        const subOp = ops[j] as { type: 'substitute'; origIdx: number; editIdx: number };
+        const originalWord = origArr[subOp.origIdx].toLowerCase();
+        const substitutedWith = editArr[subOp.editIdx].toLowerCase();
+
+        // Check if original contains the substituted word (likely a split)
+        // e.g., "charantandi" contains "tandi"
+        if (originalWord.includes(substitutedWith) && substitutedWith.length >= 3) {
+          // This is a word split!
+          insertedWords.push(editArr[subOp.editIdx]);
+          result.push({
+            type: 'split',
+            origIdx: subOp.origIdx,
+            combined: insertedWords.join(' '),
+          });
+          i = j + 1;
+          continue;
+        }
+      }
+
+      // Not a split, add inserts as-is
+      for (let k = i; k < j; k++) {
+        result.push(ops[k]);
+      }
+      i = j;
+      continue;
+    }
+
+    // Pattern 2: substitute + insert(s) where original starts with substitute target
+    if (op.type === 'substitute') {
+      const originalWord = origArr[op.origIdx].toLowerCase();
+      const substitutedWith = editArr[op.editIdx].toLowerCase();
+
+      // Check if there are following inserts
+      const insertedWords: string[] = [];
+      let j = i + 1;
+      while (j < ops.length && ops[j].type === 'insert') {
+        insertedWords.push(editArr[(ops[j] as { type: 'insert'; editIdx: number }).editIdx]);
+        j++;
+      }
+
+      if (insertedWords.length > 0) {
+        // Check if this looks like a word split
+        // Either: original starts with substitute (e.g., "Charantandi" starts with "Charan")
+        // Or: original ends with one of the inserts
+        const combined = [editArr[op.editIdx], ...insertedWords].join(' ');
+        const combinedNoSpaces = combined.replace(/\s+/g, '').toLowerCase();
+
+        // Check if the combined result is similar to original (character-wise)
+        // This catches cases like "Charantandi" → "Charan Tandi"
+        if (
+          originalWord.startsWith(substitutedWith) ||
+          originalWord === combinedNoSpaces ||
+          levenshteinSimilarity(originalWord, combinedNoSpaces) > 0.8
+        ) {
+          result.push({
+            type: 'split',
+            origIdx: op.origIdx,
+            combined,
+          });
+          i = j;
+          continue;
+        }
+      }
+
+      // Not a split, add substitute as-is
+      result.push(op);
+      i++;
+      continue;
+    }
+
+    // All other operations pass through
+    result.push(op);
+    i++;
+  }
+
+  return result;
+}
+
+/**
+ * Calculate Levenshtein similarity between two strings (0-1)
+ */
+function levenshteinSimilarity(a: string, b: string): number {
+  if (a === b) return 1;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  const dist = editDistance(a, b);
+  return 1 - dist / maxLen;
 }
 
 /**

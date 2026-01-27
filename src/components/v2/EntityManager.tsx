@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import { entityStore } from '../../db/stores';
+import { SortIcon } from './SortIcon';
 import type Entity from '../../db/models/Entity';
 
 // Helper to format relative time
@@ -314,16 +315,6 @@ export function EntityManager({ onClose }: EntityManagerProps) {
     setFormDescription(entity.description ?? '');
   };
 
-  // Render sort icon
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <Icon icon="mdi:unfold-more-horizontal" className="w-4 h-4 opacity-30" />;
-    return sortDir === 'asc' ? (
-      <Icon icon="mdi:arrow-up" className="w-4 h-4" />
-    ) : (
-      <Icon icon="mdi:arrow-down" className="w-4 h-4" />
-    );
-  };
-
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-base-100 rounded-lg shadow-xl w-[95vw] max-w-6xl h-[90vh] flex flex-col">
@@ -439,28 +430,28 @@ export function EntityManager({ onClose }: EntityManagerProps) {
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('name')}>
                     <div className="flex items-center gap-1">
-                      Name <SortIcon field="name" />
+                      Name <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('type')}>
                     <div className="flex items-center gap-1">
-                      Type <SortIcon field="type" />
+                      Type <SortIcon field="type" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th>Aliases</th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('mentionCount')}>
                     <div className="flex items-center gap-1">
-                      Mentions <SortIcon field="mentionCount" />
+                      Mentions <SortIcon field="mentionCount" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('firstMentioned')}>
                     <div className="flex items-center gap-1">
-                      First <SortIcon field="firstMentioned" />
+                      First <SortIcon field="firstMentioned" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('lastMentioned')}>
                     <div className="flex items-center gap-1">
-                      Last <SortIcon field="lastMentioned" />
+                      Last <SortIcon field="lastMentioned" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="w-20">Actions</th>

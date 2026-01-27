@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import { goalStore } from '../../db/stores';
+import { SortIcon } from './SortIcon';
 import type Goal from '../../db/models/Goal';
 import type { GoalStatus } from '../../db/models/Goal';
 
@@ -222,16 +223,6 @@ export function GoalManager({ onClose }: GoalManagerProps) {
     setFormProgress(goal.progress);
   };
 
-  // Render sort icon
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <Icon icon="mdi:unfold-more-horizontal" className="w-4 h-4 opacity-30" />;
-    return sortDir === 'asc' ? (
-      <Icon icon="mdi:arrow-up" className="w-4 h-4" />
-    ) : (
-      <Icon icon="mdi:arrow-down" className="w-4 h-4" />
-    );
-  };
-
   // Status badge color
   const statusColor = (status: GoalStatus) => {
     switch (status) {
@@ -362,27 +353,27 @@ export function GoalManager({ onClose }: GoalManagerProps) {
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('statement')}>
                     <div className="flex items-center gap-1">
-                      Statement <SortIcon field="statement" />
+                      Statement <SortIcon field="statement" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('type')}>
                     <div className="flex items-center gap-1">
-                      Type <SortIcon field="type" />
+                      Type <SortIcon field="type" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('status')}>
                     <div className="flex items-center gap-1">
-                      Status <SortIcon field="status" />
+                      Status <SortIcon field="status" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('progress')}>
                     <div className="flex items-center gap-1">
-                      Progress <SortIcon field="progress" />
+                      Progress <SortIcon field="progress" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('lastReferenced')}>
                     <div className="flex items-center gap-1">
-                      Last Ref <SortIcon field="lastReferenced" />
+                      Last Ref <SortIcon field="lastReferenced" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="w-28">Actions</th>

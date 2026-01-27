@@ -50,6 +50,48 @@ export const taskStore = {
       .fetch()
   },
 
+  /**
+   * Get tasks that can be retried: pending tasks + failed tasks
+   * Failed tasks are included so they can be retried on app reload
+   * (user may have fixed the issue, e.g., corrected API key)
+   */
+  async getRetryable(limit = 10): Promise<Task[]> {
+    const now = Date.now()
+    return await tasks
+      .query(
+        Q.or(
+          Q.and(
+            Q.where('status', 'pending'),
+            Q.where('scheduledAt', Q.lte(now))
+          ),
+          Q.where('status', 'failed')
+        ),
+        Q.sortBy('priority', Q.desc),
+        Q.sortBy('createdAt', Q.asc),
+        Q.take(limit)
+      )
+      .fetch()
+  },
+
+  /**
+   * Reset a failed task back to pending for retry
+   */
+  async resetForRetry(id: string): Promise<void> {
+    try {
+      const task = await tasks.find(id)
+      await database.write(async () => {
+        await task.update((t) => {
+          t.status = 'pending'
+          t.attempts = 0
+          t.scheduledAt = Date.now()
+          t.lastError = undefined
+        })
+      })
+    } catch {
+      // Not found
+    }
+  },
+
   async getByStatus(status: TaskStatus): Promise<Task[]> {
     return await tasks
       .query(
@@ -103,7 +145,16 @@ export const taskStore = {
       const task = await tasks.find(id)
       await database.write(async () => {
         await task.update((t) => {
-          t.status = t.attempts >= t.maxAttempts ? 'failed' : 'pending'
+          if (t.attempts >= t.maxAttempts) {
+            // Exhausted all retries - mark as permanently failed
+            t.status = 'failed'
+          } else {
+            // Schedule retry with exponential backoff
+            // Attempt 1 → retry after 10s, Attempt 2 → retry after 60s, etc.
+            const backoffSeconds = Math.pow(6, t.attempts) * 10 // 10s, 60s, 360s
+            t.status = 'pending'
+            t.scheduledAt = Date.now() + (backoffSeconds * 1000)
+          }
           t.lastError = error
         })
       })
@@ -162,9 +213,26 @@ if (typeof window !== 'undefined') {
     const all = await taskStore.getAll()
     console.log('All tasks:', all.length)
     for (const t of all) {
-      console.log(`  - ${t.id} [${t.status}] ${t.taskType}`)
+      console.log(`  - ${t.id} [${t.status}] ${t.taskType} (attempts: ${t.attempts}/${t.maxAttempts})`)
       console.log(`    payload:`, t.payloadParsed)
+      if (t.lastError) console.log(`    lastError:`, t.lastError)
     }
     return all
+  }
+
+  // Reset all failed tasks for retry (call this after fixing API key, etc.)
+  ;(window as unknown as Record<string, unknown>).retryFailedTasks = async () => {
+    const failed = await taskStore.getByStatus('failed')
+    console.log(`Found ${failed.length} failed tasks`)
+
+    let reset = 0
+    for (const task of failed) {
+      await taskStore.resetForRetry(task.id)
+      reset++
+      console.log(`  Reset task ${task.id} (${task.taskType})`)
+    }
+
+    console.log(`Reset ${reset} tasks. Reload the page to trigger retry.`)
+    return { reset }
   }
 }

@@ -17,7 +17,8 @@ import { settingsHelpers, type AppSettings } from '../../stores/settingsStore';
 import { ThemeSelector } from './ThemeSelector';
 import { LLMTierPanel } from './settings/LLMTierPanel';
 import { STTTierPanel } from './settings/STTTierPanel';
-import { DATABASE_NAME } from '../../db/schema';
+import { getActiveProfile } from '../../db';
+import { getDatabaseName } from '../../lib/profile';
 
 type SettingsCategory =
   | 'api-keys'
@@ -358,8 +359,12 @@ export function SettingsPageNew({ onBack }: { onBack: () => void }) {
                   <h3 className="card-title">Database Info</h3>
                   <div className="space-y-2">
                     <div className="flex justify-between">
+                      <span className="text-base-content/60">Profile:</span>
+                      <span className="font-mono">{getActiveProfile()}</span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-base-content/60">Database Name:</span>
-                      <span className="font-mono">{DATABASE_NAME}</span>
+                      <span className="font-mono">{getDatabaseName(getActiveProfile())}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-base-content/60">Storage:</span>

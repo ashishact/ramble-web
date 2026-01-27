@@ -17,7 +17,35 @@ import { useSTT } from '../services/stt/useSTT';
 import { settingsHelpers } from '../stores/settingsStore';
 import { rambleChecker } from '../services/stt/rambleChecker';
 import { useKernel } from '../program/hooks';
-import { TranscriptReview } from './TranscriptReview';
+import { TranscriptReview, type RambleMetadata } from './TranscriptReview';
+
+/**
+ * Parse Ramble metadata from HTML clipboard content (compact format)
+ *
+ * HTML format:
+ *   <span data-ramble='{"s":"ramble","v":"1.9","ts":1706367000000,"t":"t","d":5.2}'>text</span>
+ *
+ * Keys: s=source, v=version, ts=timestamp(unix ms), t=type(t/x), d=duration
+ */
+function parseRambleMetadata(html: string): RambleMetadata | null {
+  try {
+    const match = html.match(/data-ramble='([^']+)'/);
+    if (!match) return null;
+
+    const data = JSON.parse(match[1]);
+    if (!data.s) return null;  // Must have source
+
+    return {
+      source: data.s,
+      version: data.v,
+      timestamp: data.ts,
+      type: data.t === 'x' ? 'transformation' : 'transcription',
+      duration: data.d,
+    };
+  } catch {
+    return null;
+  }
+}
 
 // Global STT state context
 interface GlobalSTTState {
@@ -48,6 +76,7 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
 
   // Transcript review state
   const [reviewText, setReviewText] = useState<string | null>(null);
+  const [reviewMetadata, setReviewMetadata] = useState<RambleMetadata | null>(null);
   const reviewCallbackRef = useRef<((text: string) => void) | null>(null);
 
   // Get kernel for submitting input
@@ -116,8 +145,9 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
   );
 
   // Show transcript review
-  const showReview = useCallback((text: string, onSubmit: (reviewed: string) => void) => {
+  const showReview = useCallback((text: string, onSubmit: (reviewed: string) => void, metadata?: RambleMetadata | null) => {
     setReviewText(text);
+    setReviewMetadata(metadata || null);
     reviewCallbackRef.current = onSubmit;
   }, []);
 
@@ -128,6 +158,7 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
         reviewCallbackRef.current(text);
       }
       setReviewText(null);
+      setReviewMetadata(null);
       reviewCallbackRef.current = null;
     },
     []
@@ -136,6 +167,7 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
   // Handle review cancel
   const handleReviewCancel = useCallback(() => {
     setReviewText(null);
+    setReviewMetadata(null);
     reviewCallbackRef.current = null;
   }, []);
 
@@ -240,9 +272,18 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
       if (!text) return;
 
       event.preventDefault();
-      console.log('[GlobalSTT] Captured Ramble paste, showing review');
 
-      showReview(text.trim(), handleSubmitTranscript);
+      // Check for HTML content with Ramble metadata
+      const html = event.clipboardData?.getData('text/html') || '';
+      const rambleMetadata = parseRambleMetadata(html);
+
+      if (rambleMetadata) {
+        console.log('[GlobalSTT] Captured Ramble paste with metadata:', rambleMetadata);
+      } else {
+        console.log('[GlobalSTT] Captured Ramble paste (no metadata)');
+      }
+
+      showReview(text.trim(), handleSubmitTranscript, rambleMetadata);
     };
 
     document.addEventListener('paste', handlePaste);
@@ -271,6 +312,7 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
           initialText={reviewText}
           onSubmit={handleReviewSubmit}
           onCancel={handleReviewCancel}
+          rambleMetadata={reviewMetadata}
         />
       )}
     </GlobalSTTContext.Provider>

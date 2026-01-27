@@ -10,11 +10,40 @@
  * - Doesn't intercept paste events when an input element is focused
  *   (lets the paste go into the input naturally)
  * - Registers listener once on mount, checks ramble state inside handler
+ * - Parses Ramble metadata from HTML clipboard if available
  */
 
 import { useEffect, useRef } from 'react';
 import { rambleChecker } from '../services/stt/rambleChecker';
-import { showTranscriptReview } from '../components/TranscriptReview';
+import { showTranscriptReview, type RambleMetadata } from '../components/TranscriptReview';
+
+/**
+ * Parse Ramble metadata from HTML clipboard content (compact format)
+ *
+ * HTML format:
+ *   <span data-ramble='{"s":"ramble","v":"1.9","ts":1706367000000,"t":"t","d":5.2}'>text</span>
+ *
+ * Keys: s=source, v=version, ts=timestamp(unix ms), t=type(t/x), d=duration
+ */
+function parseRambleMetadata(html: string): RambleMetadata | null {
+  try {
+    const match = html.match(/data-ramble='([^']+)'/);
+    if (!match) return null;
+
+    const data = JSON.parse(match[1]);
+    if (!data.s) return null;  // Must have source
+
+    return {
+      source: data.s,
+      version: data.v,
+      timestamp: data.ts,
+      type: data.t === 'x' ? 'transformation' : 'transcription',
+      duration: data.d,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export function useRamblePaste(onTranscript: (text: string) => void): void {
   // Use ref to always have latest callback without re-registering listener
@@ -42,12 +71,20 @@ export function useRamblePaste(onTranscript: (text: string) => void): void {
       // Prevent default only for non-input elements
       event.preventDefault();
 
-      console.log('[useRamblePaste] Captured paste, showing review:', text.slice(0, 50) + '...');
+      // Check for HTML content with Ramble metadata
+      const html = event.clipboardData?.getData('text/html') || '';
+      const rambleMetadata = parseRambleMetadata(html);
 
-      // Show transcript review overlay instead of direct submit
+      if (rambleMetadata) {
+        console.log('[useRamblePaste] Detected Ramble paste with metadata:', rambleMetadata);
+      } else {
+        console.log('[useRamblePaste] Captured paste (no Ramble metadata):', text.slice(0, 50) + '...');
+      }
+
+      // Show transcript review overlay with metadata if available
       showTranscriptReview(text.trim(), (reviewedText) => {
         callbackRef.current(reviewedText);
-      });
+      }, rambleMetadata);
     };
 
     // Register ONCE on mount

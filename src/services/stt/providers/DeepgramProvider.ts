@@ -24,7 +24,7 @@ export class DeepgramProvider implements ISTTProvider {
   private isManualClose = false;
   private finalTranscript = '';
   private version: 'v1' | 'v2';
-  private keepaliveInterval: number | null = null;
+  private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
   private providerType: STTProvider;
 
   constructor(config: STTConfig) {

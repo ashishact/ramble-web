@@ -1,6 +1,6 @@
 import type { WidgetProps } from '../types';
 import type { WidgetType } from '../../components/bento/types';
-import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, Lightbulb, Pencil } from 'lucide-react';
+import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, Lightbulb, Pencil, Volume2 } from 'lucide-react';
 
 const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'empty': null,
@@ -16,6 +16,7 @@ const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'settings': <Settings className="w-8 h-8" />,
   'working-memory': <Eye className="w-8 h-8" />,
   'learned-corrections': <Pencil className="w-8 h-8" />,
+  'tts': <Volume2 className="w-8 h-8" />,
 };
 
 const WIDGET_LABELS: Record<WidgetType, string> = {
@@ -32,6 +33,7 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   'settings': 'Settings',
   'working-memory': 'Working Memory',
   'learned-corrections': 'Learned Corrections',
+  'tts': 'Text to Speech',
 };
 
 interface PlaceholderWidgetProps extends WidgetProps {

@@ -2,7 +2,7 @@
  * Suggestion Process
  *
  * Analyzes current working memory and suggests what to talk about.
- * Results stored in localStorage for persistence across reloads.
+ * Results stored in profile-scoped localStorage for persistence across reloads.
  */
 
 import { z } from 'zod';
@@ -10,12 +10,13 @@ import { callLLM } from '../../../program/llmClient';
 import { workingMemory } from '../../../program/WorkingMemory';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
 import { getKernel } from '../../../program/kernel/kernel';
+import { profileStorage } from '../../../lib/profileStorage';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const STORAGE_KEY = 'ramble_suggestions';
+const STORAGE_KEY = 'suggestions';
 
 // ============================================================================
 // Zod Schemas for validation
@@ -47,47 +48,46 @@ export type SuggestionResult = z.infer<typeof SuggestionResultSchema>;
 // ============================================================================
 
 /**
- * Save suggestions to localStorage
+ * Save suggestions to profile-scoped storage
  */
 export function saveSuggestionsToStorage(result: SuggestionResult): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(result));
+    profileStorage.setJSON(STORAGE_KEY, result);
   } catch (error) {
-    console.warn('Failed to save suggestions to localStorage:', error);
+    console.warn('Failed to save suggestions to storage:', error);
   }
 }
 
 /**
- * Load suggestions from localStorage with Zod validation
+ * Load suggestions from profile-scoped storage with Zod validation
  * Returns null if not found or invalid
  */
 export function loadSuggestionsFromStorage(): SuggestionResult | null {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return null;
+    const parsed = profileStorage.getJSON<unknown>(STORAGE_KEY);
+    if (!parsed) return null;
 
-    const parsed = JSON.parse(stored);
     const validated = SuggestionResultSchema.safeParse(parsed);
 
     if (validated.success) {
       return validated.data;
     } else {
-      console.warn('Invalid suggestions in localStorage, clearing:', validated.error);
-      localStorage.removeItem(STORAGE_KEY);
+      console.warn('Invalid suggestions in storage, clearing:', validated.error);
+      profileStorage.removeItem(STORAGE_KEY);
       return null;
     }
   } catch (error) {
-    console.warn('Failed to load suggestions from localStorage:', error);
-    localStorage.removeItem(STORAGE_KEY);
+    console.warn('Failed to load suggestions from storage:', error);
+    profileStorage.removeItem(STORAGE_KEY);
     return null;
   }
 }
 
 /**
- * Clear suggestions from localStorage
+ * Clear suggestions from profile-scoped storage
  */
 export function clearSuggestionsFromStorage(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  profileStorage.removeItem(STORAGE_KEY);
 }
 
 // ============================================================================

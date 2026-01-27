@@ -321,23 +321,17 @@ class Kernel {
       }
     }
 
-    // For running tasks that are stale (crashed), mark complete and fix conversation
+    // For running tasks that are stale (crashed), reset to pending for retry
+    // Don't complete them - the processing might have failed mid-way
     for (const task of runningProcessInputTasks) {
       try {
-        const payload = task.payloadParsed as { conversationId?: string };
-        if (payload.conversationId) {
-          // Mark conversation as processed
-          await conversationStore.markProcessed(payload.conversationId);
-          // Complete the task
-          await taskStore.complete(task.id);
-          fixed++;
-          logger.info('Fixed stale running task', {
-            taskId: task.id,
-            conversationId: payload.conversationId
-          });
-        }
+        // Reset to pending so resumePendingTasks will pick it up
+        await taskStore.reschedule(task.id, Date.now());
+        logger.info('Reset stale running task to pending', {
+          taskId: task.id,
+        });
       } catch {
-        // Invalid payload, skip
+        // Invalid task, skip
       }
     }
 
@@ -347,6 +341,8 @@ class Kernel {
   }
 
   private async resumePendingTasks(): Promise<void> {
+    // Only get pending tasks - failed tasks require manual retry via reprocessFailed()
+    // This prevents infinite retry loops when API is persistently broken
     const pendingTasks = await taskStore.getPending(10);
 
     if (pendingTasks.length === 0) return;
@@ -373,9 +369,11 @@ class Kernel {
           // Mark conversation first, then complete task
           await conversationStore.markProcessed(payload.conversationId);
           await taskStore.complete(task.id);
+          logger.info('Successfully resumed task', { taskId: task.id });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           await taskStore.fail(task.id, errorMessage);
+          logger.error('Failed to resume task', { taskId: task.id, error: errorMessage });
         }
       }
     }

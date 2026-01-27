@@ -2,8 +2,8 @@
  * Database Module Export
  */
 
-export { database, collections, getCollection } from './database'
-export { schema, DATABASE_NAME } from './schema'
+export { database, collections, getCollection, initializeDatabase, getDatabase, getActiveProfile } from './database'
+export { schema } from './schema'
 
 // Models
 export * from './models'

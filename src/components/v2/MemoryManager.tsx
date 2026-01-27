@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import { memoryStore } from '../../db/stores';
+import { SortIcon } from './SortIcon';
 import type Memory from '../../db/models/Memory';
 
 // Helper to format relative time
@@ -226,16 +227,6 @@ export function MemoryManager({ onClose }: MemoryManagerProps) {
     setFormConfidence(Math.round(memory.confidence * 100));
   };
 
-  // Render sort icon
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <Icon icon="mdi:unfold-more-horizontal" className="w-4 h-4 opacity-30" />;
-    return sortDir === 'asc' ? (
-      <Icon icon="mdi:arrow-up" className="w-4 h-4" />
-    ) : (
-      <Icon icon="mdi:arrow-down" className="w-4 h-4" />
-    );
-  };
-
   // Type color
   const typeColor = (type: string) => {
     switch (type) {
@@ -361,27 +352,27 @@ export function MemoryManager({ onClose }: MemoryManagerProps) {
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('content')}>
                     <div className="flex items-center gap-1">
-                      Content <SortIcon field="content" />
+                      Content <SortIcon field="content" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('type')}>
                     <div className="flex items-center gap-1">
-                      Type <SortIcon field="type" />
+                      Type <SortIcon field="type" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('importance')}>
                     <div className="flex items-center gap-1">
-                      Importance <SortIcon field="importance" />
+                      Importance <SortIcon field="importance" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('confidence')}>
                     <div className="flex items-center gap-1">
-                      Confidence <SortIcon field="confidence" />
+                      Confidence <SortIcon field="confidence" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="cursor-pointer hover:bg-base-200" onClick={() => toggleSort('lastReinforced')}>
                     <div className="flex items-center gap-1">
-                      Reinforced <SortIcon field="lastReinforced" />
+                      Reinforced <SortIcon field="lastReinforced" sortField={sortField} sortDir={sortDir} />
                     </div>
                   </th>
                   <th className="w-28">Actions</th>
