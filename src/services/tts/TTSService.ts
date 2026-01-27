@@ -13,7 +13,7 @@ import type {
   TTSPart,
 } from './types';
 import { DEFAULT_VOICE } from './voices';
-import { splitParagraph, sanitizeText } from './textChunker';
+import { splitParagraph, sanitizeText, sanitizeChunk } from './textChunker';
 
 // v1.0 model with 54 voices and 8 languages
 const MODEL_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX';
@@ -141,8 +141,10 @@ class TTSService {
     if (!tts) return false;
 
     try {
+      // Sanitize the chunk text for TTS (handles any remaining punctuation issues)
+      const textForTTS = sanitizeChunk(part.text);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const audio = await tts.generate(part.text, { voice: this.currentVoice as any });
+      const audio = await tts.generate(textForTTS, { voice: this.currentVoice as any });
       const blob = audio.toBlob();
       const audioElement = new Audio(URL.createObjectURL(blob));
 
@@ -262,14 +264,15 @@ class TTSService {
       return;
     }
 
-    // Split into chunks like Stobo does
+    // Split into chunks - paragraphs first, then sentences
     const chunks = splitParagraph(sanitized, 350);
     this.currentWords = sanitized.split(' ');
 
-    // Create parts with IDs
-    this.parts = chunks.map(c => ({
+    // Create parts with IDs and paragraph info
+    this.parts = chunks.map(chunk => ({
       id: generatePartId(),
-      text: c,
+      text: chunk.text,
+      isFirstInParagraph: chunk.isFirstInParagraph,
     }));
     this.currentPartId = '';
 

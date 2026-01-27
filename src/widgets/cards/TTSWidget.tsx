@@ -172,23 +172,34 @@ export const TTSWidget: React.FC<WidgetProps> = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [playNext, playPrev, playbackState]);
 
-  // Update gradient progress from audio timeupdate
+  // Update gradient progress - use polling to ensure we always have the right audio element
   useEffect(() => {
-    const audioElement = getPlayingAudioElement();
-    if (!audioElement) return;
+    // Reset progress when part changes
+    setGradientProgress(0);
 
-    const updateProgress = () => {
+    if (playbackState !== 'playing') return;
+
+    // Poll for progress updates - more reliable than event listeners across audio element changes
+    const intervalId = setInterval(() => {
+      const audioElement = getPlayingAudioElement();
+      if (!audioElement) return;
+
+      const duration = audioElement.duration;
+      // Only calculate if duration is valid
+      if (!isFinite(duration) || duration <= 0) return;
+
       const currentTime = audioElement.currentTime;
       // Offset for silence at end (like Stobo)
-      const totalDuration = Math.max(audioElement.duration - 0.5, 0.1);
+      const totalDuration = Math.max(duration - 0.5, 0.1);
       let percent = currentTime / totalDuration;
       if (percent > 1) percent = 1;
       setGradientProgress(percent);
-    };
+    }, 50); // Update every 50ms for smooth animation
 
-    audioElement.addEventListener('timeupdate', updateProgress);
-    return () => audioElement.removeEventListener('timeupdate', updateProgress);
-  }, [getPlayingAudioElement, currentPartId]);
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [getPlayingAudioElement, currentPartId, playbackState]);
 
   // Auto-scroll to current part
   useEffect(() => {
@@ -335,36 +346,43 @@ export const TTSWidget: React.FC<WidgetProps> = () => {
         </div>
       )}
 
-      {/* Text Input OR Chunk-based Display */}
+      {/* Text Input OR Chunk-based Display - Same styling for both */}
       {isActive && parts.length > 0 ? (
-        /* Chunk-based display with gradient on current chunk */
+        /* Chunk-based display with gradient on current chunk - matches textarea styling */
         <div
           ref={containerRef}
-          className="flex-1 overflow-auto p-2 bg-base-100"
+          className="flex-1 w-full p-2 overflow-auto bg-base-100 text-xs leading-relaxed text-base-content/80"
         >
-          <div className="text-xs leading-relaxed text-base-content/80">
-            {parts.map((part, idx) => {
-              const isCurrentPart = part.id === currentPartId;
-              return (
-                <span key={part.id}>
-                  <span
-                    id={part.id}
-                    ref={isCurrentPart ? currentPartRef : null}
-                    className={isCurrentPart ? 'narrator-highlight' : ''}
-                    style={getGradientStyle(isCurrentPart)}
-                  >
-                    {part.text}
-                  </span>
-                  {idx < parts.length - 1 && ' '}
+          {parts.map((part, idx) => {
+            const isCurrentPart = part.id === currentPartId;
+            // Add paragraph break before parts that start a new paragraph (except first)
+            const needsParagraphBreak = idx > 0 && part.isFirstInParagraph;
+
+            return (
+              <span key={part.id}>
+                {needsParagraphBreak && (
+                  <>
+                    <br />
+                    <br />
+                  </>
+                )}
+                <span
+                  id={part.id}
+                  ref={isCurrentPart ? currentPartRef : null}
+                  className={isCurrentPart ? 'narrator-highlight' : ''}
+                  style={getGradientStyle(isCurrentPart)}
+                >
+                  {part.text}
                 </span>
-              );
-            })}
-          </div>
+                {idx < parts.length - 1 && !parts[idx + 1]?.isFirstInParagraph && ' '}
+              </span>
+            );
+          })}
         </div>
       ) : (
         /* Text Input */
         <textarea
-          className="flex-1 w-full p-2 text-xs bg-base-100 border-0 resize-none focus:outline-none leading-relaxed text-base-content/80 placeholder:text-base-content/30"
+          className="flex-1 w-full p-2 bg-base-100 border-0 resize-none focus:outline-none text-xs leading-relaxed text-base-content/80 placeholder:text-base-content/30"
           placeholder="Enter text to narrate..."
           value={text}
           onChange={(e) => setText(e.target.value)}

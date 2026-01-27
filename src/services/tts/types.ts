@@ -31,6 +31,7 @@ export interface TTSConfig {
 export interface TTSPart {
   id: string;
   text: string;
+  isFirstInParagraph: boolean; // True if this is the first chunk in a paragraph
   audio?: {
     element: HTMLAudioElement;
     blob: Blob;
