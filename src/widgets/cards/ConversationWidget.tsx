@@ -23,7 +23,10 @@ export const ConversationWidget: React.FC<WidgetProps> = () => {
   }, []);
 
   return (
-    <div className="w-full h-full overflow-auto">
+    <div
+      className="w-full h-full overflow-auto"
+      data-doc='{"icon":"mdi:message-text","title":"Conversation","desc":"View your conversation history. Toggle R (Raw) for original transcript or C (Clean) for sanitized text. Sessions are marked with timestamps."}'
+    >
       <ConversationList conversations={conversations} />
     </div>
   );

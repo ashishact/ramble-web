@@ -5,16 +5,11 @@
  * This ensures the UI shows exactly what the LLM sees.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Icon } from '@iconify/react';
+import { Q } from '@nozbe/watermelondb';
 import { useKernel } from '../../program/hooks';
-import {
-  conversationStore,
-  entityStore,
-  topicStore,
-  memoryStore,
-  goalStore,
-} from '../../db/stores';
+import { database } from '../../db';
 import type Entity from '../../db/models/Entity';
 import type Topic from '../../db/models/Topic';
 import type Memory from '../../db/models/Memory';
@@ -29,16 +24,30 @@ interface WorkingMemoryProps {
 // Size presets
 type ContextSize = 'small' | 'medium' | 'large';
 
-const SIZE_LIMITS: Record<ContextSize, {
+const SIZE_CONFIG: Record<ContextSize, {
   conversations: number;
   entities: number;
   topics: number;
   memories: number;
   goals: number;
+  label: string;
+  doc: string;
 }> = {
-  small:  { conversations: 5,  entities: 15, topics: 5,  memories: 5,  goals: 3  },
-  medium: { conversations: 10, entities: 15, topics: 10, memories: 10, goals: 5  },
-  large:  { conversations: 15, entities: 15, topics: 15, memories: 20, goals: 10 },
+  small: {
+    conversations: 5, entities: 15, topics: 5, memories: 5, goals: 3,
+    label: 'S',
+    doc: '{"icon":"mdi:size-s","title":"Small Context","desc":"Minimal context: 5 conversations, 15 entities, 5 topics, 5 memories, 3 goals. Faster, lower token usage."}',
+  },
+  medium: {
+    conversations: 10, entities: 15, topics: 10, memories: 10, goals: 5,
+    label: 'M',
+    doc: '{"icon":"mdi:size-m","title":"Medium Context","desc":"Balanced context: 10 conversations, 15 entities, 10 topics, 10 memories, 5 goals. Good for most use cases."}',
+  },
+  large: {
+    conversations: 15, entities: 15, topics: 15, memories: 20, goals: 10,
+    label: 'L',
+    doc: '{"icon":"mdi:size-l","title":"Large Context","desc":"Maximum context: 15 conversations, 15 entities, 15 topics, 20 memories, 10 goals. More comprehensive but higher token usage."}',
+  },
 };
 
 // Compact time format
@@ -55,67 +64,132 @@ function timeAgo(timestamp: number): string {
 
 type SectionType = 'conversations' | 'entities' | 'topics' | 'memories' | 'goals';
 
+// Moved outside to prevent remount on every render
+function SectionHeader({
+  section,
+  icon,
+  title,
+  count,
+  max,
+  color,
+  isExpanded,
+  onToggle,
+}: {
+  section: SectionType;
+  icon: string;
+  title: string;
+  count: number;
+  max: number;
+  color: string;
+  isExpanded: boolean;
+  onToggle: (section: SectionType) => void;
+}) {
+  return (
+    <button
+      className={`flex items-center justify-between w-full px-1.5 py-1 rounded hover:bg-base-200/50 transition-colors ${
+        isExpanded ? 'bg-base-200/50' : ''
+      }`}
+      onClick={() => onToggle(section)}
+    >
+      <div className="flex items-center gap-1.5">
+        <Icon icon={icon} className={`w-3 h-3 ${color} opacity-70`} />
+        <span className="font-medium text-[11px]">{title}</span>
+        <span className="text-[9px] text-base-content/40">{count}/{max}</span>
+      </div>
+      <Icon
+        icon={isExpanded ? 'mdi:chevron-up' : 'mdi:chevron-down'}
+        className="w-3 h-3 opacity-30"
+      />
+    </button>
+  );
+}
+
 export function WorkingMemory({
   refreshTrigger = 0,
 }: WorkingMemoryProps) {
   // Get current session from kernel
-  const { currentSession, isProcessing } = useKernel();
+  const { currentSession } = useKernel();
   const sessionId = currentSession?.id ?? null;
 
   const [contextSize, setContextSize] = useState<ContextSize>('medium');
   const [expandedSection, setExpandedSection] = useState<SectionType | null>(null);
-  const [loading, setLoading] = useState(true);
 
   // Get limits based on selected size
-  const limits = SIZE_LIMITS[contextSize];
+  const limits = SIZE_CONFIG[contextSize];
 
-  // State for fetched data
+  // State for fetched data - no loading state to avoid Strict Mode flicker
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
 
-  // Fetch data using same queries as contextBuilder
-  const fetchData = useCallback(async () => {
-    if (!sessionId) {
-      setConversations([]);
-      setEntities([]);
-      setTopics([]);
-      setMemories([]);
-      setGoals([]);
-      setLoading(false);
-      return;
-    }
+  // Track if we've received initial data (for empty state vs loading)
+  const hasInitialized = useRef(false);
 
-    try {
-      // Fetch all data in parallel - same queries as contextBuilder
-      const [convs, ents, tops, mems, gls] = await Promise.all([
-        conversationStore.getBySession(sessionId),
-        entityStore.getRecent(limits.entities),
-        topicStore.getRecent(limits.topics),
-        memoryStore.getMostImportant(limits.memories),
-        goalStore.getActive(),
-      ]);
-
-      // Apply same limits as contextBuilder
-      setConversations(convs.slice(-limits.conversations));
-      setEntities(ents);
-      setTopics(tops.slice(0, limits.topics));
-      setMemories(mems);
-      setGoals(gls.slice(0, limits.goals));
-    } catch (error) {
-      console.error('WorkingMemory: Failed to fetch data', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [sessionId, limits]);
-
-  // Fetch on mount and when sessionId changes
-  // Also refresh when processing completes (isProcessing goes from true to false)
+  // Use WatermelonDB observables for reactive updates (like other widgets)
+  // This avoids the loading state flicker in React Strict Mode
   useEffect(() => {
-    fetchData();
-  }, [fetchData, refreshTrigger, isProcessing]);
+    hasInitialized.current = false;
+
+    // Conversations - filtered by session
+    const convQuery = sessionId
+      ? database.get<Conversation>('conversations').query(
+          Q.where('sessionId', sessionId),
+          Q.sortBy('timestamp', Q.asc)
+        )
+      : database.get<Conversation>('conversations').query(Q.where('id', 'none')); // Empty query
+
+    const convSub = convQuery.observe().subscribe((results) => {
+      setConversations(results.slice(-limits.conversations));
+      hasInitialized.current = true;
+    });
+
+    // Entities - sorted by lastMentioned
+    const entQuery = database.get<Entity>('entities').query(
+      Q.sortBy('lastMentioned', Q.desc),
+      Q.take(limits.entities)
+    );
+    const entSub = entQuery.observe().subscribe((results) => {
+      setEntities(results);
+    });
+
+    // Topics - sorted by lastMentioned
+    const topQuery = database.get<Topic>('topics').query(
+      Q.sortBy('lastMentioned', Q.desc),
+      Q.take(limits.topics)
+    );
+    const topSub = topQuery.observe().subscribe((results) => {
+      setTopics(results);
+    });
+
+    // Memories - sorted by importance
+    const memQuery = database.get<Memory>('memories').query(
+      Q.sortBy('importance', Q.desc),
+      Q.take(limits.memories)
+    );
+    const memSub = memQuery.observe().subscribe((results) => {
+      setMemories(results);
+    });
+
+    // Goals - active only
+    const goalQuery = database.get<Goal>('goals').query(
+      Q.where('status', Q.notIn(['achieved', 'abandoned'])),
+      Q.sortBy('lastReferenced', Q.desc),
+      Q.take(limits.goals)
+    );
+    const goalSub = goalQuery.observe().subscribe((results) => {
+      setGoals(results);
+    });
+
+    return () => {
+      convSub.unsubscribe();
+      entSub.unsubscribe();
+      topSub.unsubscribe();
+      memSub.unsubscribe();
+      goalSub.unsubscribe();
+    };
+  }, [sessionId, limits, refreshTrigger]);
 
   // Calculate total token estimate (rough)
   const estimatedTokens =
@@ -129,50 +203,6 @@ export function WorkingMemory({
     setExpandedSection(expandedSection === section ? null : section);
   };
 
-  const SectionHeader = ({
-    section,
-    icon,
-    title,
-    count,
-    max,
-    color
-  }: {
-    section: SectionType;
-    icon: string;
-    title: string;
-    count: number;
-    max: number;
-    color: string;
-  }) => (
-    <button
-      className={`flex items-center justify-between w-full px-1.5 py-1 rounded hover:bg-base-200/50 transition-colors ${
-        expandedSection === section ? 'bg-base-200/50' : ''
-      }`}
-      onClick={() => toggleSection(section)}
-    >
-      <div className="flex items-center gap-1.5">
-        <Icon icon={icon} className={`w-3 h-3 ${color} opacity-70`} />
-        <span className="font-medium text-[11px]">{title}</span>
-        <span className="text-[9px] text-base-content/40">{count}/{max}</span>
-      </div>
-      <Icon
-        icon={expandedSection === section ? 'mdi:chevron-up' : 'mdi:chevron-down'}
-        className="w-3 h-3 opacity-30"
-      />
-    </button>
-  );
-
-  if (loading) {
-    return (
-      <div className="bg-base-100 rounded border border-base-200 p-2">
-        <div className="flex items-center gap-1.5 text-[10px] opacity-40">
-          <Icon icon="mdi:loading" className="w-3 h-3 animate-spin" />
-          Loading...
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="bg-base-100 rounded border border-base-200 overflow-hidden">
       {/* Header - Compact */}
@@ -184,7 +214,7 @@ export function WorkingMemory({
         <div className="flex items-center gap-2">
           {/* Size selector */}
           <div className="flex gap-0.5">
-            {(['small', 'medium', 'large'] as ContextSize[]).map((size) => (
+            {(Object.entries(SIZE_CONFIG) as [ContextSize, typeof SIZE_CONFIG[ContextSize]][]).map(([size, config]) => (
               <button
                 key={size}
                 onClick={() => setContextSize(size)}
@@ -193,8 +223,9 @@ export function WorkingMemory({
                     ? 'bg-primary/20 text-primary font-medium'
                     : 'text-base-content/40 hover:bg-base-200/50'
                 }`}
+                data-doc={config.doc}
               >
-                {size[0].toUpperCase()}
+                {config.label}
               </button>
             ))}
           </div>
@@ -211,6 +242,8 @@ export function WorkingMemory({
           count={conversations.length}
           max={limits.conversations}
           color="text-primary"
+          isExpanded={expandedSection === 'conversations'}
+          onToggle={toggleSection}
         />
         {expandedSection === 'conversations' && (
           <div className="ml-4 mb-1">
@@ -238,6 +271,8 @@ export function WorkingMemory({
           count={entities.length}
           max={limits.entities}
           color="text-info"
+          isExpanded={expandedSection === 'entities'}
+          onToggle={toggleSection}
         />
         {expandedSection === 'entities' && (
           <div className="ml-4 mb-1 flex flex-wrap gap-0.5 px-1">
@@ -261,6 +296,8 @@ export function WorkingMemory({
           count={topics.length}
           max={limits.topics}
           color="text-secondary"
+          isExpanded={expandedSection === 'topics'}
+          onToggle={toggleSection}
         />
         {expandedSection === 'topics' && (
           <div className="ml-4 mb-1 flex flex-wrap gap-0.5 px-1">
@@ -284,6 +321,8 @@ export function WorkingMemory({
           count={memories.length}
           max={limits.memories}
           color="text-accent"
+          isExpanded={expandedSection === 'memories'}
+          onToggle={toggleSection}
         />
         {expandedSection === 'memories' && (
           <div className="ml-4 mb-1">
@@ -309,6 +348,8 @@ export function WorkingMemory({
           count={goals.length}
           max={limits.goals}
           color="text-success"
+          isExpanded={expandedSection === 'goals'}
+          onToggle={toggleSection}
         />
         {expandedSection === 'goals' && (
           <div className="ml-4 mb-1">

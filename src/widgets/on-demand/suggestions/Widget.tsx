@@ -128,7 +128,10 @@ export function SuggestionWidget() {
   // Loading state - Compact
   if (loadingState === 'loading') {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 p-2">
+      <div
+        className="w-full h-full flex flex-col items-center justify-center text-slate-300 p-2"
+        data-doc='{"icon":"mdi:lightbulb","title":"Suggestions","desc":"AI-generated suggestions based on your conversation. Includes follow-ups, clarifications, missing info, actions, and exploration ideas."}'
+      >
         <RefreshCw className="w-5 h-5 mb-1 animate-spin" />
         <span className="text-[10px]">Analyzing...</span>
         {selectedTopic && (
@@ -141,7 +144,10 @@ export function SuggestionWidget() {
   // Error state - Compact
   if (loadingState === 'error') {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 p-2">
+      <div
+        className="w-full h-full flex flex-col items-center justify-center text-slate-300 p-2"
+        data-doc='{"icon":"mdi:lightbulb","title":"Suggestions","desc":"AI-generated suggestions based on your conversation. Click Retry to try again."}'
+      >
         <AlertCircle className="w-5 h-5 mb-1 text-slate-400" />
         <span className="text-[10px] text-slate-400">{error}</span>
         <button
@@ -157,7 +163,10 @@ export function SuggestionWidget() {
   // Empty state - Compact
   if (!result || result.suggestions.length === 0) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 p-2">
+      <div
+        className="w-full h-full flex flex-col items-center justify-center text-slate-300 p-2"
+        data-doc='{"icon":"mdi:lightbulb","title":"Suggestions","desc":"AI-generated suggestions will appear here after you start a conversation. Click Refresh to generate suggestions."}'
+      >
         <Lightbulb className="w-5 h-5 mb-1 opacity-40" />
         <span className="text-[10px]">No suggestions</span>
         <span className="text-[9px] opacity-50">Start talking first</span>
@@ -173,7 +182,10 @@ export function SuggestionWidget() {
   }
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden">
+    <div
+      className="w-full h-full flex flex-col overflow-hidden"
+      data-doc='{"icon":"mdi:lightbulb","title":"Suggestions","desc":"AI suggestions categorized as: missing info, follow-up, clarification, action, or explore. Filter by topic at the bottom. Auto-refreshes after each conversation."}'
+    >
       {/* Header - Compact */}
       <div className="flex-shrink-0 px-2 py-1.5 border-b border-slate-100 flex items-center justify-between">
         <div className="flex items-center gap-1.5">

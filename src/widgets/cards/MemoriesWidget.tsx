@@ -40,7 +40,10 @@ export const MemoriesWidget: React.FC<WidgetProps> = () => {
   if (memories.length === 0) {
     return (
       <>
-        <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 p-2">
+        <div
+          className="w-full h-full flex flex-col items-center justify-center text-slate-300 p-2"
+          data-doc='{"icon":"mdi:brain","title":"Memories","desc":"Facts, preferences, events, relationships, and insights extracted from conversations. Sorted by importance. Superseded memories are hidden."}'
+        >
           <Brain className="w-5 h-5 mb-1 opacity-40" />
           <span className="text-[10px]">No memories yet</span>
         </div>
@@ -51,7 +54,10 @@ export const MemoriesWidget: React.FC<WidgetProps> = () => {
 
   return (
     <>
-      <div className="w-full h-full flex flex-col overflow-hidden">
+      <div
+        className="w-full h-full flex flex-col overflow-hidden"
+        data-doc='{"icon":"mdi:brain","title":"Memories","desc":"Facts, preferences, events, relationships, and insights. Shows type and importance %. Click the gear icon to manage memories."}'
+      >
         {/* Header with manage button */}
         <div className="flex-shrink-0 px-2 py-1 border-b border-slate-100 flex items-center justify-between">
           <span className="text-[10px] text-slate-400">{memories.length} memories</span>

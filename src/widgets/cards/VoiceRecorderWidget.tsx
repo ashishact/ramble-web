@@ -12,7 +12,10 @@ export const VoiceRecorderWidget: React.FC<WidgetProps> = () => {
   const { isRecording, isProcessing, transcript, toggleRecording } = useGlobalSTT();
 
   return (
-    <div className="w-full h-full p-3 flex flex-col">
+    <div
+      className="w-full h-full p-3 flex flex-col"
+      data-doc='{"icon":"mdi:microphone","title":"Voice Recorder","desc":"Record speech and convert to text. Press Right ⌘ to toggle recording. Live transcript appears below while speaking."}'
+    >
       <div className="flex flex-col gap-2">
         {/* Recording Button */}
         <button

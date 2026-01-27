@@ -30,7 +30,8 @@ export type WidgetType =
   | 'settings'            // Settings panel
   | 'working-memory'      // Full context view
   | 'suggestions'         // AI-powered suggestions (volatile, not saved)
-  | 'learned-corrections'; // Manage learned STT corrections
+  | 'learned-corrections' // Manage learned STT corrections
+  | 'tts';               // Text-to-Speech widget
 
 export interface LeafNode extends BaseNode {
   type: 'leaf';

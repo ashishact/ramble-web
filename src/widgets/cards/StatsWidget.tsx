@@ -64,7 +64,10 @@ export const StatsWidget: React.FC<WidgetProps> = () => {
   ];
 
   return (
-    <div className="w-full h-full overflow-auto p-3">
+    <div
+      className="w-full h-full overflow-auto p-3"
+      data-doc='{"icon":"mdi:chart-box","title":"Stats","desc":"Overview of your data: entities (people, places, things), topics discussed, memories stored, active goals, and total messages in conversation."}'
+    >
       <div className="grid grid-cols-2 gap-2">
         {statItems.map((item) => (
           <div

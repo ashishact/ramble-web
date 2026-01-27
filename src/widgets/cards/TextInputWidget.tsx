@@ -31,7 +31,10 @@ export const TextInputWidget: React.FC<WidgetProps> = () => {
   }
 
   return (
-    <div className="w-full h-full p-3 flex flex-col">
+    <div
+      className="w-full h-full p-3 flex flex-col"
+      data-doc='{"icon":"mdi:keyboard","title":"Text Input","desc":"Type or paste text to process. Submit with Enter or click Send. Text will be analyzed and added to your conversation history."}'
+    >
       <form onSubmit={handleSubmit} className="flex-1 flex flex-col">
         <textarea
           value={text}

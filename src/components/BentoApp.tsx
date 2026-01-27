@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import {
   BentoNodeComponent,
   createInitialTree,
@@ -28,9 +28,14 @@ import {
   LearnedCorrectionsWidget,
 } from '../widgets';
 import { SuggestionWidget } from '../widgets/on-demand';
-import { RotateCcw, PencilRuler } from 'lucide-react';
+import { RotateCcw, PencilRuler, Loader2 } from 'lucide-react';
 import { GlobalSTTController } from './GlobalSTTController';
 import { PipelineBreadcrumb } from './PipelineBreadcrumb';
+
+// Lazy-loaded TTS Widget
+const TTSWidget = lazy(() =>
+  import('../widgets/cards/TTSWidget').then(m => ({ default: m.TTSWidget }))
+);
 
 export const BentoApp: React.FC = () => {
   const [tree, setTree] = useState<BentoTree>(() => {
@@ -108,6 +113,17 @@ export const BentoApp: React.FC = () => {
         return <SuggestionWidget />;
       case 'learned-corrections':
         return <LearnedCorrectionsWidget />;
+      case 'tts':
+        return (
+          <Suspense fallback={
+            <div className="w-full h-full flex items-center justify-center gap-2">
+              <Loader2 size={14} className="animate-spin opacity-60" />
+              <span className="text-xs opacity-60">Loading TTS...</span>
+            </div>
+          }>
+            <TTSWidget {...props} />
+          </Suspense>
+        );
       default:
         return <PlaceholderWidget nodeId={node.id} widgetType={node.widgetType} />;
     }
@@ -117,31 +133,33 @@ export const BentoApp: React.FC = () => {
     <GlobalSTTController>
       <div className="w-screen h-screen flex flex-col bg-slate-100">
         {/* Header */}
-        <header className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4 flex-shrink-0">
-          <div className="flex items-center gap-4">
-            <h1 className="text-sm font-bold text-slate-700">Bento Journal</h1>
+        <header className="h-9 bg-white border-b border-slate-200 flex items-center justify-between px-3 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xs font-bold text-slate-700">Ramble</h1>
             <PipelineBreadcrumb />
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setEditMode((prev) => !prev)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+              className={`flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded transition-colors ${
                 editMode
                   ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
               title={editMode ? 'Exit edit mode' : 'Enter edit mode to split, drag, and configure panels'}
+              data-doc='{"icon":"mdi:pencil-ruler","title":"Edit Layout","desc":"Split, drag, resize and configure panels"}'
             >
-              <PencilRuler size={14} />
+              <PencilRuler size={12} />
               {editMode ? 'Done' : 'Edit Layout'}
             </button>
             {editMode && (
               <button
                 onClick={handleReset}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
+                className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
                 title="Reset layout to default"
+                data-doc='{"icon":"mdi:restore","title":"Reset","desc":"Reset the layout to default configuration"}'
               >
-                <RotateCcw size={14} />
+                <RotateCcw size={12} />
                 Reset
               </button>
             )}
@@ -149,7 +167,7 @@ export const BentoApp: React.FC = () => {
         </header>
 
         {/* Bento Grid */}
-        <main className="flex-1 overflow-hidden p-2">
+        <main className="flex-1 overflow-hidden p-1">
           <BentoNodeComponent
             tree={tree}
             nodeId={tree.rootId}

@@ -6,7 +6,10 @@ export const SettingsWidget: React.FC<WidgetProps> = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="w-full h-full p-4 flex flex-col items-center justify-center">
+    <div
+      className="w-full h-full p-4 flex flex-col items-center justify-center"
+      data-doc='{"icon":"mdi:cog","title":"Settings","desc":"Configure your API keys, preferences, and application settings. Click to open the full settings page."}'
+    >
       <Settings className="w-12 h-12 text-slate-300 mb-4" />
       <p className="text-sm text-slate-600 text-center mb-4">
         Configure API keys and preferences

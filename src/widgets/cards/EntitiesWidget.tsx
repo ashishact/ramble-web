@@ -26,7 +26,10 @@ export const EntitiesWidget: React.FC<WidgetProps> = () => {
   if (entities.length === 0) {
     return (
       <>
-        <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-4">
+        <div
+          className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-4"
+          data-doc='{"icon":"mdi:account-group","title":"Entities","desc":"People, places, organizations, and things mentioned in your conversations. Entities are auto-extracted and tracked over time."}'
+        >
           <Users className="w-8 h-8 mb-2 opacity-50" />
           <span className="text-sm">No entities yet</span>
           <span className="text-xs opacity-50 mt-1">People, places, things will appear here</span>
@@ -38,7 +41,10 @@ export const EntitiesWidget: React.FC<WidgetProps> = () => {
 
   return (
     <>
-      <div className="w-full h-full flex flex-col overflow-hidden">
+      <div
+        className="w-full h-full flex flex-col overflow-hidden"
+        data-doc='{"icon":"mdi:account-group","title":"Entities","desc":"People, places, organizations, and things mentioned in your conversations. Click the gear icon to manage entities."}'
+      >
         {/* Header with manage button */}
         <div className="flex-shrink-0 px-2 py-1 border-b border-slate-100 flex items-center justify-between">
           <span className="text-[10px] text-slate-400">{entities.length} entities</span>

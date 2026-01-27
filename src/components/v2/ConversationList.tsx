@@ -29,30 +29,44 @@ export function ConversationList({ conversations, onClose }: ConversationListPro
 
   return (
     <div className="w-full h-full bg-base-100 flex flex-col">
-      {/* Header */}
-      <div className="p-3 border-b border-base-300 flex justify-between items-center">
-        <h2 className="font-bold text-sm">Conversation</h2>
-        <div className="flex items-center gap-1">
-          {/* Raw/Processed Toggle */}
-          <div className="join">
+      {/* Header - Compact */}
+      <div className="bg-base-200/30 px-2 py-1 flex items-center justify-between border-b border-base-200">
+        <div className="flex items-center gap-1.5">
+          <Icon icon="mdi:message-text" className="w-3.5 h-3.5 text-primary/60" />
+          <span className="font-medium text-[11px]">Conversation</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Raw/Clean Toggle */}
+          <div className="flex gap-0.5">
             <button
-              className={`join-item btn btn-xs ${showRawText ? 'btn-primary' : 'btn-ghost'}`}
               onClick={() => setShowRawText(true)}
-              title="Show raw transcript"
+              className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${
+                showRawText
+                  ? 'bg-primary/20 text-primary font-medium'
+                  : 'text-base-content/40 hover:bg-base-200/50'
+              }`}
+              data-doc='{"icon":"mdi:text-long","title":"Raw","desc":"Show original transcript exactly as spoken"}'
             >
-              Raw
+              R
             </button>
             <button
-              className={`join-item btn btn-xs ${!showRawText ? 'btn-primary' : 'btn-ghost'}`}
               onClick={() => setShowRawText(false)}
-              title="Show sanitized/processed text"
+              className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${
+                !showRawText
+                  ? 'bg-primary/20 text-primary font-medium'
+                  : 'text-base-content/40 hover:bg-base-200/50'
+              }`}
+              data-doc='{"icon":"mdi:text-box-check","title":"Clean","desc":"Show sanitized text with corrections applied"}'
             >
-              Clean
+              C
             </button>
           </div>
           {onClose && (
-            <button className="btn btn-ghost btn-xs" onClick={onClose}>
-              <Icon icon="mdi:close" className="w-4 h-4" />
+            <button
+              className="p-0.5 text-base-content/40 hover:text-base-content/70 transition-colors"
+              onClick={onClose}
+            >
+              <Icon icon="mdi:close" className="w-3 h-3" />
             </button>
           )}
         </div>

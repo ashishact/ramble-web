@@ -5,11 +5,14 @@
  * - View corrections with context and confidence
  * - Edit correction text
  * - Delete unwanted corrections
+ *
+ * Uses WatermelonDB observable for automatic reactivity.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { Brain, Trash2, Edit2, Check, X, ArrowRight } from 'lucide-react';
 import { learnedCorrectionStore } from '../../db/stores';
+import { collections } from '../../db';
 import type LearnedCorrection from '../../db/models/LearnedCorrection';
 
 export function LearnedCorrectionsWidget() {
@@ -18,22 +21,40 @@ export function LearnedCorrectionsWidget() {
   const [editValue, setEditValue] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load corrections
-  const loadCorrections = useCallback(async () => {
+  // Subscribe to learned_corrections collection changes
+  useEffect(() => {
     setIsLoading(true);
+
+    // Create observable query for all corrections, sorted by createdAt desc
+    const subscription = collections.learnedCorrections
+      .query()
+      .observe()
+      .subscribe({
+        next: (records) => {
+          // Cast and sort by createdAt descending (newest first)
+          const typed = records as LearnedCorrection[];
+          const sorted = [...typed].sort((a, b) => b.createdAt - a.createdAt);
+          setCorrections(sorted);
+          setIsLoading(false);
+        },
+        error: (err) => {
+          console.error('Failed to observe corrections:', err);
+          setIsLoading(false);
+        },
+      });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Manual reload (for after edits that create new records)
+  const loadCorrections = useCallback(async () => {
     try {
       const all = await learnedCorrectionStore.getAll();
       setCorrections(all);
     } catch (err) {
       console.error('Failed to load corrections:', err);
-    } finally {
-      setIsLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    loadCorrections();
-  }, [loadCorrections]);
 
   // Delete a correction
   const handleDelete = useCallback(async (id: string) => {
@@ -81,7 +102,10 @@ export function LearnedCorrectionsWidget() {
 
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center text-slate-400">
+      <div
+        className="h-full flex items-center justify-center text-slate-400"
+        data-doc='{"icon":"mdi:school","title":"Learned Corrections","desc":"Auto-learned speech corrections from your edits. When you correct transcripts, the system learns to apply similar fixes automatically."}'
+      >
         <div className="w-5 h-5 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -89,7 +113,10 @@ export function LearnedCorrectionsWidget() {
 
   if (corrections.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-slate-400 p-4">
+      <div
+        className="h-full flex flex-col items-center justify-center text-slate-400 p-4"
+        data-doc='{"icon":"mdi:school","title":"Learned Corrections","desc":"Auto-learned speech corrections from your edits. When you correct transcripts, the system learns to apply similar fixes automatically."}'
+      >
         <Brain size={32} className="mb-2 opacity-50" />
         <p className="text-sm text-center">No learned corrections yet</p>
         <p className="text-xs text-center mt-1 opacity-75">
@@ -100,7 +127,10 @@ export function LearnedCorrectionsWidget() {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div
+      className="h-full flex flex-col"
+      data-doc='{"icon":"mdi:school","title":"Learned Corrections","desc":"Edit or delete corrections. Shows original → corrected mapping, context, confidence %, and usage count."}'
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100">
         <div className="flex items-center gap-2">
