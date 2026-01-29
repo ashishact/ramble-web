@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite\" \"cd worker && pnpm dev\"",
-    "dev:app": "vite",
+    "dev:full": "concurrently \"vite\" \"cd worker && pnpm dev\"",
+    "dev": "vite",
     "dev:worker": "cd worker && pnpm dev",
     "build": "tsc && vite build",
     "preview": "vite preview"
