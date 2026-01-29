@@ -14,7 +14,7 @@
  *   Before: const context = await buildContext(sessionId, inputText);
  *           const prompt = formatContextForLLM(context);
  *
- *   After:  const data = await workingMemory.fetch({ sessionId });
+ *   After:  const data = await workingMemory.fetch({ size: 'medium' });
  *           const prompt = workingMemory.formatForLLM(data);
  *
  * Gathers relevant context for the LLM:

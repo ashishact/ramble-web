@@ -36,7 +36,7 @@ export type ContextSize = 'small' | 'medium' | 'large';
 export interface WorkingMemoryOptions {
   size?: ContextSize;        // Default: 'medium'
   asOfTime?: number;         // Unix timestamp for time travel (default: now)
-  sessionId?: string;        // Required for conversations
+  // Note: sessionId removed - we fetch all conversations chronologically
 }
 
 export interface WorkingMemoryData {
@@ -48,7 +48,6 @@ export interface WorkingMemoryData {
   meta: {
     size: ContextSize;
     asOfTime: number;
-    sessionId: string | null;
     fetchedAt: number;
     estimatedTokens: number;
   };
@@ -175,6 +174,52 @@ function toGoalRef(g: Goal, index: number): GoalRef {
 }
 
 // ============================================================================
+// Memory Deduplication
+// ============================================================================
+//
+// OPTIMIZATION: Skip memories already represented in conversation context
+//
+// Problem: When a user says something, we create both:
+//   1. A conversation record (raw speech)
+//   2. A memory record (distilled fact)
+//
+// If both are sent to the LLM, we're wasting tokens on redundant information.
+// The conversation already contains the fact, so the memory is redundant.
+//
+// Solution: Filter out memories whose sourceConversationIds overlap with
+// the conversations already in context. These memories are "covered" by
+// the raw conversation text.
+//
+// Note: Memories from OTHER sessions (not in current context) are still
+// included - they provide cross-session continuity.
+// ============================================================================
+
+/**
+ * Filter out memories that are already covered by conversations in context.
+ * A memory is "covered" if ANY of its sourceConversationIds appears in the
+ * conversation context - meaning the LLM will see the original text anyway.
+ */
+function filterRedundantMemories(
+  memories: Memory[],
+  conversationIds: Set<string>
+): Memory[] {
+  if (conversationIds.size === 0) {
+    // No conversations in context, keep all memories
+    return memories;
+  }
+
+  return memories.filter(memory => {
+    const sourceIds = memory.sourceConversationIdsParsed;
+
+    // Keep memory if NONE of its sources are in the conversation context
+    // (i.e., it comes from conversations we're NOT already sending)
+    const isCoveredByContext = sourceIds.some(id => conversationIds.has(id));
+
+    return !isCoveredByContext;
+  });
+}
+
+// ============================================================================
 // Working Memory Class
 // ============================================================================
 
@@ -186,23 +231,29 @@ class WorkingMemory {
   async fetch(options: WorkingMemoryOptions = {}): Promise<WorkingMemoryData> {
     const size = options.size ?? 'medium';
     const asOfTime = options.asOfTime ?? Date.now();
-    const sessionId = options.sessionId ?? null;
     const limits = SIZE_LIMITS[size];
 
     // Query all data in parallel (fetch more than needed for time filtering)
+    // Conversations: get recent across ALL sessions, chronologically
     const [allConvs, allEntities, allTopics, allMemories, allGoals] = await Promise.all([
-      sessionId ? conversationStore.getBySession(sessionId) : Promise.resolve([]),
+      conversationStore.getRecent(50),  // Returns newest first (DESC)
       entityStore.getRecent(50),
       topicStore.getRecent(50),
       memoryStore.getMostImportant(50),
       goalStore.getActive(),
     ]);
 
-    // Apply time filter and limits
-    const conversations = allConvs
+    // Apply time filter, take most recent N, then reverse for chronological order
+    // getRecent returns DESC (newest first), we want ASC (oldest first) for context
+    const filteredConvs = allConvs
       .filter(c => c.timestamp <= asOfTime)
-      .slice(-limits.conversations)
-      .map(toConversationRef);
+      .slice(0, limits.conversations)  // Take N most recent
+      .reverse();                       // Reverse to chronological order
+
+    const conversations = filteredConvs.map(toConversationRef);
+
+    // Build set of conversation IDs in context (for memory deduplication)
+    const conversationIdsInContext = new Set(filteredConvs.map(c => c.id));
 
     const entities = allEntities
       .filter(e => e.lastMentioned <= asOfTime)
@@ -214,8 +265,10 @@ class WorkingMemory {
       .slice(0, limits.topics)
       .map(toTopicRef);
 
-    const memories = allMemories
-      .filter(m => m.lastReinforced <= asOfTime)
+    // Apply time filter, then deduplicate, then limit
+    const timeFilteredMemories = allMemories.filter(m => m.lastReinforced <= asOfTime);
+    const deduplicatedMemories = filterRedundantMemories(timeFilteredMemories, conversationIdsInContext);
+    const memories = deduplicatedMemories
       .slice(0, limits.memories)
       .map(toMemoryRef);
 
@@ -235,7 +288,6 @@ class WorkingMemory {
       meta: {
         size,
         asOfTime,
-        sessionId,
         fetchedAt: Date.now(),
         estimatedTokens: 0, // Will be calculated below
       },

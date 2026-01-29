@@ -300,8 +300,8 @@ export async function processInput(
 
   logger.info('Processing input', { sessionId, inputLength: inputText.length, source });
 
-  // 1. Build context using unified WorkingMemory
-  const wmData = await workingMemory.fetch({ size: 'medium', sessionId });
+  // 1. Build context using unified WorkingMemory (all conversations, no session filter)
+  const wmData = await workingMemory.fetch({ size: 'medium' });
   const contextPrompt = workingMemory.formatForLLM(wmData);
 
   // Check if input needs summary (>= 50 words)

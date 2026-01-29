@@ -9,7 +9,6 @@ import { z } from 'zod';
 import { callLLM } from '../../../program/llmClient';
 import { workingMemory } from '../../../program/WorkingMemory';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
-import { getKernel } from '../../../program/kernel/kernel';
 import { profileStorage } from '../../../lib/profileStorage';
 
 // ============================================================================
@@ -164,21 +163,10 @@ export async function generateSuggestions(
   focusTopic?: string,
   previousSuggestions?: string[]
 ): Promise<SuggestionResult> {
-  const kernel = getKernel();
-  const session = kernel.getCurrentSession();
-
-  if (!session) {
-    return {
-      suggestions: [],
-      availableTopics: [],
-      generatedAt: Date.now(),
-    };
-  }
-
   // Build context using unified WorkingMemory (use 'small' for suggestions)
+  // No session filter - fetches all conversations chronologically
   const wmData = await workingMemory.fetch({
     size: 'small',
-    sessionId: session.id,
   });
 
   // Extract available topics for filtering
@@ -199,8 +187,8 @@ export async function generateSuggestions(
     };
   }
 
-  // Format context for LLM
-  const contextPrompt = workingMemory.formatForLLM(wmData);
+  // Format context for LLM (exclude memories - conversations already contain the info)
+  const contextPrompt = workingMemory.formatForLLM({ ...wmData, memories: [] });
 
   // Build prompt
   const systemPrompt = focusTopic

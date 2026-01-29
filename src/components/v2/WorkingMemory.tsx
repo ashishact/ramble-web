@@ -1,53 +1,55 @@
 /**
  * Working Memory - Shows full context being sent to LLM
  *
- * Fetches its own data using the same queries as contextBuilder.
- * This ensures the UI shows exactly what the LLM sees.
+ * Uses the unified WorkingMemory class to fetch data, ensuring
+ * the UI shows exactly what the LLM sees (including deduplication).
+ *
+ * Reactivity: Refreshes when pipeline completes (data saved to DB).
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
-import { Q } from '@nozbe/watermelondb';
-import { useKernel } from '../../program/hooks';
-import { database } from '../../db';
-import type Entity from '../../db/models/Entity';
-import type Topic from '../../db/models/Topic';
-import type Memory from '../../db/models/Memory';
-import type Goal from '../../db/models/Goal';
-import type Conversation from '../../db/models/Conversation';
+import {
+  workingMemory,
+  type WorkingMemoryData,
+  type ContextSize,
+} from '../../program/WorkingMemory';
+import { pipelineStatus, type PipelineState } from '../../program/kernel/pipelineStatus';
 
 interface WorkingMemoryProps {
   // Optional refresh trigger - increment to force refresh
   refreshTrigger?: number;
 }
 
-// Size presets
-type ContextSize = 'small' | 'medium' | 'large';
-
 const SIZE_CONFIG: Record<ContextSize, {
+  label: string;
+  doc: string;
+}> = {
+  small: {
+    label: 'S',
+    doc: '{"icon":"mdi:size-s","title":"Small Context","desc":"Minimal context: 5 conversations, 15 entities, 5 topics, 5 memories, 3 goals. Faster, lower token usage."}',
+  },
+  medium: {
+    label: 'M',
+    doc: '{"icon":"mdi:size-m","title":"Medium Context","desc":"Balanced context: 10 conversations, 15 entities, 10 topics, 10 memories, 5 goals. Good for most use cases."}',
+  },
+  large: {
+    label: 'L',
+    doc: '{"icon":"mdi:size-l","title":"Large Context","desc":"Maximum context: 15 conversations, 15 entities, 15 topics, 20 memories, 10 goals. More comprehensive but higher token usage."}',
+  },
+};
+
+// Size limits (mirrors WorkingMemory.ts SIZE_LIMITS for display)
+const SIZE_LIMITS: Record<ContextSize, {
   conversations: number;
   entities: number;
   topics: number;
   memories: number;
   goals: number;
-  label: string;
-  doc: string;
 }> = {
-  small: {
-    conversations: 5, entities: 15, topics: 5, memories: 5, goals: 3,
-    label: 'S',
-    doc: '{"icon":"mdi:size-s","title":"Small Context","desc":"Minimal context: 5 conversations, 15 entities, 5 topics, 5 memories, 3 goals. Faster, lower token usage."}',
-  },
-  medium: {
-    conversations: 10, entities: 15, topics: 10, memories: 10, goals: 5,
-    label: 'M',
-    doc: '{"icon":"mdi:size-m","title":"Medium Context","desc":"Balanced context: 10 conversations, 15 entities, 10 topics, 10 memories, 5 goals. Good for most use cases."}',
-  },
-  large: {
-    conversations: 15, entities: 15, topics: 15, memories: 20, goals: 10,
-    label: 'L',
-    doc: '{"icon":"mdi:size-l","title":"Large Context","desc":"Maximum context: 15 conversations, 15 entities, 15 topics, 20 memories, 10 goals. More comprehensive but higher token usage."}',
-  },
+  small:  { conversations: 5,  entities: 15, topics: 5,  memories: 5,  goals: 3  },
+  medium: { conversations: 10, entities: 15, topics: 10, memories: 10, goals: 5  },
+  large:  { conversations: 15, entities: 15, topics: 15, memories: 20, goals: 10 },
 };
 
 // Compact time format
@@ -107,97 +109,56 @@ function SectionHeader({
 export function WorkingMemory({
   refreshTrigger = 0,
 }: WorkingMemoryProps) {
-  // Get current session from kernel
-  const { currentSession } = useKernel();
-  const sessionId = currentSession?.id ?? null;
-
   const [contextSize, setContextSize] = useState<ContextSize>('medium');
   const [expandedSection, setExpandedSection] = useState<SectionType | null>(null);
 
-  // Get limits based on selected size
-  const limits = SIZE_CONFIG[contextSize];
+  // Single source of truth: WorkingMemoryData from workingMemory.fetch()
+  const [data, setData] = useState<WorkingMemoryData | null>(null);
 
-  // State for fetched data - no loading state to avoid Strict Mode flicker
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [entities, setEntities] = useState<Entity[]>([]);
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [memories, setMemories] = useState<Memory[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
+  // Fetch data using the unified WorkingMemory class
+  // No session filtering - fetches all conversations chronologically
+  const fetchData = useCallback(async () => {
+    const result = await workingMemory.fetch({
+      size: contextSize,
+    });
+    setData(result);
+  }, [contextSize]);
 
-  // Track if we've received initial data (for empty state vs loading)
-  const hasInitialized = useRef(false);
-
-  // Use WatermelonDB observables for reactive updates (like other widgets)
-  // This avoids the loading state flicker in React Strict Mode
+  // Fetch on mount, when size changes, or when session changes
   useEffect(() => {
-    hasInitialized.current = false;
+    fetchData();
+  }, [fetchData, refreshTrigger]);
 
-    // Conversations - filtered by session
-    const convQuery = sessionId
-      ? database.get<Conversation>('conversations').query(
-          Q.where('sessionId', sessionId),
-          Q.sortBy('timestamp', Q.asc)
-        )
-      : database.get<Conversation>('conversations').query(Q.where('id', 'none')); // Empty query
+  // Subscribe to pipeline status - refresh when pipeline completes
+  useEffect(() => {
+    let wasRunning = false;
 
-    const convSub = convQuery.observe().subscribe((results) => {
-      setConversations(results.slice(-limits.conversations));
-      hasInitialized.current = true;
+    const unsubscribe = pipelineStatus.subscribe((state: PipelineState) => {
+      const isNowComplete = !state.isRunning;
+      const doneStep = state.steps.find(s => s.id === 'done');
+      const isSuccess = doneStep?.status === 'success';
+
+      // Refresh when pipeline transitions from running to complete (success)
+      if (wasRunning && isNowComplete && isSuccess) {
+        fetchData();
+      }
+
+      wasRunning = state.isRunning;
     });
 
-    // Entities - sorted by lastMentioned
-    const entQuery = database.get<Entity>('entities').query(
-      Q.sortBy('lastMentioned', Q.desc),
-      Q.take(limits.entities)
-    );
-    const entSub = entQuery.observe().subscribe((results) => {
-      setEntities(results);
-    });
+    return unsubscribe;
+  }, [fetchData]);
 
-    // Topics - sorted by lastMentioned
-    const topQuery = database.get<Topic>('topics').query(
-      Q.sortBy('lastMentioned', Q.desc),
-      Q.take(limits.topics)
-    );
-    const topSub = topQuery.observe().subscribe((results) => {
-      setTopics(results);
-    });
+  // Get limits for display
+  const limits = SIZE_LIMITS[contextSize];
 
-    // Memories - sorted by importance
-    const memQuery = database.get<Memory>('memories').query(
-      Q.sortBy('importance', Q.desc),
-      Q.take(limits.memories)
-    );
-    const memSub = memQuery.observe().subscribe((results) => {
-      setMemories(results);
-    });
-
-    // Goals - active only
-    const goalQuery = database.get<Goal>('goals').query(
-      Q.where('status', Q.notIn(['achieved', 'abandoned'])),
-      Q.sortBy('lastReferenced', Q.desc),
-      Q.take(limits.goals)
-    );
-    const goalSub = goalQuery.observe().subscribe((results) => {
-      setGoals(results);
-    });
-
-    return () => {
-      convSub.unsubscribe();
-      entSub.unsubscribe();
-      topSub.unsubscribe();
-      memSub.unsubscribe();
-      goalSub.unsubscribe();
-    };
-  }, [sessionId, limits, refreshTrigger]);
-
-  // Calculate total token estimate (rough)
-  const estimatedTokens =
-    conversations.reduce((sum, c) => sum + c.sanitizedText.length / 4, 0) +
-    entities.length * 10 +
-    topics.length * 8 +
-    memories.reduce((sum, m) => sum + m.content.length / 4, 0) +
-    goals.reduce((sum, g) => sum + g.statement.length / 4, 0);
+  // Extract data for rendering (with fallbacks)
+  const conversations = data?.conversations ?? [];
+  const entities = data?.entities ?? [];
+  const topics = data?.topics ?? [];
+  const memories = data?.memories ?? [];
+  const goals = data?.goals ?? [];
+  const estimatedTokens = data?.meta.estimatedTokens ?? 0;
 
   const toggleSection = (section: SectionType) => {
     setExpandedSection(expandedSection === section ? null : section);
@@ -255,7 +216,7 @@ export function WorkingMemory({
                   <span className={`font-mono shrink-0 ${c.speaker === 'user' ? 'text-primary/70' : 'text-secondary/70'}`}>
                     {c.speaker}:
                   </span>
-                  <span className="flex-1 truncate text-base-content/70">{c.sanitizedText}</span>
+                  <span className="flex-1 truncate text-base-content/70">{c.text}</span>
                   <span className="opacity-40 shrink-0">{timeAgo(c.timestamp)}</span>
                 </div>
               ))
@@ -363,7 +324,7 @@ export function WorkingMemory({
                     g.status === 'blocked' ? 'text-error/60' :
                     'text-info/60'
                   }`}>
-                    [{g.status}]
+                    [{g.shortId}]
                   </span>
                   <span className="flex-1 text-base-content/70">{g.statement}</span>
                   <span className="font-mono opacity-40">{g.progress}%</span>
