@@ -1,21 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import type { Direction } from './types';
 
 interface ResizerProps {
   direction: Direction;
-  onResize: (delta: number) => void;
+  onResizeStart: () => void;
+  onResize: (offset: number) => void;
   onResizeEnd: () => void;
 }
 
-export const Resizer: React.FC<ResizerProps> = ({ direction, onResize, onResizeEnd }) => {
+export const Resizer: React.FC<ResizerProps> = ({ direction, onResizeStart, onResize, onResizeEnd }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const startPosRef = useRef<number>(0);
 
   useEffect(() => {
     if (!isDragging) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      const delta = direction === 'horizontal' ? e.movementX : e.movementY;
-      onResize(delta);
+      const currentPos = direction === 'horizontal' ? e.clientX : e.clientY;
+      const offset = currentPos - startPosRef.current;
+      onResize(offset);
     };
 
     const handleMouseUp = () => {
@@ -40,11 +43,13 @@ export const Resizer: React.FC<ResizerProps> = ({ direction, onResize, onResizeE
       className={`relative z-10 flex-none bg-slate-200/50 hover:bg-blue-400 transition-colors duration-200 ${cursorClass} ${sizeClass} ${isDragging ? 'bg-blue-500 scale-x-125 scale-y-125 shadow-sm' : ''}`}
       onMouseDown={(e) => {
         e.preventDefault();
+        startPosRef.current = direction === 'horizontal' ? e.clientX : e.clientY;
         setIsDragging(true);
+        onResizeStart();
       }}
     >
-      <div 
-        className={`absolute ${direction === 'horizontal' ? '-left-2 -right-2 top-0 bottom-0' : '-top-2 -bottom-2 left-0 right-0'}`} 
+      <div
+        className={`absolute ${direction === 'horizontal' ? '-left-2 -right-2 top-0 bottom-0' : '-top-2 -bottom-2 left-0 right-0'}`}
       />
     </div>
   );

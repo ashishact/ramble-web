@@ -138,6 +138,12 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
     e.dataTransfer.effectAllowed = 'move';
   };
 
+  const handleDragEnd = () => {
+    // Standard cleanup when drag ends (success or cancel)
+    // Ensures browser drag state is properly cleared
+    setIsDragOver(false);
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault(); 
     e.dataTransfer.dropEffect = 'move';
@@ -242,6 +248,7 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
         className="h-8 min-h-[32px] w-full bg-slate-100/60 border-b border-black/5 flex items-center justify-between px-2 cursor-grab active:cursor-grabbing select-none group/header hover:bg-slate-200/40 transition-colors"
         draggable={!isRenaming}
         onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         onDoubleClick={() => !isSetupMode && setIsRenaming(true)}
       >
         <div className="flex items-center gap-2 overflow-hidden">

@@ -32,13 +32,15 @@ export const BentoNodeComponent: React.FC<BentoNodeProps> = ({
 }) => {
   const node = tree.nodes[nodeId];
   const containerRef = useRef<HTMLDivElement>(null);
-  
+  const initialRatioRef = useRef<number>(0);
+
   if (!node) return null;
 
   // Leaf Node Rendering
   if (node.type === 'leaf') {
     return (
       <BentoLeaf
+        key={node.id}
         node={node as LeafNode}
         editMode={editMode}
         onSplit={onSplit}
@@ -57,19 +59,23 @@ export const BentoNodeComponent: React.FC<BentoNodeProps> = ({
   const splitNode = node as SplitNode;
   const { direction, ratio, first, second } = splitNode;
   
-  const handleResize = (delta: number) => {
+  const handleResizeStart = () => {
+    initialRatioRef.current = ratio;
+  };
+
+  const handleResize = (offset: number) => {
     if (!containerRef.current) return;
-    
+
     const rect = containerRef.current.getBoundingClientRect();
     const size = direction === 'horizontal' ? rect.width : rect.height;
-    
-    // Calculate new ratio
-    // Delta adds pixels to the first child's size
-    const currentPixels = size * ratio;
-    const newPixels = currentPixels + delta;
-    const newRatio = newPixels / size;
 
-    onResize(nodeId, newRatio);
+    // Calculate new ratio from initial ratio + absolute offset
+    const newRatio = initialRatioRef.current + offset / size;
+
+    // Clamp between 0.05 and 0.95 to prevent panels from disappearing
+    const clampedRatio = Math.max(0.05, Math.min(0.95, newRatio));
+
+    onResize(nodeId, clampedRatio);
   };
 
   const isHorizontal = direction === 'horizontal';
@@ -82,6 +88,7 @@ export const BentoNodeComponent: React.FC<BentoNodeProps> = ({
       {/* First Child */}
       <div style={{ flex: `${ratio} ${ratio} 0px` }} className="overflow-hidden min-w-0 min-h-0 relative">
         <BentoNodeComponent
+          key={first}
           tree={tree}
           nodeId={first}
           editMode={editMode}
@@ -99,6 +106,7 @@ export const BentoNodeComponent: React.FC<BentoNodeProps> = ({
       {/* Resizer Handle */}
       <Resizer
         direction={direction}
+        onResizeStart={handleResizeStart}
         onResize={handleResize}
         onResizeEnd={() => { /* Optional: Snap to grid logic could go here */ }}
       />
@@ -106,6 +114,7 @@ export const BentoNodeComponent: React.FC<BentoNodeProps> = ({
       {/* Second Child */}
       <div style={{ flex: `${1 - ratio} ${1 - ratio} 0px` }} className="overflow-hidden min-w-0 min-h-0 relative">
         <BentoNodeComponent
+          key={second}
           tree={tree}
           nodeId={second}
           editMode={editMode}

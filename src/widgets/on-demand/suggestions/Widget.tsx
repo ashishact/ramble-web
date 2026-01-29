@@ -228,7 +228,7 @@ export function SuggestionWidget() {
 
       {/* Topic Filters */}
       {result.availableTopics.length > 0 && (
-        <div className="flex-shrink-0 px-2 py-1 border-t border-base-200/50">
+        <div className={`flex-shrink-0 px-2 py-1 border-t border-base-200/50 ${loadingState === 'loading' ? 'opacity-50 pointer-events-none' : ''}`}>
           <div className="flex items-center gap-1 mb-0.5">
             <span className="text-[9px] text-base-content/40 uppercase tracking-wide">
               Topics
@@ -239,7 +239,8 @@ export function SuggestionWidget() {
                   setSelectedTopic(null);
                   fetchSuggestions();
                 }}
-                className="ml-auto p-0.5 hover:bg-base-200 rounded"
+                disabled={loadingState === 'loading'}
+                className="ml-auto p-0.5 hover:bg-base-200 rounded disabled:opacity-50"
               >
                 <X size={8} className="text-base-content/30" />
               </button>
@@ -250,7 +251,8 @@ export function SuggestionWidget() {
               <button
                 key={topic}
                 onClick={() => handleTopicClick(topic)}
-                className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                disabled={loadingState === 'loading'}
+                className={`px-1.5 py-0.5 text-[10px] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   selectedTopic === topic
                     ? 'bg-primary/20 text-primary'
                     : 'bg-base-200/50 text-base-content/60 hover:bg-base-300 hover:text-base-content'
