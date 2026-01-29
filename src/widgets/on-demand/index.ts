@@ -6,4 +6,5 @@
  * Results are typically volatile (not saved to database).
  */
 
+export { QuestionWidget } from './questions';
 export { SuggestionWidget } from './suggestions';

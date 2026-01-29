@@ -1,6 +1,6 @@
 import type { WidgetProps } from '../types';
 import type { WidgetType } from '../../components/bento/types';
-import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, Lightbulb, Pencil, Volume2 } from 'lucide-react';
+import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2 } from 'lucide-react';
 
 const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'empty': null,
@@ -12,6 +12,7 @@ const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'memories': <Brain className="w-8 h-8" />,
   'goals': <Target className="w-8 h-8" />,
   'stats': <BarChart3 className="w-8 h-8" />,
+  'questions': <HelpCircle className="w-8 h-8" />,
   'suggestions': <Lightbulb className="w-8 h-8" />,
   'settings': <Settings className="w-8 h-8" />,
   'working-memory': <Eye className="w-8 h-8" />,
@@ -29,6 +30,7 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   'memories': 'Memories',
   'goals': 'Goals',
   'stats': 'Stats',
+  'questions': 'Questions',
   'suggestions': 'Suggestions',
   'settings': 'Settings',
   'working-memory': 'Working Memory',

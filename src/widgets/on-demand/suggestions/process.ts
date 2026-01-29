@@ -1,7 +1,7 @@
 /**
- * Suggestion Process
+ * Suggestions Process
  *
- * Analyzes current working memory and suggests what to talk about.
+ * Analyzes current working memory and provides actionable suggestions.
  * Results stored in profile-scoped localStorage for persistence across reloads.
  */
 
@@ -25,7 +25,7 @@ const STORAGE_KEY = 'suggestions';
 const SuggestionSchema = z.object({
   id: z.string(),
   text: z.string(),
-  category: z.enum(['missing_info', 'follow_up', 'clarification', 'action', 'explore']),
+  category: z.enum(['action', 'optimization', 'reminder', 'idea', 'next_step']),
   relatedTopics: z.array(z.string()),
   priority: z.enum(['high', 'medium', 'low']),
 });
@@ -94,90 +94,75 @@ export function clearSuggestionsFromStorage(): void {
 // Prompts
 // ============================================================================
 
-const SYSTEM_PROMPT = `You are an assistant that analyzes a user's working memory and conversation history to suggest what they should talk about next.
+const SYSTEM_PROMPT = `You analyze a user's memory and provide ACTIONABLE SUGGESTIONS - things they could do.
 
-Your job is to perform a GAP ANALYSIS:
-1. Identify incomplete information (e.g., todos without deadlines, people without context)
-2. Find opportunities for clarification
-3. Suggest follow-up questions
-4. Identify actionable items that need more detail
-5. Spot topics that could be explored further
+Your job is to SUGGEST SOLUTIONS and ACTIONS. Help the user by proposing what they should do.
+- Provide concrete, actionable advice
+- Suggest ways to accomplish their goals
+- Offer optimizations or better approaches
+
+STYLE:
+- Clear and actionable (10-30 words)
+- Suggestions and solutions, NOT questions
+- Examples: "Consider breaking the project into weekly sprints to track progress better." / "You could delegate the report to Sarah since she has experience with analytics."
 
 Categories:
-- missing_info: Information that would complete an existing memory (deadlines, details, context)
-- follow_up: Natural next things to discuss based on recent conversation
-- clarification: Ambiguous items that need clarification
-- action: Actionable suggestions (decisions to make, things to do)
-- explore: Topics worth exploring deeper
+- action: Specific things to do now
+- optimization: Ways to do something better
+- reminder: Things not to forget
+- idea: Creative approaches or alternatives
+- next_step: What to do next in a process
 
-Priority levels:
-- high: Critical missing information or time-sensitive
-- medium: Would significantly improve knowledge
-- low: Nice to have, exploratory
+Priority: high (urgent/important), medium (helpful), low (nice to have)
 
-IMPORTANT ORDERING:
-- Return exactly 4 suggestions, ordered from older context to newest
-- The LAST suggestion (4th) should be MOST motivated by the user's most recent message
-- Earlier suggestions can reference older conversation context
-- This ordering allows the user to focus on the most recent/relevant suggestion at the bottom
+ORDERING: Return exactly 4 suggestions. Last one = most relevant to latest message.
 
-Respond with a JSON object containing an array of suggestions:
+IMPORTANT: If previous suggestions are provided, do NOT repeat them. Suggest NEW things.
+
+JSON format:
 {
   "suggestions": [
-    {
-      "text": "Add a deadline for your 'finish project' todo",
-      "category": "missing_info",
-      "relatedTopics": ["project", "todos"],
-      "priority": "high"
-    }
+    { "text": "Consider setting up a weekly check-in with the team.", "category": "action", "relatedTopics": ["project"], "priority": "high" }
   ]
 }
 
-Be specific and actionable. Return exactly 4 suggestions, with the last one being most relevant to the latest user message.`;
+Actionable suggestions only. Be helpful and specific.`;
 
-const TOPIC_FOCUSED_PROMPT = `You are an assistant analyzing a user's working memory with a FOCUS on a specific topic.
+const TOPIC_FOCUSED_PROMPT = `Provide actionable suggestions about: {{TOPIC}}
 
-Focus Topic: {{TOPIC}}
-
-Generate suggestions specifically related to this topic:
-1. What information about this topic is incomplete?
-2. What follow-up questions would deepen understanding?
-3. What actions related to this topic need more detail?
-4. What connections to other topics could be explored?
+Your job is to SUGGEST SOLUTIONS and ACTIONS about this topic.
+- Provide concrete, actionable advice (10-30 words)
+- Help the user accomplish their goals related to this topic
 
 Categories:
-- missing_info: Information that would complete knowledge about this topic
-- follow_up: Natural next things to discuss about this topic
-- clarification: Ambiguous aspects that need clarification
-- action: Actionable suggestions related to this topic
-- explore: Related areas worth exploring
+- action: Specific things to do now
+- optimization: Ways to do something better
+- reminder: Things not to forget
+- idea: Creative approaches or alternatives
+- next_step: What to do next in a process
 
-IMPORTANT ORDERING:
-- Return exactly 4 suggestions, ordered from older context to newest
-- The LAST suggestion (4th) should be MOST motivated by the user's most recent message
-- Earlier suggestions can reference older conversation context
-- This ordering allows the user to focus on the most recent/relevant suggestion at the bottom
+Priority: high (urgent/important), medium (helpful), low (nice to have)
 
-Respond with JSON:
+Return exactly 4 suggestions. Last one = most relevant to latest message.
+
+IMPORTANT: If previous suggestions are provided, do NOT repeat them. Suggest NEW things.
+
+JSON format:
 {
   "suggestions": [
-    {
-      "text": "Specific suggestion about the topic",
-      "category": "missing_info",
-      "relatedTopics": ["topic1"],
-      "priority": "high"
-    }
+    { "text": "Suggestion about the topic.", "category": "action", "relatedTopics": ["{{TOPIC}}"], "priority": "high" }
   ]
 }
 
-Be specific and actionable. Return exactly 4 suggestions focused on the topic, with the last one being most relevant to the latest user message.`;
+Actionable suggestions only. Be specific.`;
 
 // ============================================================================
 // Process
 // ============================================================================
 
 export async function generateSuggestions(
-  focusTopic?: string
+  focusTopic?: string,
+  previousSuggestions?: string[]
 ): Promise<SuggestionResult> {
   const kernel = getKernel();
   const session = kernel.getCurrentSession();
@@ -204,8 +189,8 @@ export async function generateSuggestions(
     return {
       suggestions: [{
         id: 'start-1',
-        text: 'Start by telling me about your day or what\'s on your mind',
-        category: 'explore',
+        text: 'Start by telling me about what you\'re working on or what you need help with',
+        category: 'idea',
         relatedTopics: [],
         priority: 'medium',
       }],
@@ -219,14 +204,21 @@ export async function generateSuggestions(
 
   // Build prompt
   const systemPrompt = focusTopic
-    ? TOPIC_FOCUSED_PROMPT.replace('{{TOPIC}}', focusTopic)
+    ? TOPIC_FOCUSED_PROMPT.replace(/\{\{TOPIC\}\}/g, focusTopic)
     : SYSTEM_PROMPT;
+
+  // Build previous suggestions section if available
+  const previousSection = previousSuggestions && previousSuggestions.length > 0
+    ? `\n## Previous Suggestions (already shown to user - suggest NEW things)
+${previousSuggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+`
+    : '';
 
   const userPrompt = `## Current Working Memory
 ${contextPrompt}
-
-${focusTopic ? `\nFocus your analysis on the topic: "${focusTopic}"\n` : ''}
-Analyze this working memory and suggest what should be discussed. Respond with JSON only.`;
+${previousSection}
+${focusTopic ? `Focus your suggestions on the topic: "${focusTopic}"\n` : ''}
+Analyze this working memory and provide actionable suggestions. Avoid repeating previous suggestions. Respond with JSON only.`;
 
   try {
     const response = await callLLM({
@@ -242,7 +234,7 @@ Analyze this working memory and suggest what should be discussed. Respond with J
     const { data, error } = parseLLMJSON(response.content);
 
     if (error || !data) {
-      console.error('Failed to parse suggestion response:', error);
+      console.error('Failed to parse suggestions response:', error);
       return { suggestions: [], availableTopics, generatedAt: Date.now() };
     }
 
@@ -252,7 +244,7 @@ Analyze this working memory and suggest what should be discussed. Respond with J
       generatedAt: Date.now(),
     };
   } catch (error) {
-    console.error('Suggestion process failed:', error);
+    console.error('Suggestions process failed:', error);
     return { suggestions: [], availableTopics, generatedAt: Date.now() };
   }
 }
@@ -267,7 +259,7 @@ function normalizeSuggestions(data: unknown): Suggestion[] {
   const obj = data as Record<string, unknown>;
   const rawSuggestions = Array.isArray(obj.suggestions) ? obj.suggestions : [];
 
-  const validCategories = ['missing_info', 'follow_up', 'clarification', 'action', 'explore'];
+  const validCategories = ['action', 'optimization', 'reminder', 'idea', 'next_step'];
   const validPriorities = ['high', 'medium', 'low'];
 
   return rawSuggestions
@@ -284,7 +276,7 @@ function normalizeSuggestions(data: unknown): Suggestion[] {
         text,
         category: validCategories.includes(suggestion.category as string)
           ? (suggestion.category as Suggestion['category'])
-          : 'explore',
+          : 'idea',
         relatedTopics: Array.isArray(suggestion.relatedTopics)
           ? suggestion.relatedTopics.filter((t): t is string => typeof t === 'string')
           : [],

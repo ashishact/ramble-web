@@ -29,7 +29,8 @@ export type WidgetType =
   | 'stats'               // Quick stats
   | 'settings'            // Settings panel
   | 'working-memory'      // Full context view
-  | 'suggestions'         // AI-powered suggestions (volatile, not saved)
+  | 'questions'           // AI-powered gap analysis questions (volatile, not saved)
+  | 'suggestions'         // AI-powered actionable suggestions (volatile, not saved)
   | 'learned-corrections' // Manage learned STT corrections
   | 'tts';               // Text-to-Speech widget
 

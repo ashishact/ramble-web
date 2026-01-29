@@ -27,7 +27,7 @@ import {
   PlaceholderWidget,
   LearnedCorrectionsWidget,
 } from '../widgets';
-import { SuggestionWidget } from '../widgets/on-demand';
+import { QuestionWidget, SuggestionWidget } from '../widgets/on-demand';
 import { RotateCcw, PencilRuler, Loader2 } from 'lucide-react';
 import { GlobalSTTController } from './GlobalSTTController';
 import { PipelineBreadcrumb } from './PipelineBreadcrumb';
@@ -123,6 +123,8 @@ export const BentoApp: React.FC = () => {
         return <SettingsWidget {...props} />;
       case 'working-memory':
         return <WorkingMemoryWidget {...props} />;
+      case 'questions':
+        return <QuestionWidget />;
       case 'suggestions':
         return <SuggestionWidget />;
       case 'learned-corrections':
