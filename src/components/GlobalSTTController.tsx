@@ -233,26 +233,71 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
     handleSubmitTranscript,
   ]);
 
-  // Keyboard shortcut: Right Command key toggles recording
+  // Track keydown time for quick-tap detection (forward slash shortcut)
+  const slashKeyDownTimeRef = useRef<number | null>(null);
+
+  // Keyboard shortcuts
   useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Forward slash - record keydown time for quick-tap detection
+      if (event.key === '/') {
+        slashKeyDownTimeRef.current = Date.now();
+      }
+    };
+
     const handleKeyUp = (event: KeyboardEvent) => {
-      // Right Command key on Mac
-      if (event.code === 'MetaRight') {
+      // Right Command key (Mac) or Right Control key (Windows/Linux) - toggles recording
+      if (event.code === 'MetaRight' || event.code === 'ControlRight') {
         // If Ramble is available, let it handle the keyboard
         if (rambleNative.isRambleAvailable()) {
-          console.log('[GlobalSTT] Right Command - Ramble available, letting it handle');
+          console.log('[GlobalSTT] Right modifier key - Ramble available, letting it handle');
           return;
         }
 
         event.preventDefault();
-        console.log('[GlobalSTT] Right Command - toggling cloud STT recording');
+        console.log('[GlobalSTT] Right modifier key - toggling cloud STT recording');
         handleToggleRecording();
+        return;
+      }
+
+      // Forward slash - quick tap opens text editor directly
+      if (event.key === '/') {
+        // Don't trigger if in an input field or textarea
+        const activeElement = document.activeElement;
+        if (
+          activeElement instanceof HTMLInputElement ||
+          activeElement instanceof HTMLTextAreaElement ||
+          (activeElement as HTMLElement)?.isContentEditable
+        ) {
+          slashKeyDownTimeRef.current = null;
+          return;
+        }
+
+        // Check if it was a quick tap (≤300ms)
+        const keyDownTime = slashKeyDownTimeRef.current;
+        slashKeyDownTimeRef.current = null;
+
+        if (keyDownTime === null) return;
+
+        const pressDuration = Date.now() - keyDownTime;
+        if (pressDuration > 300) {
+          console.log('[GlobalSTT] Slash key held too long, ignoring:', pressDuration, 'ms');
+          return;
+        }
+
+        event.preventDefault();
+        console.log('[GlobalSTT] Quick slash tap - opening text editor');
+        showReview('', handleSubmitTranscript);
       }
     };
 
+    window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
-    return () => window.removeEventListener('keyup', handleKeyUp);
-  }, [handleToggleRecording]);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [handleToggleRecording, showReview, handleSubmitTranscript]);
 
   // Handle Ramble paste events
   useEffect(() => {
