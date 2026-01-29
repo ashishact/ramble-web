@@ -33,6 +33,7 @@ import { GlobalSTTController } from './GlobalSTTController';
 import { PipelineBreadcrumb } from './PipelineBreadcrumb';
 import { RambleNativeStatus } from './RambleNativeStatus';
 import { HelpStrip } from './HelpStrip';
+import { OnboardingFlow, useOnboarding } from '../modules/onboarding';
 
 // Lazy-loaded TTS Widget
 const TTSWidget = lazy(() =>
@@ -40,11 +41,22 @@ const TTSWidget = lazy(() =>
 );
 
 export const BentoApp: React.FC = () => {
+  // Onboarding check
+  const { isComplete: isOnboardingComplete, isLoading: isOnboardingLoading } = useOnboarding();
+  const [showOnboarding, setShowOnboarding] = useState(true);
+
   const [tree, setTree] = useState<BentoTree>(() => {
     const savedTree = loadTreeFromStorage();
     return savedTree ?? createInitialTree();
   });
   const [editMode, setEditMode] = useState(false);
+
+  // Update showOnboarding when onboarding status changes
+  useEffect(() => {
+    if (!isOnboardingLoading) {
+      setShowOnboarding(!isOnboardingComplete);
+    }
+  }, [isOnboardingComplete, isOnboardingLoading]);
 
   // Persist tree to localStorage on changes
   useEffect(() => {
@@ -130,6 +142,24 @@ export const BentoApp: React.FC = () => {
         return <PlaceholderWidget nodeId={node.id} widgetType={node.widgetType} />;
     }
   }, []);
+
+  // Show onboarding if not complete
+  if (showOnboarding && !isOnboardingLoading) {
+    return (
+      <OnboardingFlow
+        onComplete={() => setShowOnboarding(false)}
+      />
+    );
+  }
+
+  // Show loading while checking onboarding status
+  if (isOnboardingLoading) {
+    return (
+      <div className="w-screen h-screen flex items-center justify-center bg-slate-100">
+        <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+      </div>
+    );
+  }
 
   return (
     <GlobalSTTController>

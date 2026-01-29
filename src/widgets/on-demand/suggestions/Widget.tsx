@@ -125,21 +125,8 @@ export function SuggestionWidget() {
     fetchSuggestions();
   }, [fetchSuggestions]);
 
-  // Loading state - Compact
-  if (loadingState === 'loading') {
-    return (
-      <div
-        className="w-full h-full flex flex-col items-center justify-center text-slate-300 p-2"
-        data-doc='{"icon":"mdi:lightbulb","title":"Suggestions","desc":"AI-generated suggestions based on your conversation. Includes follow-ups, clarifications, missing info, actions, and exploration ideas."}'
-      >
-        <RefreshCw className="w-5 h-5 mb-1 animate-spin" />
-        <span className="text-[10px]">Analyzing...</span>
-        {selectedTopic && (
-          <span className="text-[9px] opacity-50">{selectedTopic}</span>
-        )}
-      </div>
-    );
-  }
+  // Note: Loading state no longer hides previous suggestions
+  // We show a loading indicator in the header instead
 
   // Error state - Compact
   if (loadingState === 'error') {
@@ -198,8 +185,9 @@ export function SuggestionWidget() {
           onClick={handleRefresh}
           className="p-0.5 hover:bg-slate-100 rounded transition-colors"
           title="Refresh"
+          disabled={loadingState === 'loading'}
         >
-          <RefreshCw size={12} className="text-slate-300" />
+          <RefreshCw size={12} className={`text-slate-300 ${loadingState === 'loading' ? 'animate-spin' : ''}`} />
         </button>
       </div>
 

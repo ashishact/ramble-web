@@ -115,6 +115,12 @@ Priority levels:
 - medium: Would significantly improve knowledge
 - low: Nice to have, exploratory
 
+IMPORTANT ORDERING:
+- Return exactly 4 suggestions, ordered from older context to newest
+- The LAST suggestion (4th) should be MOST motivated by the user's most recent message
+- Earlier suggestions can reference older conversation context
+- This ordering allows the user to focus on the most recent/relevant suggestion at the bottom
+
 Respond with a JSON object containing an array of suggestions:
 {
   "suggestions": [
@@ -127,7 +133,7 @@ Respond with a JSON object containing an array of suggestions:
   ]
 }
 
-Be specific and actionable. Limit to 5-7 most valuable suggestions.`;
+Be specific and actionable. Return exactly 4 suggestions, with the last one being most relevant to the latest user message.`;
 
 const TOPIC_FOCUSED_PROMPT = `You are an assistant analyzing a user's working memory with a FOCUS on a specific topic.
 
@@ -146,6 +152,12 @@ Categories:
 - action: Actionable suggestions related to this topic
 - explore: Related areas worth exploring
 
+IMPORTANT ORDERING:
+- Return exactly 4 suggestions, ordered from older context to newest
+- The LAST suggestion (4th) should be MOST motivated by the user's most recent message
+- Earlier suggestions can reference older conversation context
+- This ordering allows the user to focus on the most recent/relevant suggestion at the bottom
+
 Respond with JSON:
 {
   "suggestions": [
@@ -158,7 +170,7 @@ Respond with JSON:
   ]
 }
 
-Be specific and actionable. Limit to 5-7 suggestions focused on the topic.`;
+Be specific and actionable. Return exactly 4 suggestions focused on the topic, with the last one being most relevant to the latest user message.`;
 
 // ============================================================================
 // Process
@@ -281,6 +293,5 @@ function normalizeSuggestions(data: unknown): Suggestion[] {
           : 'medium',
       };
     })
-    .filter((s): s is Suggestion => s !== null)
-    .slice(0, 7);
+    .filter((s): s is Suggestion => s !== null);
 }

@@ -23,3 +23,6 @@ export { pluginStore } from './pluginStore'
 export { correctionStore } from './correctionStore'
 export { learnedCorrectionStore } from './learnedCorrectionStore'
 export { extractionLogStore } from './extractionLogStore'
+
+// Data storage
+export { dataStore } from './dataStore'

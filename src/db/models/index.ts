@@ -24,8 +24,12 @@ export { default as Correction } from './Correction'
 export { default as LearnedCorrection } from './LearnedCorrection'
 export { default as ExtractionLog } from './ExtractionLog'
 
+// Data storage
+export { default as Data } from './Data'
+
 // Re-export types
 export type { ConversationSource, Speaker } from './Conversation'
 export type { TaskStatus } from './Task'
 export type { GoalStatus } from './Goal'
 export type { PluginType, PluginTriggers, PluginLLMConfig } from './Plugin'
+export type { DataType, OnboardingData, UserProfileData } from './Data'

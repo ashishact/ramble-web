@@ -18,12 +18,14 @@ import { ExpandableText } from '../ui/ExpandableText';
 interface ConversationListProps {
   conversations: Conversation[];
   onClose?: () => void;
+  /** When true, the latest conversation is treated as processed even if DB hasn't updated yet */
+  pipelineDone?: boolean;
 }
 
 // Truncate text if longer than this many characters
 const TRUNCATE_LENGTH = 150;
 
-export function ConversationList({ conversations, onClose }: ConversationListProps) {
+export function ConversationList({ conversations, onClose, pipelineDone }: ConversationListProps) {
   const [showRawText, setShowRawText] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(20);
 
@@ -90,6 +92,10 @@ export function ConversationList({ conversations, onClose }: ConversationListPro
               const prevConv = arr[index - 1];
               const isSessionStart = !prevConv || prevConv.sessionId !== conv.sessionId;
 
+              // For the latest conversation (index 0), use pipelineDone to override processed status
+              // This provides immediate feedback since WatermelonDB observer can have slight delay
+              const isProcessed = conv.processed || (index === 0 && pipelineDone);
+
               return (
                 <div key={conv.id}>
                   {/* Session marker */}
@@ -115,7 +121,7 @@ export function ConversationList({ conversations, onClose }: ConversationListPro
                   {/* Conversation unit */}
                   <div
                     className={`p-2 rounded-lg text-sm ${
-                      conv.processed ? 'bg-base-200' : 'bg-warning/10 border border-warning/30'
+                      isProcessed ? 'bg-base-200' : 'bg-warning/10 border border-warning/30'
                     }`}
                   >
                     <ExpandableText text={displayText} truncateLength={TRUNCATE_LENGTH} />
@@ -147,7 +153,7 @@ export function ConversationList({ conversations, onClose }: ConversationListPro
                           }`}
                         ></span>
                         <span>{conv.source}</span>
-                        {!conv.processed && <span className="text-warning">processing...</span>}
+                        {!isProcessed && <span className="text-warning">processing...</span>}
                       </div>
                       <span>
                         {new Date(conv.timestamp).toLocaleTimeString([], {

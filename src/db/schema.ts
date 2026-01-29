@@ -25,7 +25,7 @@ import { createTable, schemaMigrations } from '@nozbe/watermelondb/Schema/migrat
 export const DATABASE_NAME = 'ramble_v3'
 
 export const schema = appSchema({
-  version: 2,
+  version: 3,
   tables: [
     // ========================================================================
     // CORE - Foundation (Keep from v4)
@@ -264,6 +264,23 @@ export const schema = appSchema({
         { name: 'createdAt', type: 'number', isIndexed: true },
       ]
     }),
+
+    // ========================================================================
+    // DATA - Flexible key-value storage (v3)
+    // ========================================================================
+
+    // Data - Generic data storage for app data without frequent migrations
+    // Used for: onboarding status, user profile, feature flags, etc.
+    tableSchema({
+      name: 'data',
+      columns: [
+        { name: 'key', type: 'string', isIndexed: true },      // Unique key (e.g., "onboarding", "user_profile")
+        { name: 'dataType', type: 'string', isIndexed: true }, // Category (e.g., "system", "user", "feature")
+        { name: 'value', type: 'string' },                      // JSON string
+        { name: 'createdAt', type: 'number' },
+        { name: 'updatedAt', type: 'number' },
+      ]
+    }),
   ]
 })
 
@@ -285,6 +302,23 @@ export const migrations = schemaMigrations({
             { name: 'confidence', type: 'number' },
             { name: 'createdAt', type: 'number', isIndexed: true },
             { name: 'lastUsedAt', type: 'number', isOptional: true },
+          ]
+        }),
+      ],
+    },
+    {
+      // v2 → v3: Add data table for flexible key-value storage
+      // Used for onboarding, user profile, feature flags, etc.
+      toVersion: 3,
+      steps: [
+        createTable({
+          name: 'data',
+          columns: [
+            { name: 'key', type: 'string', isIndexed: true },
+            { name: 'dataType', type: 'string', isIndexed: true },
+            { name: 'value', type: 'string' },
+            { name: 'createdAt', type: 'number' },
+            { name: 'updatedAt', type: 'number' },
           ]
         }),
       ],

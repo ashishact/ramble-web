@@ -251,6 +251,7 @@ class RambleNative {
           break;
 
         case 'transcription_complete':
+          console.log('[RambleNative] transcription_complete:', event.payload.text);
           this.callbacks.onTranscriptionComplete?.(
             event.payload.text,
             event.payload.duration
