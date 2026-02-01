@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../db/database';
 import type Conversation from '../../../db/models/Conversation';
+import { eventBus } from '../../../lib/eventBus';
 import {
 	analyzeText,
 	loadFromStorage,
@@ -72,6 +73,38 @@ export function SpeakBetterWidget() {
 		}
 	}, []);
 
+	// Format result for TTS narration
+	const formatForSpeech = useCallback((result: AnalysisResult): string => {
+		const parts: string[] = [];
+
+		if (result.betterVersion) {
+			parts.push(`Here's a better way to say it: ${result.betterVersion}`);
+		}
+
+		if (result.suggestions.length > 0) {
+			for (const s of result.suggestions) {
+				parts.push(`Instead of "${s.original}", try "${s.improved}".`);
+			}
+		}
+
+		if (result.vocabularyTips.length > 0) {
+			parts.push('Vocabulary tips:');
+			for (const tip of result.vocabularyTips) {
+				parts.push(tip);
+			}
+		}
+
+		return parts.join(' ');
+	}, []);
+
+	// Emit TTS event to narrate the result (if narrator widget is loaded, it will speak)
+	const narrateResult = useCallback((result: AnalysisResult) => {
+		const text = formatForSpeech(result);
+		if (text) {
+			eventBus.emit('tts:speak', { text, mode: 'queue' });
+		}
+	}, [formatForSpeech]);
+
 	// Analyze text
 	const analyze = useCallback(async (conversationId: string, text: string) => {
 		if (!text.trim()) return;
@@ -83,11 +116,13 @@ export function SpeakBetterWidget() {
 			const analysisResult = await analyzeText(conversationId, text);
 			setResult(analysisResult);
 			setLoadingState('success');
+			// Narrate the result (narrator will speak if loaded)
+			narrateResult(analysisResult);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : 'Analysis failed');
 			setLoadingState('error');
 		}
-	}, []);
+	}, [narrateResult]);
 
 	// Observe conversations for new user messages
 	useEffect(() => {
