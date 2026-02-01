@@ -267,28 +267,26 @@ IMPORTANT:
 - Speech-to-text often mishears names. If a name sounds similar to a known entity, use the known entity.
 - Prefer matching against existing entities rather than creating duplicates.
 
-GOALS - Hierarchical namespace system. Active goals listed with short IDs (g1, g2, etc.).
+GOALS - Hierarchical namespace. Active goals listed with short IDs (g1, g2, etc.).
 
-Goal statements MUST be path-like namespaces:
-  Category / Goal
-  Category / Goal / Sub-goal
+Statement format:
+- "Namespace / Goal" - Goal must be descriptive sentence
+- "Namespace / Goal / Sub-goal" - Sub-goal must be descriptive sentence
 
-Examples:
-  Product / Planning System / Daily planner
-  Health / Exercise / Morning runs
+The last segment is always the descriptive part (NOT just keywords).
 
 Rules:
 - Reuse existing categories - do NOT create many new categories
 - Prefer adding depth to existing goals over creating new top-level goals
-- Maximum 3 levels: Category / Goal / Sub-goal
+- Maximum 3 levels
 
 Format:
-- {"statement": "Category / Goal", "type": "work|personal|health"} - new goal
+- {"statement": "Category / Goal sentence", "type": "work|personal|health"} - new goal
 - {"shortId": "g1", "status": "achieved"} - mark existing goal complete
 - {"shortId": "g1", "status": "progress", "progress": 0-100} - progress update
 
 type = domain/why (work, personal, health)
-statement namespace = what (the hierarchical path)
+statement = Category / What you want to achieve
 
 Respond with a JSON object. Only include fields with actual content.
 
@@ -349,10 +347,12 @@ export async function processInput(
 
   // 3. Build prompt
   const summaryInstruction = needsSummary
-    ? '\n\nAlso provide a brief summary (1-2 sentences) of the input in a "summary" field.'
+    ? '\n\nAlso provide a brief summary (1-2 sentences) in a "summary" field. Keep the original first-person voice - just condense, don\'t rephrase as "the user said".'
     : '';
 
-  const userPrompt = `## Context
+  const userPrompt = `Current time: ${wmData.userContext.currentTime}
+
+## Context
 ${contextPrompt}
 ${correctionSection}
 ## New Input
