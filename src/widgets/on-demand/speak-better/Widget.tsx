@@ -13,9 +13,14 @@ import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../db/database';
 import type Conversation from '../../../db/models/Conversation';
 import { eventBus } from '../../../lib/eventBus';
+import { useWidgetPause } from '../useWidgetPause';
 import {
 	analyzeText,
 	loadFromStorage,
+	loadTone,
+	saveTone,
+	TONES,
+	type ToneId,
 	type AnalysisResult,
 	type Suggestion,
 } from './process';
@@ -26,6 +31,7 @@ import {
 	ArrowRight,
 	BookOpen,
 	Lightbulb,
+	Settings,
 	type LucideIcon,
 } from 'lucide-react';
 
@@ -53,11 +59,22 @@ export function SpeakBetterWidget() {
 	const [result, setResult] = useState<AnalysisResult | null>(null);
 	const [loadingState, setLoadingState] = useState<LoadingState>('idle');
 	const [error, setError] = useState<string | null>(null);
+	const [selectedTone, setSelectedTone] = useState<ToneId>(() => loadTone());
+	const [showSettings, setShowSettings] = useState(false);
+
+	// Pause functionality
+	const { isPaused, PauseButton, PauseOverlay } = useWidgetPause('speak-better', 'Speak Better');
 
 	// Track the last analyzed conversation ID to avoid re-analyzing
 	// This is initialized from storage to prevent duplicate analysis on reload
 	const lastAnalyzedIdRef = useRef<string | null>(null);
 	const hasLoadedFromStorageRef = useRef(false);
+
+	// Handle tone change
+	const handleToneChange = useCallback((tone: ToneId) => {
+		setSelectedTone(tone);
+		saveTone(tone);
+	}, []);
 
 	// Load from storage on mount
 	useEffect(() => {
@@ -74,17 +91,13 @@ export function SpeakBetterWidget() {
 	}, []);
 
 	// Format result for TTS narration
+	// Only narrate the better version and vocabulary tips
+	// Suggestions are visual-only (user can see them while speaking)
 	const formatForSpeech = useCallback((result: AnalysisResult): string => {
 		const parts: string[] = [];
 
 		if (result.betterVersion) {
 			parts.push(`Here's a better way to say it: ${result.betterVersion}`);
-		}
-
-		if (result.suggestions.length > 0) {
-			for (const s of result.suggestions) {
-				parts.push(`Instead of "${s.original}", try "${s.improved}".`);
-			}
 		}
 
 		if (result.vocabularyTips.length > 0) {
@@ -113,7 +126,7 @@ export function SpeakBetterWidget() {
 		setError(null);
 
 		try {
-			const analysisResult = await analyzeText(conversationId, text);
+			const analysisResult = await analyzeText(conversationId, text, selectedTone);
 			setResult(analysisResult);
 			setLoadingState('success');
 			// Narrate the result (narrator will speak if loaded)
@@ -122,10 +135,13 @@ export function SpeakBetterWidget() {
 			setError(err instanceof Error ? err.message : 'Analysis failed');
 			setLoadingState('error');
 		}
-	}, [narrateResult]);
+	}, [narrateResult, selectedTone]);
 
 	// Observe conversations for new user messages
 	useEffect(() => {
+		// Don't observe when paused
+		if (isPaused) return;
+
 		const conversations = database.get<Conversation>('conversations');
 		const query = conversations.query(
 			Q.where('speaker', 'user'),
@@ -145,7 +161,7 @@ export function SpeakBetterWidget() {
 		});
 
 		return () => subscription.unsubscribe();
-	}, [analyze]);
+	}, [analyze, isPaused]);
 
 	// Manual refresh with latest text
 	const handleRefresh = useCallback(async () => {
@@ -168,9 +184,10 @@ export function SpeakBetterWidget() {
 	if (loadingState === 'error') {
 		return (
 			<div
-				className="w-full h-full flex flex-col items-center justify-center text-base-content/50 p-2"
+				className="w-full h-full relative flex flex-col items-center justify-center text-base-content/50 p-2"
 				data-doc='{"icon":"mdi:sparkles","title":"Speak Better","desc":"Helps you articulate better with vocabulary and conciseness suggestions."}'
 			>
+				<PauseOverlay />
 				<AlertCircle className="w-5 h-5 mb-1 text-error" />
 				<span className="text-[10px] text-base-content/60">{error}</span>
 				<button onClick={handleRefresh} className="btn btn-xs btn-ghost mt-2">
@@ -184,9 +201,10 @@ export function SpeakBetterWidget() {
 	if (!result || (!result.betterVersion && result.suggestions.length === 0)) {
 		return (
 			<div
-				className="w-full h-full flex flex-col items-center justify-center text-base-content/50 p-2"
+				className="w-full h-full relative flex flex-col items-center justify-center text-base-content/50 p-2"
 				data-doc='{"icon":"mdi:sparkles","title":"Speak Better","desc":"Analyzes your speech and suggests better vocabulary and phrasing. Start talking to see suggestions."}'
 			>
+				<PauseOverlay />
 				<Sparkles className="w-5 h-5 mb-1 opacity-40" />
 				<span className="text-[10px]">
 					{loadingState === 'loading' ? 'Analyzing...' : 'No analysis yet'}
@@ -201,9 +219,10 @@ export function SpeakBetterWidget() {
 
 	return (
 		<div
-			className="w-full h-full flex flex-col overflow-hidden"
+			className="w-full h-full relative flex flex-col overflow-hidden"
 			data-doc='{"icon":"mdi:sparkles","title":"Speak Better","desc":"Shows how you could have said things better. Includes vocabulary tips and concise alternatives."}'
 		>
+			<PauseOverlay />
 			{/* Header */}
 			<div className="flex-shrink-0 px-2 py-1.5 border-b border-base-200 flex items-center justify-between">
 				<div className="flex items-center gap-1.5">
@@ -221,15 +240,50 @@ export function SpeakBetterWidget() {
 						</>
 					)}
 				</div>
-				<button
-					onClick={handleRefresh}
-					className="p-1 hover:bg-base-200 rounded transition-colors"
-					title="Refresh"
-					disabled={loadingState === 'loading'}
-				>
-					<RefreshCw size={12} className="text-base-content/40" />
-				</button>
+				<div className="flex items-center gap-1">
+					{/* Settings toggle */}
+					<button
+						onClick={() => setShowSettings(!showSettings)}
+						className={`flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded transition-colors ${
+							showSettings
+								? 'bg-primary/20 text-primary'
+								: 'text-base-content/40 hover:bg-base-200/50'
+						}`}
+						title="Tone settings"
+						data-doc='{"title":"Tone Settings","desc":"Choose how you want to speak: professional, casual, witty, direct, and more. The AI will rewrite your speech to match the selected tone."}'
+					>
+						<Settings size={10} />
+						<span className="max-w-[60px] truncate">{TONES[selectedTone].label}</span>
+					</button>
+					<PauseButton />
+					<button
+						onClick={handleRefresh}
+						className="p-1 hover:bg-base-200 rounded transition-colors"
+						title="Refresh"
+						disabled={loadingState === 'loading'}
+					>
+						<RefreshCw size={12} className="text-base-content/40" />
+					</button>
+				</div>
 			</div>
+
+			{/* Settings Panel - Collapsible */}
+			{showSettings && (
+				<div className="flex-shrink-0 bg-base-200/20 px-2 py-1.5 border-b border-base-200">
+					<div className="text-[9px] text-base-content/50 mb-1">Tone</div>
+					<select
+						value={selectedTone}
+						onChange={(e) => handleToneChange(e.target.value as ToneId)}
+						className="w-full text-[10px] bg-base-100 border border-base-300 rounded px-1.5 py-1 text-base-content/70 cursor-pointer focus:outline-none focus:border-primary/50"
+					>
+						{(Object.keys(TONES) as ToneId[]).map((tone) => (
+							<option key={tone} value={tone}>
+								{TONES[tone].label} — {TONES[tone].description}
+							</option>
+						))}
+					</select>
+				</div>
+			)}
 
 			{/* Content */}
 			<div className="flex-1 overflow-auto p-2 space-y-3">
@@ -312,10 +366,19 @@ export function SpeakBetterWidget() {
 				)}
 			</div>
 
-			{/* Context info footer - subtle */}
-			<div className="flex-shrink-0 px-2 py-1 border-t border-base-200/50 flex items-center justify-between text-[9px] text-base-content/30">
-				<span>in: {result.inputChars.toLocaleString()}{result.truncated ? ' (truncated)' : ''}</span>
-				<span>out: {result.outputChars.toLocaleString()}</span>
+			{/* Footer - context info */}
+			<div className="flex-shrink-0 px-2 py-1 border-t border-base-200/50 flex items-center justify-end text-[9px] text-base-content/30 gap-2">
+				<span
+					data-doc='{"title":"LLM Duration","desc":"Time taken for the AI to analyze and generate suggestions."}'
+				>
+					{(result.durationMs / 1000).toFixed(1)}s
+				</span>
+				<span>·</span>
+				<span
+					data-doc='{"title":"Context Size","desc":"Input characters sent to AI → Output characters received. Asterisk (*) means input was truncated."}'
+				>
+					{result.inputChars.toLocaleString()}{result.truncated ? '*' : ''} → {result.outputChars.toLocaleString()}
+				</span>
 			</div>
 		</div>
 	);

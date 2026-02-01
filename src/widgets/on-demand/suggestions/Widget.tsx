@@ -7,6 +7,7 @@ import {
   type SuggestionResult,
 } from './process';
 import { pipelineStatus, type PipelineState } from '../../../program/kernel/pipelineStatus';
+import { useWidgetPause } from '../useWidgetPause';
 import {
   Lightbulb,
   RefreshCw,
@@ -55,6 +56,9 @@ export function SuggestionWidget() {
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Pause functionality
+  const { isPaused, PauseButton, PauseOverlay } = useWidgetPause('suggestions', 'Suggestions');
+
   const wasRunningRef = useRef(false);
   const hasLoadedFromStorageRef = useRef(false);
 
@@ -87,6 +91,9 @@ export function SuggestionWidget() {
   }, []);
 
   useEffect(() => {
+    // Don't subscribe when paused
+    if (isPaused) return;
+
     const unsubscribe = pipelineStatus.subscribe((state: PipelineState) => {
       const wasRunning = wasRunningRef.current;
       const isNowComplete = !state.isRunning;
@@ -101,7 +108,7 @@ export function SuggestionWidget() {
     });
 
     return unsubscribe;
-  }, [fetchSuggestions]);
+  }, [fetchSuggestions, isPaused]);
 
   const handleTopicClick = useCallback((topic: string) => {
     if (selectedTopic === topic) {
@@ -122,9 +129,10 @@ export function SuggestionWidget() {
   if (loadingState === 'error') {
     return (
       <div
-        className="w-full h-full flex flex-col items-center justify-center text-base-content/50 p-2"
+        className="w-full h-full relative flex flex-col items-center justify-center text-base-content/50 p-2"
         data-doc='{"icon":"mdi:lightbulb","title":"Suggestions","desc":"AI-generated actionable suggestions. Click Retry to try again."}'
       >
+        <PauseOverlay />
         <AlertCircle className="w-5 h-5 mb-1 text-error" />
         <span className="text-[10px] text-base-content/60">{error}</span>
         <button
@@ -141,9 +149,10 @@ export function SuggestionWidget() {
   if (!result || result.suggestions.length === 0) {
     return (
       <div
-        className="w-full h-full flex flex-col items-center justify-center text-base-content/50 p-2"
+        className="w-full h-full relative flex flex-col items-center justify-center text-base-content/50 p-2"
         data-doc='{"icon":"mdi:lightbulb","title":"Suggestions","desc":"AI-generated actionable suggestions will appear here after you start a conversation. Click Refresh to generate suggestions."}'
       >
+        <PauseOverlay />
         <Lightbulb className="w-5 h-5 mb-1 opacity-40" />
         <span className="text-[10px]">No suggestions</span>
         <span className="text-[9px] opacity-50">Start talking first</span>
@@ -160,9 +169,10 @@ export function SuggestionWidget() {
 
   return (
     <div
-      className="w-full h-full flex flex-col overflow-hidden"
+      className="w-full h-full relative flex flex-col overflow-hidden"
       data-doc='{"icon":"mdi:lightbulb","title":"Suggestions","desc":"AI actionable suggestions categorized as: action, optimization, reminder, idea, or next step. Filter by topic at the bottom. Auto-refreshes after each conversation."}'
     >
+      <PauseOverlay />
       {/* Header */}
       <div className="flex-shrink-0 px-2 py-1.5 border-b border-base-200 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
@@ -180,14 +190,17 @@ export function SuggestionWidget() {
             </>
           )}
         </div>
-        <button
-          onClick={handleRefresh}
-          className="p-1 hover:bg-base-200 rounded transition-colors"
-          title="Refresh"
-          disabled={loadingState === 'loading'}
-        >
-          <RefreshCw size={12} className="text-base-content/40" />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <PauseButton />
+          <button
+            onClick={handleRefresh}
+            className="p-1 hover:bg-base-200 rounded transition-colors"
+            title="Refresh"
+            disabled={loadingState === 'loading'}
+          >
+            <RefreshCw size={12} className="text-base-content/40" />
+          </button>
+        </div>
       </div>
 
       {/* Suggestions List */}

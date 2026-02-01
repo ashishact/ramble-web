@@ -64,9 +64,15 @@ export interface EventPayloads {
 	// mode: 'replace' = stop current speech and speak immediately (default)
 	// mode: 'queue' = add to the queue after current speech
 	'tts:speak': { text: string; voice?: string; mode?: 'replace' | 'queue' };
-	'tts:started': { utteranceId: string };
-	'tts:ended': { utteranceId: string };
-	'tts:cancelled': Record<string, never>;
+	// Emitted when audio generation completes for a chunk (before playback starts)
+	'tts:generated': { partId: string; text: string };
+	// Emitted when audio playback starts
+	'tts:started': { partId: string };
+	// Emitted when all queued audio finishes playing naturally
+	'tts:ended': { reason: 'completed' };
+	// Emitted when user explicitly stops playback
+	'tts:cancelled': { reason: 'user-stopped' };
+	// Command to stop playback (received by TTSService)
 	'tts:stop': Record<string, never>;
 
 	// Generic fallback for custom events

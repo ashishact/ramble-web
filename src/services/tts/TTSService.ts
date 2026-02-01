@@ -14,6 +14,7 @@ import type {
 } from './types';
 import { DEFAULT_VOICE } from './voices';
 import { splitParagraph, sanitizeText, sanitizeChunk } from './textChunker';
+import { eventBus } from '../../lib/eventBus';
 
 // v1.0 model with 54 voices and 8 languages
 const MODEL_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX';
@@ -149,6 +150,10 @@ class TTSService {
       const audioElement = new Audio(URL.createObjectURL(blob));
 
       part.audio = { element: audioElement, blob };
+
+      // Emit event: audio generation completed for this part
+      eventBus.emit('tts:generated', { partId: part.id, text: part.text });
+
       return true;
     } catch (error) {
       this.callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));
@@ -225,6 +230,9 @@ class TTSService {
     audioElement.play();
     this.setState('playing');
 
+    // Emit event: playback started
+    eventBus.emit('tts:started', { partId: current.id });
+
     // Auto-play next on end
     audioElement.onended = () => {
       const next = this.getNextPart();
@@ -236,7 +244,8 @@ class TTSService {
           // Process next queued item without going idle
           this.processQueue();
         } else {
-          // Truly done
+          // Truly done - emit event and go idle
+          eventBus.emit('tts:ended', { reason: 'completed' });
           this.setState('idle');
         }
       }
@@ -409,6 +418,9 @@ class TTSService {
   }
 
   stop(): void {
+    // Check if we were actually playing something (to emit cancelled event)
+    const wasPlaying = this.playbackState === 'playing' || this.playbackState === 'generating' || this.playbackState === 'paused';
+
     // Clear queue
     this.queue = [];
     this.notifyQueueChange();
@@ -424,6 +436,12 @@ class TTSService {
     this.playingAudioElement = null;
     this.isGenerating = false;
     this.isProcessingQueue = false;
+
+    // Emit cancelled event if we were actively playing/generating
+    if (wasPlaying) {
+      eventBus.emit('tts:cancelled', { reason: 'user-stopped' });
+    }
+
     this.setState('idle');
     this.notifyPartChange();
   }

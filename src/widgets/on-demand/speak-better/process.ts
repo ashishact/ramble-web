@@ -20,10 +20,82 @@ import { profileStorage } from '../../../lib/profileStorage';
 // ============================================================================
 
 const STORAGE_KEY = 'speak-better';
+const TONE_STORAGE_KEY = 'speak-better-tone';
 
 // Maximum characters to send to LLM (roughly ~4000 tokens)
 // High limit since we're only sending one conversation, not full working memory
 const MAX_INPUT_CHARS = 8000;
+
+// ============================================================================
+// Tones
+// ============================================================================
+
+export const TONES = {
+	professional: {
+		label: 'Professional',
+		description: 'Polished, formal, business-appropriate',
+		prompt: 'Rewrite in a professional, polished tone suitable for business or formal settings. Use proper vocabulary and maintain credibility.',
+	},
+	casual: {
+		label: 'Casual',
+		description: 'Relaxed, everyday conversation',
+		prompt: 'Rewrite in a casual, relaxed tone like talking to a friend. Use everyday language, contractions, and a conversational flow.',
+	},
+	friendly: {
+		label: 'Friendly',
+		description: 'Warm, approachable, personable',
+		prompt: 'Rewrite in a warm, friendly tone that feels approachable and personable. Be genuine and create connection.',
+	},
+	witty: {
+		label: 'Witty',
+		description: 'Clever, playful, subtle humor',
+		prompt: 'Rewrite with wit and clever wordplay. Add subtle humor or playfulness while keeping the message clear. Be smart, not silly.',
+	},
+	direct: {
+		label: 'Direct',
+		description: 'Straight to the point, no fluff',
+		prompt: 'Rewrite to be extremely direct and to the point. Remove all unnecessary words. Be clear and assertive.',
+	},
+	diplomatic: {
+		label: 'Diplomatic',
+		description: 'Tactful, considerate, balanced',
+		prompt: 'Rewrite diplomatically, being tactful and considerate of different perspectives. Soften harsh statements while preserving the message.',
+	},
+	enthusiastic: {
+		label: 'Enthusiastic',
+		description: 'Energetic, positive, excited',
+		prompt: 'Rewrite with enthusiasm and positive energy. Show genuine excitement while keeping it natural, not over-the-top.',
+	},
+	storytelling: {
+		label: 'Storytelling',
+		description: 'Narrative, engaging, vivid',
+		prompt: 'Rewrite with a storytelling flair. Make it engaging and vivid, drawing the listener in with narrative elements.',
+	},
+} as const;
+
+export type ToneId = keyof typeof TONES;
+export const DEFAULT_TONE: ToneId = 'casual';
+
+// Tone storage functions
+export function saveTone(tone: ToneId): void {
+	try {
+		profileStorage.setItem(TONE_STORAGE_KEY, tone);
+	} catch (error) {
+		console.warn('Failed to save tone:', error);
+	}
+}
+
+export function loadTone(): ToneId {
+	try {
+		const stored = profileStorage.getItem(TONE_STORAGE_KEY);
+		if (stored && stored in TONES) {
+			return stored as ToneId;
+		}
+	} catch (error) {
+		console.warn('Failed to load tone:', error);
+	}
+	return DEFAULT_TONE;
+}
 
 // ============================================================================
 // Zod Schemas
@@ -47,6 +119,7 @@ const AnalysisResultSchema = z.object({
 	inputChars: z.number(),
 	outputChars: z.number(),
 	truncated: z.boolean(),
+	durationMs: z.number(), // Time taken for LLM call in milliseconds
 });
 
 // ============================================================================
@@ -91,27 +164,32 @@ export function loadFromStorage(): AnalysisResult | null {
 // Prompt
 // ============================================================================
 
-const SYSTEM_PROMPT = `You are a language coach helping someone speak more eloquently and concisely.
+function buildSystemPrompt(tone: ToneId): string {
+	const toneConfig = TONES[tone];
+
+	return `You are a language coach helping someone speak more effectively and concisely.
 
 Your job is to analyze what someone said and show them how they could have said it better.
 
+TARGET TONE: ${toneConfig.label.toUpperCase()}
+${toneConfig.prompt}
+
 FOCUS AREAS:
-1. **Vocabulary**: Suggest richer, more precise words. English has many synonyms with subtle differences - help them learn the right word for the right context.
-   - Example: "sad" → "melancholic", "dejected", "crestfallen" (each has different nuance)
-   - Example: "crying" → "weeping" (grief), "sobbing" (intense), "whimpering" (quiet)
+1. **Vocabulary**: Suggest words that fit the ${toneConfig.label.toLowerCase()} tone. Help them learn the right word for the right context.
+   - Match vocabulary to the tone (e.g., casual tone uses everyday words, professional uses polished terms)
 
 2. **Conciseness**: Remove filler words, redundancy, and rambling. Get to the point.
    - Example: "I was thinking that maybe we could possibly try to..." → "Let's try..."
 
-3. **Clarity**: Make the message clearer and more direct.
+3. **Clarity**: Make the message clearer while maintaining the ${toneConfig.label.toLowerCase()} tone.
 
-4. **Tone**: Suggest more appropriate tone when needed.
+4. **Flow**: Ensure the rewrite sounds natural for the chosen tone.
 
 5. **Grammar**: Fix any grammatical issues.
 
 RESPONSE FORMAT (JSON):
 {
-  "betterVersion": "The complete rewritten text - concise and eloquent",
+  "betterVersion": "The complete rewritten text in a ${toneConfig.label.toLowerCase()} tone",
   "suggestions": [
     {
       "original": "the exact phrase from their text",
@@ -128,15 +206,16 @@ RESPONSE FORMAT (JSON):
 GUIDELINES:
 - Be constructive, not critical
 - Focus on 2-4 most impactful suggestions
-- Include 1-2 vocabulary tips with words they could add to their repertoire
-- The better version should sound natural, not overly formal
+- Include 1-2 vocabulary tips appropriate for the ${toneConfig.label.toLowerCase()} tone
+- The better version must match the ${toneConfig.label.toUpperCase()} tone - ${toneConfig.description}
 - Keep explanations brief`;
+}
 
 // ============================================================================
 // Process
 // ============================================================================
 
-export async function analyzeText(conversationId: string, text: string): Promise<AnalysisResult> {
+export async function analyzeText(conversationId: string, text: string, tone: ToneId = DEFAULT_TONE): Promise<AnalysisResult> {
 	if (!text.trim()) {
 		return {
 			conversationId,
@@ -148,6 +227,7 @@ export async function analyzeText(conversationId: string, text: string): Promise
 			inputChars: 0,
 			outputChars: 0,
 			truncated: false,
+			durationMs: 0,
 		};
 	}
 
@@ -156,23 +236,27 @@ export async function analyzeText(conversationId: string, text: string): Promise
 	const inputText = truncated ? text.slice(0, MAX_INPUT_CHARS) + '...' : text;
 	const inputChars = inputText.length;
 
-	const userPrompt = `Analyze this speech and show me how I could have said it better:
+	const toneConfig = TONES[tone];
+	const userPrompt = `Analyze this speech and show me how I could have said it better in a ${toneConfig.label.toLowerCase()} tone:
 
 "${inputText}"
 
 Respond with JSON only.`;
 
+	const startTime = performance.now();
+
 	try {
 		const response = await callLLM({
 			tier: 'large', // Use best model for quality suggestions
 			prompt: userPrompt,
-			systemPrompt: SYSTEM_PROMPT,
+			systemPrompt: buildSystemPrompt(tone),
 			options: {
 				temperature: 0.7,
 				max_tokens: 1500,
 			},
 		});
 
+		const durationMs = Math.round(performance.now() - startTime);
 		const { data, error } = parseLLMJSON(response.content);
 
 		const outputChars = response.content.length;
@@ -189,13 +273,15 @@ Respond with JSON only.`;
 				inputChars,
 				outputChars,
 				truncated,
+				durationMs,
 			};
 		}
 
-		const result = normalizeResult(conversationId, inputText, data, inputChars, outputChars, truncated);
+		const result = normalizeResult(conversationId, inputText, data, inputChars, outputChars, truncated, durationMs);
 		saveToStorage(result);
 		return result;
 	} catch (error) {
+		const durationMs = Math.round(performance.now() - startTime);
 		console.error('Speak-better analysis failed:', error);
 		return {
 			conversationId,
@@ -207,6 +293,7 @@ Respond with JSON only.`;
 			inputChars,
 			outputChars: 0,
 			truncated,
+			durationMs,
 		};
 	}
 }
@@ -221,7 +308,8 @@ function normalizeResult(
 	data: unknown,
 	inputChars: number,
 	outputChars: number,
-	truncated: boolean
+	truncated: boolean,
+	durationMs: number
 ): AnalysisResult {
 	if (!data || typeof data !== 'object') {
 		return {
@@ -234,6 +322,7 @@ function normalizeResult(
 			inputChars,
 			outputChars,
 			truncated,
+			durationMs,
 		};
 	}
 
@@ -280,5 +369,6 @@ function normalizeResult(
 		inputChars,
 		outputChars,
 		truncated,
+		durationMs,
 	};
 }
