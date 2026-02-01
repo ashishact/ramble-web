@@ -194,6 +194,10 @@ export function QuestionWidget() {
         {result.questions.map((question, index) => {
           const Icon = categoryIcons[question.category];
           const isOdd = index % 2 === 1;
+          // Parse topic namespace: "Domain / Topic" -> { domain, topic }
+          const topicParts = question.topic.split(' / ').map(p => p.trim());
+          const domain = topicParts.length > 1 ? topicParts[0] : null;
+          const topicName = topicParts.length > 1 ? topicParts.slice(1).join(' / ') : topicParts[0];
           return (
             <div
               key={question.id}
@@ -204,20 +208,22 @@ export function QuestionWidget() {
               <div className="flex items-start gap-1.5">
                 <Icon size={14} className={`flex-shrink-0 mt-0.5 opacity-70 ${categoryColors[question.category]}`} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-base-content/70 leading-snug">{question.text}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-[9px] text-base-content/50">
-                      {categoryLabels[question.category]}
-                    </span>
-                    {question.relatedTopics.slice(0, 2).map((topic) => (
-                      <span
-                        key={topic}
-                        className="text-[9px] text-base-content/30"
-                      >
-                        · {topic}
+                  {/* Topic badge */}
+                  <div className="flex items-center gap-1 mb-0.5">
+                    {domain && (
+                      <span className="text-[9px] font-medium text-primary/70 uppercase">
+                        {domain}
                       </span>
-                    ))}
+                    )}
+                    {domain && <span className="text-[9px] text-base-content/30">/</span>}
+                    <span className="text-[9px] text-base-content/50">
+                      {topicName}
+                    </span>
                   </div>
+                  <p className="text-xs text-base-content/70 leading-snug">{question.text}</p>
+                  <span className="text-[9px] text-base-content/40 mt-0.5">
+                    {categoryLabels[question.category]}
+                  </span>
                 </div>
               </div>
             </div>

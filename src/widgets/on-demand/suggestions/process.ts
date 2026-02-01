@@ -24,8 +24,8 @@ const STORAGE_KEY = 'suggestions';
 const SuggestionSchema = z.object({
   id: z.string(),
   text: z.string(),
+  topic: z.string(), // "Domain / Topic" format
   category: z.enum(['action', 'optimization', 'reminder', 'idea', 'next_step']),
-  relatedTopics: z.array(z.string()),
   priority: z.enum(['high', 'medium', 'low']),
 });
 
@@ -103,7 +103,6 @@ Your job is to SUGGEST SOLUTIONS and ACTIONS. Help the user by proposing what th
 STYLE:
 - Clear and actionable (10-30 words)
 - Suggestions and solutions, NOT questions
-- Examples: "Consider breaking the project into weekly sprints to track progress better." / "You could delegate the report to Sarah since she has experience with analytics."
 
 Categories:
 - action: Specific things to do now
@@ -121,9 +120,11 @@ IMPORTANT: If previous suggestions are provided, do NOT repeat them. Suggest NEW
 JSON format:
 {
   "suggestions": [
-    { "text": "Consider setting up a weekly check-in with the team.", "category": "action", "relatedTopics": ["project"], "priority": "high" }
+    { "text": "Consider setting up a weekly check-in with the team.", "topic": "Work / Project", "category": "action", "priority": "high" }
   ]
 }
+
+topic = "Domain / Topic" format (e.g., "Work / Planning", "Health / Exercise")
 
 Actionable suggestions only. Be helpful and specific.`;
 
@@ -149,9 +150,11 @@ IMPORTANT: If previous suggestions are provided, do NOT repeat them. Suggest NEW
 JSON format:
 {
   "suggestions": [
-    { "text": "Suggestion about the topic.", "category": "action", "relatedTopics": ["{{TOPIC}}"], "priority": "high" }
+    { "text": "Suggestion about the topic.", "topic": "{{TOPIC}}", "category": "action", "priority": "high" }
   ]
 }
+
+topic = "Domain / Topic" format
 
 Actionable suggestions only. Be specific.`;
 
@@ -178,8 +181,8 @@ export async function generateSuggestions(
       suggestions: [{
         id: 'start-1',
         text: 'Start by telling me about what you\'re working on or what you need help with',
+        topic: 'General',
         category: 'idea',
-        relatedTopics: [],
         priority: 'medium',
       }],
       availableTopics: [],
@@ -259,15 +262,19 @@ function normalizeSuggestions(data: unknown): Suggestion[] {
 
       if (!text) return null;
 
+      // Handle topic - prefer new format, fall back to first relatedTopic
+      let topic = typeof suggestion.topic === 'string' ? suggestion.topic.trim() : '';
+      if (!topic && Array.isArray(suggestion.relatedTopics) && suggestion.relatedTopics.length > 0) {
+        topic = String(suggestion.relatedTopics[0]);
+      }
+
       return {
         id: `suggestion-${index}-${Date.now()}`,
         text,
+        topic: topic || 'General',
         category: validCategories.includes(suggestion.category as string)
           ? (suggestion.category as Suggestion['category'])
           : 'idea',
-        relatedTopics: Array.isArray(suggestion.relatedTopics)
-          ? suggestion.relatedTopics.filter((t): t is string => typeof t === 'string')
-          : [],
         priority: validPriorities.includes(suggestion.priority as string)
           ? (suggestion.priority as Suggestion['priority'])
           : 'medium',

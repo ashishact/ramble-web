@@ -107,6 +107,7 @@ export const goalStore = {
           g.status = status
           g.lastReferenced = Date.now()
           if (status === 'achieved') {
+            g.progress = 100
             g.achievedAt = Date.now()
           }
         })

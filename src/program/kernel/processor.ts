@@ -138,6 +138,7 @@ function normalizeMemory(m: unknown): { content: string; type: string; importanc
 /**
  * Normalize a single goal (handles string or object with statement/content)
  * Now supports shortId for referencing existing goals (g1, g2, etc.)
+ * For updates via shortId, statement is optional
  */
 function normalizeGoal(g: unknown): { statement: string; type: string; status?: string; progress?: number; shortId?: string } | null {
   if (typeof g === 'string' && g.trim()) {
@@ -148,13 +149,16 @@ function normalizeGoal(g: unknown): { statement: string; type: string; status?: 
     // Try statement first, then content
     const statement = typeof obj.statement === 'string' ? obj.statement.trim() :
                       typeof obj.content === 'string' ? obj.content.trim() : null;
-    if (statement) {
+    const shortId = typeof obj.shortId === 'string' ? obj.shortId : undefined;
+
+    // Allow updates via shortId even without a statement
+    if (statement || shortId) {
       return {
-        statement,
+        statement: statement || '', // Empty for shortId-only updates
         type: typeof obj.type === 'string' ? obj.type : 'general',
         status: typeof obj.status === 'string' ? obj.status : undefined,
         progress: typeof obj.progress === 'number' ? obj.progress : undefined,
-        shortId: typeof obj.shortId === 'string' ? obj.shortId : undefined,
+        shortId,
       };
     }
   }
@@ -253,7 +257,7 @@ Given the user's latest input and the context, extract:
 
 1. **entities**: People, places, organizations, projects, or named concepts.
    Do NOT include: dates, times, numbers, or temporal expressions.
-2. **topics**: Themes or subjects being discussed
+2. **topics**: Detect topic switches - what is the user talking about now? Format: "Domain / Topic" (e.g., "Work / Planning", "Health / Exercise"). Reuse existing domains.
 3. **memories**: Facts, beliefs, preferences, concerns, or intentions to remember
 4. **goals**: Goals mentioned - can be new goals, progress updates, or completions
 5. **corrections**: STT errors you can identify
@@ -263,11 +267,28 @@ IMPORTANT:
 - Speech-to-text often mishears names. If a name sounds similar to a known entity, use the known entity.
 - Prefer matching against existing entities rather than creating duplicates.
 
-GOALS - Active goals are listed in the context with short IDs (g1, g2, etc.). Goal extraction format:
-- {"statement": "...", "type": "personal|work|health|etc"} - for new goals
-- {"shortId": "g1", "status": "achieved"} - when an existing goal is completed (use the short ID)
-- {"shortId": "g1", "status": "progress", "progress": 0-100} - for progress updates on existing goals
-- For existing goals, prefer using the shortId instead of repeating the statement
+GOALS - Hierarchical namespace system. Active goals listed with short IDs (g1, g2, etc.).
+
+Goal statements MUST be path-like namespaces:
+  Category / Goal
+  Category / Goal / Sub-goal
+
+Examples:
+  Product / Planning System / Daily planner
+  Health / Exercise / Morning runs
+
+Rules:
+- Reuse existing categories - do NOT create many new categories
+- Prefer adding depth to existing goals over creating new top-level goals
+- Maximum 3 levels: Category / Goal / Sub-goal
+
+Format:
+- {"statement": "Category / Goal", "type": "work|personal|health"} - new goal
+- {"shortId": "g1", "status": "achieved"} - mark existing goal complete
+- {"shortId": "g1", "status": "progress", "progress": 0-100} - progress update
+
+type = domain/why (work, personal, health)
+statement namespace = what (the hierarchical path)
 
 Respond with a JSON object. Only include fields with actual content.
 

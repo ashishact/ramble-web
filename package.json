@@ -4,9 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev:full": "concurrently \"vite\" \"cd worker && pnpm dev\"",
     "dev": "vite",
-    "dev:worker": "cd worker && pnpm dev",
+    "dev:worker": "cd ../ramble-worker && pnpm dev",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },

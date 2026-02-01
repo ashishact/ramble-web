@@ -24,8 +24,8 @@ const STORAGE_KEY = 'questions';
 const QuestionSchema = z.object({
   id: z.string(),
   text: z.string(),
+  topic: z.string(), // "Domain / Topic" format
   category: z.enum(['missing_info', 'follow_up', 'clarification', 'action', 'explore']),
-  relatedTopics: z.array(z.string()),
   priority: z.enum(['high', 'medium', 'low']),
 });
 
@@ -103,7 +103,6 @@ Your job is GAP ANALYSIS. You prompt the user to SPEAK MORE, not give solutions.
 STYLE:
 - Brief but clear (10-20 words)
 - Questions or prompts, NOT solutions
-- Examples: "What's the deadline for the project you mentioned?" / "You mentioned a meeting - who will be attending and what's the agenda?"
 
 Categories:
 - missing_info: Missing details (deadlines, names, numbers, context)
@@ -121,9 +120,11 @@ IMPORTANT: If previous questions are provided, do NOT repeat them. Find NEW gaps
 JSON format:
 {
   "questions": [
-    { "text": "When is that due?", "category": "missing_info", "relatedTopics": ["project"], "priority": "high" }
+    { "text": "When is that due?", "topic": "Work / Project", "category": "missing_info", "priority": "high" }
   ]
 }
+
+topic = "Domain / Topic" format (e.g., "Work / Planning", "Health / Exercise")
 
 SHORT questions that prompt more input. No solutions.`;
 
@@ -149,9 +150,11 @@ IMPORTANT: If previous questions are provided, do NOT repeat them. Find NEW gaps
 JSON format:
 {
   "questions": [
-    { "text": "Question about the topic?", "category": "missing_info", "relatedTopics": ["{{TOPIC}}"], "priority": "high" }
+    { "text": "Question about the topic?", "topic": "{{TOPIC}}", "category": "missing_info", "priority": "high" }
   ]
 }
+
+topic = "Domain / Topic" format
 
 Brief questions only. No solutions.`;
 
@@ -178,8 +181,8 @@ export async function generateQuestions(
       questions: [{
         id: 'start-1',
         text: 'Start by telling me about your day or what\'s on your mind',
+        topic: 'General',
         category: 'explore',
-        relatedTopics: [],
         priority: 'medium',
       }],
       availableTopics: [],
@@ -261,15 +264,19 @@ function normalizeQuestions(data: unknown): Question[] {
 
       if (!text) return null;
 
+      // Handle topic - prefer new format, fall back to first relatedTopic
+      let topic = typeof question.topic === 'string' ? question.topic.trim() : '';
+      if (!topic && Array.isArray(question.relatedTopics) && question.relatedTopics.length > 0) {
+        topic = String(question.relatedTopics[0]);
+      }
+
       return {
         id: `question-${index}-${Date.now()}`,
         text,
+        topic: topic || 'General',
         category: validCategories.includes(question.category as string)
           ? (question.category as Question['category'])
           : 'explore',
-        relatedTopics: Array.isArray(question.relatedTopics)
-          ? question.relatedTopics.filter((t): t is string => typeof t === 'string')
-          : [],
         priority: validPriorities.includes(question.priority as string)
           ? (question.priority as Question['priority'])
           : 'medium',
