@@ -35,6 +35,7 @@ import { GlobalSTTController } from './GlobalSTTController';
 import { PipelineBreadcrumb } from './PipelineBreadcrumb';
 import { RambleNativeStatus } from './RambleNativeStatus';
 import { HelpStrip } from './HelpStrip';
+import { ActiveGoalTimer } from './ActiveGoalTimer';
 import { OnboardingFlow, useOnboarding } from '../modules/onboarding';
 
 // Lazy-loaded TTS Widget
@@ -179,13 +180,12 @@ export const BentoApp: React.FC = () => {
     <GlobalSTTController>
       <div className="w-screen h-screen flex flex-col bg-slate-100">
         {/* Header */}
-        <header className="h-9 bg-white border-b border-slate-200 flex items-center justify-between px-3 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <h1 className="text-xs font-bold text-slate-700">Ramble</h1>
-            <PipelineBreadcrumb />
-            <RambleNativeStatus />
-          </div>
-          <div className="flex items-center gap-2">
+        <header className="h-9 bg-white border-b border-slate-200 flex items-center gap-3 px-3 flex-shrink-0">
+          <h1 className="text-xs font-bold text-slate-700 flex-shrink-0">Ramble</h1>
+          <PipelineBreadcrumb />
+          <RambleNativeStatus />
+          <ActiveGoalTimer />
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={() => setEditMode((prev) => !prev)}
               className={`flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded transition-colors ${
