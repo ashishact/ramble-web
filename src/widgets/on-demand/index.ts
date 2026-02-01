@@ -8,3 +8,4 @@
 
 export { QuestionWidget } from './questions';
 export { SuggestionWidget } from './suggestions';
+export { SpeakBetterWidget } from './speak-better';

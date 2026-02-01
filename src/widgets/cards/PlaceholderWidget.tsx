@@ -1,6 +1,6 @@
 import type { WidgetProps } from '../types';
 import type { WidgetType } from '../../components/bento/types';
-import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2 } from 'lucide-react';
+import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles } from 'lucide-react';
 
 const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'empty': null,
@@ -14,10 +14,13 @@ const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'stats': <BarChart3 className="w-8 h-8" />,
   'questions': <HelpCircle className="w-8 h-8" />,
   'suggestions': <Lightbulb className="w-8 h-8" />,
+  'speak-better': <Sparkles className="w-8 h-8" />,
   'settings': <Settings className="w-8 h-8" />,
   'working-memory': <Eye className="w-8 h-8" />,
   'learned-corrections': <Pencil className="w-8 h-8" />,
   'tts': <Volume2 className="w-8 h-8" />,
+  // Lens Widgets
+  'meta-query': <Search className="w-8 h-8" />,
 };
 
 const WIDGET_LABELS: Record<WidgetType, string> = {
@@ -32,10 +35,13 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   'stats': 'Stats',
   'questions': 'Questions',
   'suggestions': 'Suggestions',
+  'speak-better': 'Speak Better',
   'settings': 'Settings',
   'working-memory': 'Working Memory',
   'learned-corrections': 'Learned Corrections',
   'tts': 'Text to Speech',
+  // Lens Widgets
+  'meta-query': 'Meta Query',
 };
 
 interface PlaceholderWidgetProps extends WidgetProps {

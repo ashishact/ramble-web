@@ -3,7 +3,7 @@ import type { LeafNode, WidgetType } from './types';
 import { BentoLeafMenu } from './BentoLeafMenu';
 import {
   GripHorizontal, AlertTriangle, X, Check,
-  Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2
+  Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles
 } from 'lucide-react';
 
 interface BentoLeafProps {
@@ -30,10 +30,13 @@ const WIDGET_OPTIONS: { type: WidgetType; label: string; icon: React.ReactNode }
     { type: 'stats', label: 'Stats', icon: <BarChart3 size={18} /> },
     { type: 'questions', label: 'Questions', icon: <HelpCircle size={18} /> },
     { type: 'suggestions', label: 'Suggestions', icon: <Lightbulb size={18} /> },
+    { type: 'speak-better', label: 'Speak Better', icon: <Sparkles size={18} /> },
     { type: 'settings', label: 'Settings', icon: <Settings size={18} /> },
     { type: 'working-memory', label: 'Context', icon: <Eye size={18} /> },
     { type: 'learned-corrections', label: 'Corrections', icon: <Pencil size={18} /> },
     { type: 'tts', label: 'TTS', icon: <Volume2 size={18} /> },
+    // Lens Widgets - intercept input on hover, bypass core pipeline
+    { type: 'meta-query', label: 'Meta Query', icon: <Search size={18} /> },
 ];
 
 export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, onRemove, onSwap, onColorChange, onContentChange, onWidgetChange, renderWidget, isRoot }) => {
@@ -173,7 +176,7 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
 
   return (
     <div
-      className={`relative w-full h-full flex flex-col overflow-hidden ${node.color} text-slate-800 border border-slate-200/50 group transition-all duration-200
+      className={`bento-widget relative w-full h-full flex flex-col overflow-hidden ${node.color} text-slate-800 border border-slate-200/50 group transition-all duration-200
       ${editMode && isHovered && !isDragOver ? 'ring-1 ring-inset ring-blue-500/20 shadow-inner' : ''}
       `}
       onMouseEnter={() => setIsHovered(true)}

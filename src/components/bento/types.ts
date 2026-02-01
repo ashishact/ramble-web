@@ -31,8 +31,12 @@ export type WidgetType =
   | 'working-memory'      // Full context view
   | 'questions'           // AI-powered gap analysis questions (volatile, not saved)
   | 'suggestions'         // AI-powered actionable suggestions (volatile, not saved)
+  | 'speak-better'        // AI-powered speech improvement suggestions (volatile, not saved)
   | 'learned-corrections' // Manage learned STT corrections
-  | 'tts';               // Text-to-Speech widget
+  | 'tts'                 // Text-to-Speech widget
+  // Lens Widgets: Intercept input on hover, bypass core pipeline, ephemeral results
+  // See src/lib/lensController.ts for architecture details
+  | 'meta-query';         // Lens: Ask questions about your conversation without saving
 
 export interface LeafNode extends BaseNode {
   type: 'leaf';

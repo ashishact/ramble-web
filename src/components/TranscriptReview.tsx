@@ -25,7 +25,7 @@ import {
   computeWordDiff,
   type WordCorrection,
 } from '../services/phoneticMatcher';
-import { ArrowRight, Check, Brain, Sparkles, Pencil, Mic } from 'lucide-react';
+import { ArrowRight, Check, Brain, Sparkles, Pencil, Mic, Focus } from 'lucide-react';
 
 /**
  * Ramble metadata from clipboard (compact format)
@@ -53,6 +53,7 @@ interface TranscriptReviewProps {
   onSubmit: (text: string) => void;
   onCancel: () => void;
   rambleMetadata?: RambleMetadata | null;
+  targetLensName?: string | null;
 }
 
 interface EntityData {
@@ -76,7 +77,7 @@ interface LiveEdit {
   rightContext: string[];
 }
 
-export function TranscriptReview({ initialText, onSubmit, onCancel, rambleMetadata }: TranscriptReviewProps) {
+export function TranscriptReview({ initialText, onSubmit, onCancel, rambleMetadata, targetLensName }: TranscriptReviewProps) {
   // Keep original text for diff computation on submit
   const originalTextRef = useRef(initialText);
   const [text, setText] = useState(initialText);
@@ -478,6 +479,17 @@ export function TranscriptReview({ initialText, onSubmit, onCancel, rambleMetada
       <div className={`w-full mx-4 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 ${
         showPanels ? 'max-w-6xl' : 'max-w-2xl'
       }`}>
+        {/* Lens target indicator */}
+        {targetLensName && (
+          <div className="px-4 py-2 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100 flex items-center gap-2">
+            <Focus size={14} className="text-amber-600" />
+            <span className="text-xs font-medium text-amber-700">
+              Sending to <span className="font-semibold">{targetLensName}</span>
+            </span>
+            <span className="text-[10px] text-amber-500 ml-1">(not saved to history)</span>
+          </div>
+        )}
+
         {/* Ramble metadata bar */}
         {rambleMetadata && (
           <div className="px-4 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-100 flex items-center gap-3">

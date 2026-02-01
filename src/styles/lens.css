@@ -1,0 +1,53 @@
+/**
+ * Lens Widget Visual Styles
+ *
+ * ARCHITECTURE DECISION: CSS-Only Visual Feedback
+ * ================================================
+ * Visual feedback for lens mode is handled entirely through CSS, not JavaScript.
+ *
+ * WHY CSS-ONLY:
+ * 1. **Simplicity**: No component awareness needed - just class toggles on container
+ * 2. **Performance**: CSS transitions are GPU-accelerated
+ * 3. **External Widgets**: Web Components get the same visual treatment automatically
+ * 4. **No pointer-events changes**: We keep default interaction - just visual dimming
+ *
+ * HOW IT WORKS:
+ * 1. LensController adds `.lens-mode-active` class to the bento container
+ * 2. All `.bento-widget` children dim to 30% opacity via CSS
+ * 3. The active lens widget has `.lens-widget-active` class (React) or
+ *    `data-lens-active="true"` attribute (Web Components) to stay highlighted
+ *
+ * IMPORTANT: Do NOT disable pointer-events - keep default mouse behavior.
+ * Users should still be able to interact with other widgets if needed.
+ */
+
+/* Smooth transition when entering/exiting lens mode */
+.bento-widget {
+	transition: opacity 0.2s ease;
+}
+
+/* When lens mode is active, dim all widgets */
+.lens-mode-active .bento-widget {
+	opacity: 0.3;
+}
+
+/* The bento-widget containing an active lens stays highlighted */
+.lens-mode-active .bento-widget:has(.lens-widget-active),
+.lens-mode-active .bento-widget:has([data-lens-active='true']) {
+	opacity: 1;
+	box-shadow: 0 0 0 2px var(--color-primary);
+	z-index: 10;
+	animation: lens-glow 2s ease-in-out infinite alternate;
+}
+
+@keyframes lens-glow {
+	from {
+		box-shadow: 0 0 0 2px var(--color-primary);
+	}
+	to {
+		box-shadow:
+			0 0 0 2px var(--color-primary),
+			0 0 12px 2px color-mix(in srgb, var(--color-primary) 30%, transparent);
+	}
+}
+

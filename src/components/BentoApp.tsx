@@ -27,8 +27,10 @@ import {
   PlaceholderWidget,
   LearnedCorrectionsWidget,
 } from '../widgets';
-import { QuestionWidget, SuggestionWidget } from '../widgets/on-demand';
-import { RotateCcw, PencilRuler, Loader2 } from 'lucide-react';
+import { QuestionWidget, SuggestionWidget, SpeakBetterWidget } from '../widgets/on-demand';
+import { MetaQueryLensWidget } from '../widgets/lens';
+import { RotateCcw, PencilRuler, Loader2, Settings } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { GlobalSTTController } from './GlobalSTTController';
 import { PipelineBreadcrumb } from './PipelineBreadcrumb';
 import { RambleNativeStatus } from './RambleNativeStatus';
@@ -45,6 +47,10 @@ export const BentoApp: React.FC = () => {
   const { isComplete: isOnboardingComplete, isLoading: isOnboardingLoading } = useOnboarding();
   const [showOnboarding, setShowOnboarding] = useState(true);
 
+  // Navigation
+  const navigate = useNavigate();
+  const { profileName } = useParams();
+
   const [tree, setTree] = useState<BentoTree>(() => {
     const savedTree = loadTreeFromStorage();
     return savedTree ?? createInitialTree();
@@ -57,6 +63,7 @@ export const BentoApp: React.FC = () => {
       setShowOnboarding(!isOnboardingComplete);
     }
   }, [isOnboardingComplete, isOnboardingLoading]);
+
 
   // Persist tree to localStorage on changes
   useEffect(() => {
@@ -127,6 +134,8 @@ export const BentoApp: React.FC = () => {
         return <QuestionWidget />;
       case 'suggestions':
         return <SuggestionWidget />;
+      case 'speak-better':
+        return <SpeakBetterWidget />;
       case 'learned-corrections':
         return <LearnedCorrectionsWidget />;
       case 'tts':
@@ -140,6 +149,9 @@ export const BentoApp: React.FC = () => {
             <TTSWidget {...props} />
           </Suspense>
         );
+      // Lens Widgets - intercept input on hover, bypass core pipeline
+      case 'meta-query':
+        return <MetaQueryLensWidget />;
       default:
         return <PlaceholderWidget nodeId={node.id} widgetType={node.widgetType} />;
     }
@@ -198,11 +210,19 @@ export const BentoApp: React.FC = () => {
                 Reset
               </button>
             )}
+            <button
+              onClick={() => navigate(profileName ? `/u/${profileName}/settings` : '/settings')}
+              className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
+              title="Settings"
+            >
+              <Settings size={14} />
+            </button>
           </div>
         </header>
 
         {/* Bento Grid */}
-        <main className="flex-1 overflow-hidden p-1">
+        {/* ID used by lensController for lens mode visual feedback (dimming other widgets) */}
+        <main id="bento-container" className="flex-1 overflow-hidden p-1">
           <BentoNodeComponent
             tree={tree}
             nodeId={tree.rootId}
