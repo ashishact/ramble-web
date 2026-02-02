@@ -102,10 +102,11 @@ export function loadTone(): ToneId {
 // ============================================================================
 
 const SuggestionSchema = z.object({
-	original: z.string(),
-	improved: z.string(),
-	reason: z.string(),
+	improved: z.string(), // "first two ... last two" words to locate phrase in betterVersion
+	reason: z.string(), // What was changed
 	category: z.enum(['vocabulary', 'conciseness', 'clarity', 'tone', 'grammar']),
+	principle: z.string(), // The underlying rule/learning (e.g., "Active voice is more direct")
+	alternative: z.string().optional(), // Another way to phrase it (vocabulary expansion)
 });
 
 const AnalysisResultSchema = z.object({
@@ -192,16 +193,23 @@ RESPONSE FORMAT (JSON):
   "betterVersion": "The complete rewritten text in a ${toneConfig.label.toLowerCase()} tone",
   "suggestions": [
     {
-      "original": "the exact phrase from their text",
-      "improved": "better way to say it",
-      "reason": "brief explanation (10-15 words)",
-      "category": "vocabulary|conciseness|clarity|tone|grammar"
+      "improved": "first two ... last two",
+      "reason": "What was changed (brief)",
+      "category": "vocabulary|conciseness|clarity|tone|grammar",
+      "principle": "The underlying rule to remember",
+      "alternative": "Another way to phrase it (optional)"
     }
   ],
   "vocabularyTips": [
-    "Word X means Y - use it when Z (brief tip about a word they could learn)"
+    "Word X means Y - use it when Z"
   ]
 }
+
+IMPORTANT for "improved" field:
+- Write the FIRST 2 WORDS and LAST 2 WORDS of the improved phrase from betterVersion
+- Format: "first second ... second-last last"
+- Example: If betterVersion contains "I believe we should proceed carefully", write "I believe ... proceed carefully"
+- This helps locate which part of betterVersion this suggestion refers to
 
 GUIDELINES:
 - Be constructive, not critical
@@ -336,14 +344,15 @@ function normalizeResult(
 		for (const s of obj.suggestions) {
 			if (s && typeof s === 'object') {
 				const sug = s as Record<string, unknown>;
-				if (typeof sug.original === 'string' && typeof sug.improved === 'string') {
+				if (typeof sug.reason === 'string' && sug.reason.trim()) {
 					suggestions.push({
-						original: sug.original,
-						improved: sug.improved,
-						reason: typeof sug.reason === 'string' ? sug.reason : '',
+						improved: typeof sug.improved === 'string' ? sug.improved : '',
+						reason: sug.reason,
 						category: validCategories.includes(sug.category as string)
 							? (sug.category as Suggestion['category'])
 							: 'clarity',
+						principle: typeof sug.principle === 'string' ? sug.principle : '',
+						alternative: typeof sug.alternative === 'string' ? sug.alternative : undefined,
 					});
 				}
 			}
