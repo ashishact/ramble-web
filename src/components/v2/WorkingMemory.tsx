@@ -52,19 +52,16 @@ const SIZE_LIMITS: Record<ContextSize, {
   large:  { conversations: 15, entities: 15, topics: 15, memories: 20, goals: 10 },
 };
 
-// Compact time format
-function timeAgo(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return 'now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
+// Compact datetime format for Working Memory UI: "FEB-01 08:44" (MON-DD HH:mm)
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+function formatCompactDateTime(timestamp: number, includeSeconds = false): string {
+  const d = new Date(timestamp);
+  const base = `${MONTHS[d.getMonth()]}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return includeSeconds ? `${base}:${String(d.getSeconds()).padStart(2, '0')}` : base;
 }
 
-type SectionType = 'conversations' | 'entities' | 'topics' | 'memories' | 'goals';
+type SectionType = 'userInfo' | 'conversations' | 'entities' | 'topics' | 'memories' | 'goals';
 
 // Moved outside to prevent remount on every render
 function SectionHeader({
@@ -106,11 +103,14 @@ function SectionHeader({
   );
 }
 
+type ViewTab = 'data' | 'prompts';
+
 export function WorkingMemory({
   refreshTrigger = 0,
 }: WorkingMemoryProps) {
   const [contextSize, setContextSize] = useState<ContextSize>('medium');
   const [expandedSection, setExpandedSection] = useState<SectionType | null>(null);
+  const [activeTab, setActiveTab] = useState<ViewTab>('data');
 
   // Single source of truth: WorkingMemoryData from workingMemory.fetch()
   const [data, setData] = useState<WorkingMemoryData | null>(null);
@@ -168,9 +168,34 @@ export function WorkingMemory({
     <div className="bg-base-100 rounded border border-base-200 overflow-hidden">
       {/* Header - Compact */}
       <div className="bg-base-200/30 px-2 py-1 flex items-center justify-between border-b border-base-200">
-        <div className="flex items-center gap-1.5">
-          <Icon icon="mdi:memory" className="w-3.5 h-3.5 text-primary/60" />
-          <span className="font-medium text-[11px]">Working Memory</span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <Icon icon="mdi:memory" className="w-3.5 h-3.5 text-primary/60" />
+            <span className="font-medium text-[11px]">Working Memory</span>
+          </div>
+          {/* Tab selector */}
+          <div className="flex gap-0.5 ml-2">
+            <button
+              onClick={() => setActiveTab('data')}
+              className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${
+                activeTab === 'data'
+                  ? 'bg-primary/20 text-primary font-medium'
+                  : 'text-base-content/40 hover:bg-base-200/50'
+              }`}
+            >
+              Data
+            </button>
+            <button
+              onClick={() => setActiveTab('prompts')}
+              className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${
+                activeTab === 'prompts'
+                  ? 'bg-primary/20 text-primary font-medium'
+                  : 'text-base-content/40 hover:bg-base-200/50'
+              }`}
+            >
+              Prompts
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {/* Size selector */}
@@ -194,7 +219,65 @@ export function WorkingMemory({
         </div>
       </div>
 
+      {/* Prompts View */}
+      {activeTab === 'prompts' && data && (
+        <div className="p-2 space-y-3 max-h-96 overflow-auto">
+          {/* Context (goes into system prompt area - cacheable) */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Icon icon="mdi:file-document" className="w-3 h-3 text-info/70" />
+              <span className="text-[10px] font-medium text-info/80">Context (Cacheable)</span>
+            </div>
+            <pre className="text-[9px] bg-base-200/50 p-2 rounded overflow-x-auto whitespace-pre-wrap font-mono text-base-content/70 border border-base-300">
+              {workingMemory.formatForLLM(data)}
+            </pre>
+          </div>
+
+          {/* User Prompt Prefix (dynamic - includes current time) */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Icon icon="mdi:clock-outline" className="w-3 h-3 text-warning/70" />
+              <span className="text-[10px] font-medium text-warning/80">User Prompt Prefix (Dynamic)</span>
+            </div>
+            <pre className="text-[9px] bg-base-200/50 p-2 rounded overflow-x-auto whitespace-pre-wrap font-mono text-base-content/70 border border-base-300">
+              {`Current time: ${data.userContext.currentTime}`}
+            </pre>
+          </div>
+
+          {/* Info */}
+          <p className="text-[9px] text-base-content/40 italic">
+            The context is static and cacheable. Current time is added to the user prompt (dynamic).
+          </p>
+        </div>
+      )}
+
+      {/* Data View */}
+      {activeTab === 'data' && (
       <div className="p-1.5 space-y-0.5">
+        {/* User Info */}
+        <SectionHeader
+          section="userInfo"
+          icon="mdi:account"
+          title="User Info"
+          count={data?.userContext.userName ? 1 : 0}
+          max={1}
+          color="text-warning"
+          isExpanded={expandedSection === 'userInfo'}
+          onToggle={toggleSection}
+        />
+        {expandedSection === 'userInfo' && data && (
+          <div className="ml-4 mb-1 px-1.5 py-1 text-[10px] space-y-1">
+            <div className="flex gap-2">
+              <span className="text-base-content/50">Name:</span>
+              <span className="text-base-content/70">{data.userContext.userName || <span className="italic opacity-40">Not set</span>}</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="text-base-content/50">Current time:</span>
+              <span className="text-base-content/70 font-mono text-[9px]">{data.userContext.currentTime}</span>
+            </div>
+          </div>
+        )}
+
         {/* Recent Conversations */}
         <SectionHeader
           section="conversations"
@@ -213,11 +296,10 @@ export function WorkingMemory({
             ) : (
               conversations.map((c, i) => (
                 <div key={c.id} className={`flex gap-1.5 px-1.5 py-1 rounded text-[10px] ${i % 2 === 1 ? 'bg-base-200/40' : ''}`}>
-                  <span className={`font-mono shrink-0 ${c.speaker === 'user' ? 'text-primary/70' : 'text-secondary/70'}`}>
-                    {c.speaker}:
+                  <span className="font-mono shrink-0 text-primary/60 text-[9px]">
+                    {formatCompactDateTime(c.timestamp, true)}
                   </span>
                   <span className="flex-1 truncate text-base-content/70">{c.text}</span>
-                  <span className="opacity-40 shrink-0">{timeAgo(c.timestamp)}</span>
                 </div>
               ))
             )}
@@ -236,14 +318,16 @@ export function WorkingMemory({
           onToggle={toggleSection}
         />
         {expandedSection === 'entities' && (
-          <div className="ml-4 mb-1 flex flex-wrap gap-0.5 px-1">
+          <div className="ml-4 mb-1">
             {entities.length === 0 ? (
-              <p className="text-[9px] opacity-40 italic">No entities yet</p>
+              <p className="text-[9px] opacity-40 italic px-1">No entities yet</p>
             ) : (
-              entities.map((e) => (
-                <span key={e.id} className="text-[9px] px-1.5 py-0.5 bg-base-200/50 rounded text-base-content/60">
-                  {e.name} <span className="opacity-50">({e.type})</span>
-                </span>
+              entities.map((e, i) => (
+                <div key={e.id} className={`flex gap-1.5 px-1.5 py-1 rounded text-[10px] ${i % 2 === 1 ? 'bg-base-200/40' : ''}`}>
+                  <span className="font-mono shrink-0 text-info/60 text-[9px]">{formatCompactDateTime(e.lastMentioned)}</span>
+                  <span className="text-base-content/70">{e.name}</span>
+                  <span className="text-base-content/40">({e.type})</span>
+                </div>
               ))
             )}
           </div>
@@ -261,14 +345,16 @@ export function WorkingMemory({
           onToggle={toggleSection}
         />
         {expandedSection === 'topics' && (
-          <div className="ml-4 mb-1 flex flex-wrap gap-0.5 px-1">
+          <div className="ml-4 mb-1">
             {topics.length === 0 ? (
-              <p className="text-[9px] opacity-40 italic">No topics yet</p>
+              <p className="text-[9px] opacity-40 italic px-1">No topics yet</p>
             ) : (
-              topics.map((t) => (
-                <span key={t.id} className="text-[9px] px-1.5 py-0.5 bg-secondary/10 text-secondary/70 rounded">
-                  {t.name}{t.category && <span className="opacity-50"> [{t.category}]</span>}
-                </span>
+              topics.map((t, i) => (
+                <div key={t.id} className={`flex gap-1.5 px-1.5 py-1 rounded text-[10px] ${i % 2 === 1 ? 'bg-base-200/40' : ''}`}>
+                  <span className="font-mono shrink-0 text-secondary/60 text-[9px]">{formatCompactDateTime(t.lastMentioned)}</span>
+                  <span className="text-base-content/70">{t.name}</span>
+                  {t.category && <span className="text-base-content/40">[{t.category}]</span>}
+                </div>
               ))
             )}
           </div>
@@ -292,8 +378,9 @@ export function WorkingMemory({
             ) : (
               memories.map((m, i) => (
                 <div key={m.id} className={`flex gap-1.5 px-1.5 py-1 rounded text-[10px] ${i % 2 === 1 ? 'bg-base-200/40' : ''}`}>
-                  <span className="text-accent/60 shrink-0">[{m.type}]</span>
-                  <span className="flex-1 text-base-content/70">{m.content}</span>
+                  <span className="font-mono shrink-0 text-accent/60 text-[9px]">{formatCompactDateTime(m.lastReinforced)}</span>
+                  <span className="flex-1 text-base-content/70 truncate">{m.content}</span>
+                  <span className="text-accent/50 shrink-0 text-[9px]">[{m.type}]</span>
                   <span className="opacity-40 shrink-0">{Math.round(m.importance * 100)}%</span>
                 </div>
               ))
@@ -319,6 +406,7 @@ export function WorkingMemory({
             ) : (
               goals.map((g, i) => (
                 <div key={g.id} className={`flex items-center gap-1.5 px-1.5 py-1 rounded text-[10px] ${i % 2 === 1 ? 'bg-base-200/40' : ''}`}>
+                  <span className="font-mono shrink-0 text-success/60 text-[9px]">{formatCompactDateTime(g.lastReferenced)}</span>
                   <span className={`shrink-0 ${
                     g.status === 'achieved' ? 'text-success/60' :
                     g.status === 'blocked' ? 'text-error/60' :
@@ -334,6 +422,7 @@ export function WorkingMemory({
           </div>
         )}
       </div>
+      )}
 
       {/* Footer - compact summary */}
       <div className="bg-base-200/20 px-2 py-1 text-[9px] opacity-40 flex gap-2 border-t border-base-200">

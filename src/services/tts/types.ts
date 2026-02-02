@@ -52,10 +52,12 @@ export interface QueuedItem {
   voice: string;
 }
 
-// Window event type augmentation
+// Window event type augmentation for eventBus CustomEvents
+// Internal code uses eventBus.emit(), but these dispatch as ramble:* on window
+// for Web Components that can't import eventBus
 declare global {
   interface WindowEventMap {
-    'tts:speak': CustomEvent<TTSSpeakEvent>;
-    'tts:stop': CustomEvent<void>;
+    'ramble:tts:speak': CustomEvent<{ text: string; voice?: string; mode?: 'replace' | 'queue' }>;
+    'ramble:tts:stop': CustomEvent<Record<string, never>>;
   }
 }

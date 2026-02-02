@@ -9,8 +9,15 @@
  * 1. Maintains a persistent WebSocket connection to the Ramble native app
  * 2. Exposes connection status (isAvailable)
  * 3. Listens for state change events (recording, transcribing, etc.)
- * 4. Dispatches 'tts:stop' event when recording starts (user input takes priority over TTS)
+ * 4. Emits 'tts:stop' via eventBus when recording starts (user input takes priority over TTS)
  * 5. Exposes state and events for UI feedback
+ *
+ * EVENT BUS USAGE:
+ * ================
+ * This module emits events via eventBus.emit() for cross-component communication.
+ * Internal React components use eventBus.emit() directly.
+ * External Web Components use window.dispatchEvent(new CustomEvent('ramble:tts:stop', ...))
+ * See eventBus.ts for the full event pattern documentation.
  *
  * ┌────────────────────────────────────────────────────────────────────────────┐
  * │                    Ramble Native WebSocket Events                          │
@@ -35,6 +42,8 @@
  *   {"id":"uuid","type":"transcription_complete","payload":{"text":"Hello world","duration":5.2,"ts":1706367007000}}
  *   {"id":"uuid","type":"state_changed","payload":{"state":"done","ts":1706367007000}}
  */
+
+import { eventBus } from '../../lib/eventBus';
 
 // Ramble native app states
 export type RambleNativeState = 'idle' | 'recording' | 'transcribing' | 'done';
@@ -277,7 +286,7 @@ class RambleNative {
     // User input (speech) takes priority over TTS output
     if (state === 'recording' || state === 'transcribing') {
       console.log('[RambleNative] User input detected, stopping TTS');
-      window.dispatchEvent(new CustomEvent('tts:stop'));
+      eventBus.emit('tts:stop', {});
     }
 
     this.callbacks.onStateChange?.(state);

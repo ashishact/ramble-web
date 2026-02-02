@@ -39,11 +39,16 @@ const COMMON_MODELS: Record<LLMProvider, string[]> = {
 
 export function LLMTierPanel() {
   const [tierSettings, setTierSettings] = useState<LLMTierSettings>(getLLMTierSettings);
-  const [hasChanges, setHasChanges] = useState(false);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setTierSettings(getLLMTierSettings());
   }, []);
+
+  const showSaved = () => {
+    setSavedMessage('Saved');
+    setTimeout(() => setSavedMessage(null), 1500);
+  };
 
   const handleProviderChange = (tier: LLMTier, provider: LLMProvider) => {
     const newSettings = {
@@ -55,7 +60,8 @@ export function LLMTierPanel() {
       },
     };
     setTierSettings(newSettings);
-    setHasChanges(true);
+    updateLLMTierSettings(newSettings);
+    showSaved();
   };
 
   const handleModelChange = (tier: LLMTier, model: string) => {
@@ -67,24 +73,20 @@ export function LLMTierPanel() {
       },
     };
     setTierSettings(newSettings);
-    setHasChanges(true);
-  };
-
-  const handleSave = () => {
-    updateLLMTierSettings(tierSettings);
-    setHasChanges(false);
+    updateLLMTierSettings(newSettings);
+    showSaved();
   };
 
   const handleReset = (tier: LLMTier) => {
     resetLLMTier(tier);
     setTierSettings(getLLMTierSettings());
-    setHasChanges(false);
+    showSaved();
   };
 
   const handleResetAll = () => {
     updateLLMTierSettings(DEFAULT_LLM_TIER_SETTINGS);
     setTierSettings(DEFAULT_LLM_TIER_SETTINGS);
-    setHasChanges(false);
+    showSaved();
   };
 
   const tiers: LLMTier[] = ['small', 'medium', 'large'];
@@ -98,13 +100,21 @@ export function LLMTierPanel() {
             Map intelligence tiers to specific LLM providers. All extractors use these tiers instead of hardcoded providers.
           </p>
         </div>
-        <button
-          onClick={handleResetAll}
-          className="btn btn-outline btn-sm gap-2"
-        >
-          <Icon icon="mdi:restore" className="w-4 h-4" />
-          Reset All
-        </button>
+        <div className="flex items-center gap-2">
+          {savedMessage && (
+            <span className="badge badge-success gap-1">
+              <Icon icon="mdi:check" className="w-3 h-3" />
+              {savedMessage}
+            </span>
+          )}
+          <button
+            onClick={handleResetAll}
+            className="btn btn-outline btn-sm gap-2"
+          >
+            <Icon icon="mdi:restore" className="w-4 h-4" />
+            Reset All
+          </button>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -183,16 +193,6 @@ export function LLMTierPanel() {
         })}
       </div>
 
-      {/* Save Button */}
-      {hasChanges && (
-        <div className="alert alert-info">
-          <Icon icon="mdi:information" className="w-5 h-5" />
-          <span>You have unsaved changes</span>
-          <button onClick={handleSave} className="btn btn-primary btn-sm">
-            Save Changes
-          </button>
-        </div>
-      )}
     </div>
   );
 }

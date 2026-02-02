@@ -20,6 +20,7 @@ import {
   topicStore,
   memoryStore,
   goalStore,
+  dataStore,
 } from '../db/stores';
 import type Conversation from '../db/models/Conversation';
 import type Entity from '../db/models/Entity';
@@ -39,7 +40,13 @@ export interface WorkingMemoryOptions {
   // Note: sessionId removed - we fetch all conversations chronologically
 }
 
+export interface UserContext {
+  userName?: string;       // User's name (if available)
+  currentTime: string;     // Full timestamp with timezone
+}
+
 export interface WorkingMemoryData {
+  userContext: UserContext;
   conversations: ConversationRef[];
   entities: EntityRef[];
   topics: TopicRef[];
@@ -235,13 +242,26 @@ class WorkingMemory {
 
     // Query all data in parallel (fetch more than needed for time filtering)
     // Conversations: get recent across ALL sessions, chronologically
-    const [allConvs, allEntities, allTopics, allMemories, allGoals] = await Promise.all([
+    const [allConvs, allEntities, allTopics, allMemories, allGoals, userProfile] = await Promise.all([
       conversationStore.getRecent(50),  // Returns newest first (DESC)
       entityStore.getRecent(50),
       topicStore.getRecent(50),
       memoryStore.getMostImportant(50),
       goalStore.getActive(),
+      dataStore.getUserProfile(),
     ]);
+
+    // Build user context
+    const userContext: UserContext = {
+      currentTime: new Date().toString(),
+    };
+    if (userProfile?.name) {
+      // Trim and limit name for safety (max 50 chars)
+      const safeName = userProfile.name.trim().slice(0, 50);
+      if (safeName) {
+        userContext.userName = safeName;
+      }
+    }
 
     // Apply time filter, take most recent N, then reverse for chronological order
     // getRecent returns DESC (newest first), we want ASC (oldest first) for context
@@ -280,6 +300,7 @@ class WorkingMemory {
     const goals = filteredGoals.map((g, i) => toGoalRef(g, i));
 
     const data: WorkingMemoryData = {
+      userContext,
       conversations,
       entities,
       topics,
@@ -300,9 +321,16 @@ class WorkingMemory {
 
   /**
    * Format working memory as LLM prompt string
+   * Note: currentTime is NOT included here (for cache optimization)
+   * Caller should add currentTime to the user prompt using data.userContext.currentTime
    */
   formatForLLM(data: WorkingMemoryData): string {
     const parts: string[] = [];
+
+    // User info (static - cacheable)
+    if (data.userContext.userName) {
+      parts.push(`User: ${data.userContext.userName}`);
+    }
 
     // Recent conversations
     if (data.conversations.length > 0) {
@@ -314,7 +342,11 @@ class WorkingMemory {
 
         // Use summary for older large conversations, full text otherwise
         const displayText = (isRecent || !isLarge || !c.summary) ? c.text : c.summary;
-        parts.push(`${c.speaker}: ${displayText}`);
+        // Short timestamp: "Feb-01 08:44:22" (Mon-DD HH:mm:ss, 24hr)
+        const d = new Date(c.timestamp);
+        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        const ts = `${months[d.getMonth()]}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+        parts.push(`${ts}: ${displayText}`);
       }
     }
 

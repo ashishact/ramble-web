@@ -33,11 +33,16 @@ const STT_MODELS: Record<ConcreteSTTProvider, string[]> = {
 
 export function STTTierPanel() {
   const [tierSettings, setTierSettings] = useState<STTTierSettings>(getSTTTierSettings);
-  const [hasChanges, setHasChanges] = useState(false);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setTierSettings(getSTTTierSettings());
   }, []);
+
+  const showSaved = () => {
+    setSavedMessage('Saved');
+    setTimeout(() => setSavedMessage(null), 1500);
+  };
 
   const handleProviderChange = (tier: STTTier, provider: ConcreteSTTProvider) => {
     const newSettings = {
@@ -49,7 +54,8 @@ export function STTTierPanel() {
       },
     };
     setTierSettings(newSettings);
-    setHasChanges(true);
+    updateSTTTierSettings(newSettings);
+    showSaved();
   };
 
   const handleModelChange = (tier: STTTier, model: string) => {
@@ -61,24 +67,20 @@ export function STTTierPanel() {
       },
     };
     setTierSettings(newSettings);
-    setHasChanges(true);
-  };
-
-  const handleSave = () => {
-    updateSTTTierSettings(tierSettings);
-    setHasChanges(false);
+    updateSTTTierSettings(newSettings);
+    showSaved();
   };
 
   const handleReset = (tier: STTTier) => {
     resetSTTTier(tier);
     setTierSettings(getSTTTierSettings());
-    setHasChanges(false);
+    showSaved();
   };
 
   const handleResetAll = () => {
     updateSTTTierSettings(DEFAULT_STT_TIER_SETTINGS);
     setTierSettings(DEFAULT_STT_TIER_SETTINGS);
-    setHasChanges(false);
+    showSaved();
   };
 
   const tiers: STTTier[] = ['small', 'medium', 'large', 'live'];
@@ -92,13 +94,21 @@ export function STTTierPanel() {
             Map speech-to-text tiers to specific STT providers. Use tiers in your app instead of hardcoded providers.
           </p>
         </div>
-        <button
-          onClick={handleResetAll}
-          className="btn btn-outline btn-sm gap-2"
-        >
-          <Icon icon="mdi:restore" className="w-4 h-4" />
-          Reset All
-        </button>
+        <div className="flex items-center gap-2">
+          {savedMessage && (
+            <span className="badge badge-success gap-1">
+              <Icon icon="mdi:check" className="w-3 h-3" />
+              {savedMessage}
+            </span>
+          )}
+          <button
+            onClick={handleResetAll}
+            className="btn btn-outline btn-sm gap-2"
+          >
+            <Icon icon="mdi:restore" className="w-4 h-4" />
+            Reset All
+          </button>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -182,16 +192,6 @@ export function STTTierPanel() {
         })}
       </div>
 
-      {/* Save Button */}
-      {hasChanges && (
-        <div className="alert alert-info">
-          <Icon icon="mdi:information" className="w-5 h-5" />
-          <span>You have unsaved changes</span>
-          <button onClick={handleSave} className="btn btn-primary btn-sm">
-            Save Changes
-          </button>
-        </div>
-      )}
     </div>
   );
 }

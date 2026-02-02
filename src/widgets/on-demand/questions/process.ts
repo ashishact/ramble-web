@@ -205,7 +205,9 @@ ${previousQuestions.map((s, i) => `${i + 1}. ${s}`).join('\n')}
 `
     : '';
 
-  const userPrompt = `## Current Working Memory
+  const userPrompt = `Current time: ${wmData.userContext.currentTime}
+
+## Current Working Memory
 ${contextPrompt}
 ${previousSection}
 ${focusTopic ? `Focus your analysis on the topic: "${focusTopic}"\n` : ''}

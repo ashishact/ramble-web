@@ -1,6 +1,17 @@
 /**
  * Narrator Widget - Text to Speech with compact design
  * Chunk-based display with gradient highlighting
+ *
+ * EVENT BUS USAGE:
+ * ================
+ * This widget listens via eventBus for cross-component communication:
+ * - tts:speak - Speak text (mode: 'replace' stops current, 'queue' adds to queue)
+ * - tts:stop - Stop all speech immediately
+ *
+ * Internal React components use eventBus.emit() directly.
+ * External Web Components use window.dispatchEvent(new CustomEvent('ramble:tts:stop', ...))
+ *
+ * See eventBus.ts for the full event pattern documentation.
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -8,7 +19,6 @@ import { Icon } from '@iconify/react';
 import { Play, Square, Pause, Loader2, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 import type { WidgetProps } from '../types';
 import { useTTS } from '../../hooks/useTTS';
-import type { TTSSpeakEvent } from '../../services/tts/types';
 import {
   voices,
   getLanguages,
@@ -17,6 +27,7 @@ import {
   type LanguageCode,
 } from '../../services/tts/voices';
 import { profileStorage } from '../../lib/profileStorage';
+import { eventBus } from '../../lib/eventBus';
 
 const TTS_TEXT_STORAGE_KEY = 'tts-widget-text';
 const TTS_VOICE_SETTINGS_KEY = 'tts-voice-settings';
@@ -174,10 +185,12 @@ export const TTSWidget: React.FC<WidgetProps> = () => {
     }
   }, [selectedLanguage, currentVoice]);
 
-  // Listen for cross-widget TTS events
+  // Listen for cross-widget TTS events via eventBus
+  // Internal React components use eventBus.emit(), external Web Components use
+  // window.dispatchEvent(new CustomEvent('ramble:tts:stop', ...))
   useEffect(() => {
-    const handleSpeak = (e: CustomEvent<TTSSpeakEvent>) => {
-      const { text: eventText, voice, mode = 'replace' } = e.detail;
+    const unsubscribeSpeak = eventBus.on('tts:speak', (payload) => {
+      const { text: eventText, voice, mode = 'replace' } = payload;
 
       if (voice) {
         setVoice(voice);
@@ -194,16 +207,13 @@ export const TTSWidget: React.FC<WidgetProps> = () => {
       } else {
         queueText(eventText, voice);
       }
-    };
+    });
 
-    const handleStop = () => stop();
-
-    window.addEventListener('tts:speak', handleSpeak as EventListener);
-    window.addEventListener('tts:stop', handleStop);
+    const unsubscribeStop = eventBus.on('tts:stop', () => stop());
 
     return () => {
-      window.removeEventListener('tts:speak', handleSpeak as EventListener);
-      window.removeEventListener('tts:stop', handleStop);
+      unsubscribeSpeak();
+      unsubscribeStop();
     };
   }, [speak, queueText, stop, setVoice]);
 
