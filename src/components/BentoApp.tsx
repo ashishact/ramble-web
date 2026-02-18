@@ -27,13 +27,14 @@ import {
   PlaceholderWidget,
   LearnedCorrectionsWidget,
 } from '../widgets';
-import { QuestionWidget, SuggestionWidget, SpeakBetterWidget } from '../widgets/on-demand';
+import { QuestionWidget, SuggestionWidget, SpeakBetterWidget, MeetingTranscriptionWidget } from '../widgets/on-demand';
 import { MetaQueryLensWidget } from '../widgets/lens';
 import { RotateCcw, PencilRuler, Loader2, Settings } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { GlobalSTTController } from './GlobalSTTController';
 import { PipelineBreadcrumb } from './PipelineBreadcrumb';
 import { RambleNativeStatus } from './RambleNativeStatus';
+import { CloudSTTStatus } from './CloudSTTStatus';
 import { HelpStrip } from './HelpStrip';
 import { ActiveGoalTimer } from './ActiveGoalTimer';
 import { OnboardingFlow, useOnboarding } from '../modules/onboarding';
@@ -150,6 +151,8 @@ export const BentoApp: React.FC = () => {
             <TTSWidget {...props} />
           </Suspense>
         );
+      case 'meeting-transcription':
+        return <MeetingTranscriptionWidget />;
       // Lens Widgets - intercept input on hover, bypass core pipeline
       case 'meta-query':
         return <MetaQueryLensWidget />;
@@ -184,6 +187,7 @@ export const BentoApp: React.FC = () => {
           <h1 className="text-xs font-bold text-slate-700 flex-shrink-0">Ramble</h1>
           <PipelineBreadcrumb />
           <RambleNativeStatus />
+          <CloudSTTStatus />
           <ActiveGoalTimer />
           <div className="flex items-center gap-2 flex-shrink-0">
             <button

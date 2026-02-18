@@ -46,7 +46,9 @@
 import { eventBus } from '../../lib/eventBus';
 
 // Ramble native app states
-export type RambleNativeState = 'idle' | 'recording' | 'transcribing' | 'done';
+// 'enhancing' = native app is post-processing the transcription (LLM grammar pass)
+// 'error'     = recording failed; payload.error contains the reason
+export type RambleNativeState = 'idle' | 'recording' | 'transcribing' | 'enhancing' | 'done' | 'error';
 
 // Event types from Ramble native
 interface RambleStateChangedEvent {
@@ -54,7 +56,10 @@ interface RambleStateChangedEvent {
   id: string;
   payload: {
     state: RambleNativeState;
+    audioType?: string;
     ts?: number;
+    /** Present when state === 'error' */
+    error?: string;
   };
 }
 
@@ -64,6 +69,11 @@ interface RambleIntermediateTextEvent {
   payload: {
     text: string;
     ts?: number;
+    audioType?: string;
+    /** VAD segment start time (Unix ms) */
+    speechStartMs?: number;
+    /** VAD segment end time (Unix ms) */
+    speechEndMs?: number;
   };
 }
 
@@ -74,6 +84,7 @@ interface RambleTranscriptionCompleteEvent {
     text: string;
     duration?: number;
     ts?: number;
+    audioType?: string;
   };
 }
 
@@ -85,11 +96,30 @@ interface RambleDurationUpdateEvent {
   };
 }
 
+interface RambleModeChangedEvent {
+  type: 'mode_changed';
+  id: string;
+  payload: {
+    mode: 'meeting' | 'solo';
+    ts?: number;
+  };
+}
+
+interface RambleRecordingCancelledEvent {
+  type: 'recording_cancelled';
+  id: string;
+  payload: {
+    reason: string;
+  };
+}
+
 type RambleNativeEvent =
   | RambleStateChangedEvent
   | RambleIntermediateTextEvent
   | RambleTranscriptionCompleteEvent
-  | RambleDurationUpdateEvent;
+  | RambleDurationUpdateEvent
+  | RambleModeChangedEvent
+  | RambleRecordingCancelledEvent;
 
 // Callbacks for UI updates
 export interface RambleNativeCallbacks {
@@ -113,6 +143,36 @@ class RambleNative {
   private readonly RECONNECT_DELAY = 3000;
   private readonly MAX_RECONNECT_DELAY = 30000;
   private reconnectAttempts = 0;
+
+  /**
+   * Deduplication guard for WebSocket messages.
+   *
+   * The native app may occasionally send the same message twice (network
+   * retransmit, buffering quirk, etc.).  The dedup key is:
+   *   `${eventType}:${audioType}:${ts}`
+   * — the combination of event type, audio source, and the server-assigned
+   * timestamp is unique per logical message.  If ts is absent we cannot
+   * deduplicate reliably, so we let the message through.
+   *
+   * Each key is auto-removed after 10 s so the Set never accumulates stale
+   * entries across a long session.
+   */
+  private seenMessageKeys = new Set<string>();
+
+  private isDuplicateMessage(eventType: string, audioType: string, ts: number | undefined): boolean {
+    if (ts === undefined) return false; // no timestamp → can't deduplicate, allow through
+
+    const key = `${eventType}:${audioType}:${ts}`;
+    if (this.seenMessageKeys.has(key)) {
+      console.warn(`[RambleNative] Duplicate message dropped: ${key}`);
+      return true;
+    }
+
+    this.seenMessageKeys.add(key);
+    // Auto-expire after 10 s — duplicates only matter within a very short window
+    window.setTimeout(() => this.seenMessageKeys.delete(key), 10_000);
+    return false;
+  }
 
   private constructor() {}
 
@@ -181,10 +241,14 @@ class RambleNative {
   }
 
   /**
-   * Check if currently recording or transcribing (user is providing input)
+   * Check if currently recording, transcribing, or enhancing (user is providing input)
    */
   isUserInputActive(): boolean {
-    return this.currentState === 'recording' || this.currentState === 'transcribing';
+    return (
+      this.currentState === 'recording' ||
+      this.currentState === 'transcribing' ||
+      this.currentState === 'enhancing'
+    );
   }
 
   private attemptConnection(): void {
@@ -255,20 +319,54 @@ class RambleNative {
           this.handleStateChanged(event.payload.state);
           break;
 
-        case 'intermediate_text':
+        case 'intermediate_text': {
+          const audioType = event.payload.audioType === 'system' ? 'system' : 'mic';
+          if (this.isDuplicateMessage('intermediate_text', audioType, event.payload.ts)) break;
           this.callbacks.onIntermediateText?.(event.payload.text);
+          eventBus.emit('native:transcription-intermediate', {
+            text: event.payload.text,
+            audioType,
+            ts: event.payload.ts ?? Date.now(),
+            speechStartMs: event.payload.speechStartMs,
+            speechEndMs: event.payload.speechEndMs,
+          });
           break;
+        }
 
-        case 'transcription_complete':
+        case 'transcription_complete': {
+          const audioType = event.payload.audioType === 'system' ? 'system' : 'mic';
+          if (this.isDuplicateMessage('transcription_complete', audioType, event.payload.ts)) break;
           console.log('[RambleNative] transcription_complete:', event.payload.text);
           this.callbacks.onTranscriptionComplete?.(
             event.payload.text,
             event.payload.duration
           );
+          eventBus.emit('native:transcription-final', {
+            text: event.payload.text,
+            audioType,
+            ts: event.payload.ts ?? Date.now(),
+            duration: event.payload.duration,
+          });
           break;
+        }
 
         case 'duration_update':
           // Could expose this if needed in the future
+          break;
+
+        case 'mode_changed':
+          eventBus.emit('native:mode-changed', {
+            mode: event.payload.mode,
+            ts: event.payload.ts ?? Date.now(),
+          });
+          break;
+
+        case 'recording_cancelled':
+          console.log('[RambleNative] Recording cancelled:', event.payload.reason);
+          eventBus.emit('native:recording-cancelled', {
+            reason: event.payload.reason,
+            ts: Date.now(),
+          });
           break;
       }
     } catch (err) {
@@ -282,11 +380,23 @@ class RambleNative {
 
     console.log(`[RambleNative] State: ${previousState} -> ${state}`);
 
-    // When recording or transcribing starts, stop the narrator (TTS)
-    // User input (speech) takes priority over TTS output
-    if (state === 'recording' || state === 'transcribing') {
+    // When recording, transcribing, or enhancing — user input is active, stop TTS
+    if (state === 'recording' || state === 'transcribing' || state === 'enhancing') {
       console.log('[RambleNative] User input detected, stopping TTS');
       eventBus.emit('tts:stop', {});
+    }
+
+    // Emit recording lifecycle events so widgets can track meeting boundaries
+    if (state === 'recording') {
+      eventBus.emit('native:recording-started', { ts: Date.now() });
+    } else if (state === 'done') {
+      eventBus.emit('native:recording-ended', { ts: Date.now() });
+    } else if (state === 'error') {
+      // Treat an error state as a cancelled recording so widgets can flush/clean up
+      eventBus.emit('native:recording-cancelled', {
+        reason: 'app_error',
+        ts: Date.now(),
+      });
     }
 
     this.callbacks.onStateChange?.(state);

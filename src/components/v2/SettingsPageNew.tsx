@@ -131,6 +131,14 @@ const PROVIDERS: ProviderConfig[] = [
     helpUrl: 'https://console.deepgram.com/',
     description: 'Real-time speech-to-text with Nova-3 and Flux models. Live streaming transcription.',
   },
+  {
+    id: 'mistral',
+    name: 'Mistral',
+    icon: 'simple-icons:mistral',
+    placeholder: 'Enter your Mistral API key',
+    helpUrl: 'https://console.mistral.ai/api-keys',
+    description: 'Voxtral speech-to-text with diarization and language detection.',
+  },
 ];
 
 const VOICE_OPTIONS = ['Aoede', 'Puck', 'Charon', 'Kore', 'Fenrir', 'Leda', 'Orus', 'Zephyr'] as const;

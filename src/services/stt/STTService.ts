@@ -15,6 +15,7 @@ import type {
 } from './types';
 import { DeepgramProvider } from './providers/DeepgramProvider';
 import { GroqWhisperProvider } from './providers/GroqWhisperProvider';
+import { MistralProvider } from './providers/MistralProvider';
 import { GeminiProvider } from './providers/GeminiProvider';
 import { resolveSTTTier } from '../../program';
 
@@ -213,6 +214,8 @@ export class STTService {
       case 'deepgram-nova':
       case 'deepgram-flux':
         return new DeepgramProvider(config);
+      case 'mistral':
+        return new MistralProvider(config);
       case 'gemini':
         return new GeminiProvider(config);
       default:

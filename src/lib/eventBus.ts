@@ -59,6 +59,28 @@ export interface EventPayloads {
 	'stt:transcribing': Record<string, never>;
 	'stt:intermediate': { text: string };
 	'stt:final': { text: string };
+	'stt:vad-activity': { speechDuration: number; speaking: boolean };
+
+	// Native recording lifecycle events (from Ramble native app via rambleNative.ts)
+	'native:recording-started': { ts: number };
+	'native:recording-ended': { ts: number };
+	// Emitted when recording is aborted (e.g. owner disconnected, app error)
+	'native:recording-cancelled': { reason: string; ts: number };
+	// Emitted when the native app switches between meeting mode and solo mode
+	'native:mode-changed': { mode: 'meeting' | 'solo'; ts: number };
+
+	// Native transcription events (from Ramble native app via rambleNative.ts)
+	// These carry audioType so widgets can distinguish mic vs. system audio
+	'native:transcription-intermediate': {
+		text: string;
+		audioType: 'mic' | 'system';
+		ts: number;
+		/** VAD segment start time (Unix ms), present when native app provides timing */
+		speechStartMs?: number;
+		/** VAD segment end time (Unix ms), present when native app provides timing */
+		speechEndMs?: number;
+	};
+	'native:transcription-final': { text: string; audioType: 'mic' | 'system'; ts: number; duration?: number };
 
 	// Text-to-Speech / Narrator events
 	// mode: 'replace' = stop current speech and speak immediately (default)

@@ -1,6 +1,6 @@
 import type { WidgetProps } from '../types';
 import type { WidgetType } from '../../components/bento/types';
-import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles } from 'lucide-react';
+import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio } from 'lucide-react';
 
 const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'empty': null,
@@ -19,6 +19,7 @@ const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'working-memory': <Eye className="w-8 h-8" />,
   'learned-corrections': <Pencil className="w-8 h-8" />,
   'tts': <Volume2 className="w-8 h-8" />,
+  'meeting-transcription': <Radio className="w-8 h-8" />,
   // Lens Widgets
   'meta-query': <Search className="w-8 h-8" />,
 };
@@ -40,6 +41,7 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   'working-memory': 'Working Memory',
   'learned-corrections': 'Learned Corrections',
   'tts': 'Text to Speech',
+  'meeting-transcription': 'Meeting',
   // Lens Widgets
   'meta-query': 'Meta Query',
 };

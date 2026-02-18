@@ -9,18 +9,26 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { z } from 'zod';
 import { Pause, Play } from 'lucide-react';
 import { profileStorage } from '../../lib/profileStorage';
 
 const PAUSE_STORAGE_KEY = 'widget-pause-states';
 
-interface PauseStates {
-	[widgetId: string]: boolean;
-}
+const PauseStatesSchema = z.record(z.string(), z.boolean());
+
+type PauseStates = z.infer<typeof PauseStatesSchema>;
 
 function loadPauseStates(): PauseStates {
 	try {
-		return profileStorage.getJSON<PauseStates>(PAUSE_STORAGE_KEY) ?? {};
+		const raw = profileStorage.getJSON<unknown>(PAUSE_STORAGE_KEY);
+		if (raw == null) return {};
+		const result = PauseStatesSchema.safeParse(raw);
+		if (!result.success) {
+			console.warn('[useWidgetPause] Stored pause states failed validation — resetting:', result.error.issues);
+			return {};
+		}
+		return result.data;
 	} catch {
 		return {};
 	}

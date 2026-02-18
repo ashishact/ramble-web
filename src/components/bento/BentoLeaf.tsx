@@ -3,7 +3,7 @@ import type { LeafNode, WidgetType } from './types';
 import { BentoLeafMenu } from './BentoLeafMenu';
 import {
   GripHorizontal, AlertTriangle, X, Check,
-  Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles
+  Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio
 } from 'lucide-react';
 
 interface BentoLeafProps {
@@ -35,6 +35,7 @@ const WIDGET_OPTIONS: { type: WidgetType; label: string; icon: React.ReactNode }
     { type: 'working-memory', label: 'Context', icon: <Eye size={18} /> },
     { type: 'learned-corrections', label: 'Corrections', icon: <Pencil size={18} /> },
     { type: 'tts', label: 'TTS', icon: <Volume2 size={18} /> },
+    { type: 'meeting-transcription', label: 'Meeting', icon: <Radio size={18} /> },
     // Lens Widgets - intercept input on hover, bypass core pipeline
     { type: 'meta-query', label: 'Meta Query', icon: <Search size={18} /> },
 ];

@@ -41,6 +41,11 @@ export const appSettingsSchema = z.object({
       model: z.string().default('nova-3'),
       enabled: z.boolean().default(false),
     }),
+    mistral: z.object({
+      apiKey: z.string().default(''),
+      model: z.string().default('voxtral-mini-latest'),
+      enabled: z.boolean().default(false),
+    }),
   }),
   // LLM tier mappings - application uses tiers, settings define which provider/model for each tier
   llmTiers: LLMTierSettingsSchema.default(DEFAULT_LLM_TIER_SETTINGS),
@@ -69,6 +74,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     openai: { apiKey: '', model: 'gpt-4o', enabled: false },
     groq: { apiKey: '', model: 'openai/gpt-oss-120b', enabled: false },
     deepgram: { apiKey: '', model: 'nova-3', enabled: false },
+    mistral: { apiKey: '', model: 'voxtral-mini-latest', enabled: false },
   },
   llmTiers: DEFAULT_LLM_TIER_SETTINGS,
   sttTiers: DEFAULT_STT_TIER_SETTINGS,
@@ -115,6 +121,12 @@ const loadSettings = (): AppSettings => {
       if (!parsed.providers?.deepgram) {
         needsSave = true;
         console.log('[Settings] Added new Deepgram provider to settings');
+      }
+
+      // Check if mistral provider was just added
+      if (!parsed.providers?.mistral) {
+        needsSave = true;
+        console.log('[Settings] Added new Mistral provider to settings');
       }
 
       if (needsSave) {

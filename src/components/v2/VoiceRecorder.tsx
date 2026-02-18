@@ -10,9 +10,27 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSTT } from '../../services/stt/useSTT';
-import { settingsHelpers } from '../../stores/settingsStore';
+import { settingsHelpers, type AppSettings } from '../../stores/settingsStore';
 import { rambleNative } from '../../services/stt/rambleNative';
+import { resolveSTTTier } from '../../program';
+import type { STTProvider } from '../../services/stt/types';
 import { useRamblePaste } from '../../hooks/useRamblePaste';
+
+/** Map STT provider to settings provider key for API key lookup */
+const STT_PROVIDER_TO_SETTINGS_KEY: Record<STTProvider, keyof AppSettings['providers']> = {
+  'groq-whisper': 'groq',
+  'gemini': 'gemini',
+  'deepgram-nova': 'deepgram',
+  'deepgram-flux': 'deepgram',
+  'mistral': 'mistral',
+};
+
+/** Get the API key for the resolved STT tier provider */
+function getSTTApiKey(tier: 'small' | 'medium' | 'large' | 'live'): string {
+  const resolved = resolveSTTTier(tier);
+  const settingsKey = STT_PROVIDER_TO_SETTINGS_KEY[resolved.provider];
+  return settingsHelpers.getApiKey(settingsKey) || '';
+}
 import { showTranscriptReview } from '../TranscriptReview';
 
 export interface VoiceRecorderProps {
@@ -32,11 +50,11 @@ export function VoiceRecorder({
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentTranscript, setCurrentTranscript] = useState('');
 
-  // STT configuration
+  // STT configuration - dynamically resolve API key based on tier's provider
   const sttConfig = useMemo(
     () => ({
       tier: 'small' as const,
-      apiKey: settingsHelpers.getApiKey('groq') || '',
+      apiKey: getSTTApiKey('small'),
       chunkingStrategy: 'vad' as const,
     }),
     []
@@ -69,8 +87,8 @@ export function VoiceRecorder({
   useEffect(() => {
     let mounted = true;
     const initSTT = async () => {
-      const groqApiKey = settingsHelpers.getApiKey('groq');
-      if (groqApiKey && mounted) {
+      const sttApiKey = getSTTApiKey('small');
+      if (sttApiKey && mounted) {
         try {
           await connectSTT();
         } catch (err) {
@@ -115,9 +133,9 @@ export function VoiceRecorder({
         setCurrentTranscript('');
       }
     } else {
-      const groqApiKey = settingsHelpers.getApiKey('groq');
-      console.log('[VoiceRecorder] Starting recording, API key present:', !!groqApiKey, 'STT connected:', sttConnected);
-      if (!groqApiKey) {
+      const sttApiKey = getSTTApiKey('small');
+      console.log('[VoiceRecorder] Starting recording, API key present:', !!sttApiKey, 'STT connected:', sttConnected);
+      if (!sttApiKey) {
         onMissingApiKey?.();
         return;
       }

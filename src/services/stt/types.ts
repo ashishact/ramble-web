@@ -6,7 +6,7 @@
 
 import type { STTTier } from '../../program/types/llmTiers';
 
-export type STTProvider = 'groq-whisper' | 'deepgram-nova' | 'deepgram-flux' | 'gemini';
+export type STTProvider = 'groq-whisper' | 'deepgram-nova' | 'deepgram-flux' | 'gemini' | 'mistral';
 
 export interface STTConfig {
   /** Use tier abstraction (small/medium/large/live) - preferred */

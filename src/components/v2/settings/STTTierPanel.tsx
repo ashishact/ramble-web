@@ -22,6 +22,7 @@ const AVAILABLE_STT_PROVIDERS: Array<{ value: ConcreteSTTProvider; label: string
   { value: 'gemini', label: 'Google Gemini' },
   { value: 'deepgram-nova', label: 'Deepgram Nova (v1)' },
   { value: 'deepgram-flux', label: 'Deepgram Flux (v2)' },
+  { value: 'mistral', label: 'Mistral Voxtral' },
 ];
 
 const STT_MODELS: Record<ConcreteSTTProvider, string[]> = {
@@ -29,6 +30,7 @@ const STT_MODELS: Record<ConcreteSTTProvider, string[]> = {
   'gemini': ['gemini-2.5-flash', 'gemini-2.5-pro'],
   'deepgram-nova': ['nova-2', 'nova-3'],
   'deepgram-flux': ['flux-general-en', 'flux-medical-en'],
+  'mistral': ['voxtral-mini-latest'],
 };
 
 export function STTTierPanel() {

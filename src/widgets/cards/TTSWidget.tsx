@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { z } from 'zod';
 import { Icon } from '@iconify/react';
 import { Play, Square, Pause, Loader2, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 import type { WidgetProps } from '../types';
@@ -37,6 +38,11 @@ interface VoiceSettings {
   voice: string;
 }
 
+const VoiceSettingsSchema = z.object({
+  language: z.string(),
+  voice: z.string(),
+});
+
 /**
  * Load and validate voice settings from storage
  * Returns defaults if stored data is invalid or missing
@@ -48,18 +54,24 @@ function loadVoiceSettings(): VoiceSettings {
     voice: DEFAULT_VOICE,
   };
 
-  const stored = profileStorage.getJSON<VoiceSettings>(TTS_VOICE_SETTINGS_KEY);
-  if (!stored) return defaults;
+  const raw = profileStorage.getJSON<unknown>(TTS_VOICE_SETTINGS_KEY);
+  if (raw == null) return defaults;
 
-  // Validate: voice must exist and belong to the stored language
-  const voiceDef = voices.find(v => v.id === stored.voice);
-  if (!voiceDef || voiceDef.language !== stored.language) {
-    // Invalid data - clear and use defaults
+  const parsed = VoiceSettingsSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.warn('[TTSWidget] Stored voice settings failed validation — resetting:', parsed.error.issues);
     profileStorage.removeItem(TTS_VOICE_SETTINGS_KEY);
     return defaults;
   }
 
-  return stored;
+  // Cross-reference check: voice must exist in our voices list and match the stored language
+  const voiceDef = voices.find(v => v.id === parsed.data.voice);
+  if (!voiceDef || voiceDef.language !== parsed.data.language) {
+    profileStorage.removeItem(TTS_VOICE_SETTINGS_KEY);
+    return defaults;
+  }
+
+  return parsed.data as VoiceSettings;
 }
 
 

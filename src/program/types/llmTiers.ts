@@ -68,6 +68,7 @@ export const STTProviderSchema = z.enum([
   'deepgram-nova',
   'deepgram-flux',
   'gemini',
+  'mistral',
 ]);
 export type STTProvider = z.infer<typeof STTProviderSchema>;
 
@@ -146,6 +147,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<LLMProvider | STTProvider, string> =
   'groq-whisper': 'Groq Whisper',
   'deepgram-nova': 'Deepgram Nova',
   'deepgram-flux': 'Deepgram Flux',
+  'mistral': 'Mistral Voxtral',
 };
 
 /**

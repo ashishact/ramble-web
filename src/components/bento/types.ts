@@ -36,6 +36,7 @@ export type WidgetType =
   | 'tts'                 // Text-to-Speech widget
   // Lens Widgets: Intercept input on hover, bypass core pipeline, ephemeral results
   // See src/lib/lensController.ts for architecture details
+  | 'meeting-transcription' // Live meeting transcript + LLM summary (volatile, not saved)
   | 'meta-query';         // Lens: Ask questions about your conversation without saving
 
 export interface LeafNode extends BaseNode {
