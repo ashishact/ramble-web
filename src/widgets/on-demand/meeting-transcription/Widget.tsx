@@ -612,11 +612,11 @@ export function MeetingTranscriptionWidget() {
       >
         {/* Icon */}
         <div className="relative">
-          <div className="w-10 h-10 rounded-2xl bg-violet-500/10 flex items-center justify-center">
-            <Radio size={20} className="text-violet-500/60" />
+          <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
+            <Radio size={20} className="text-primary/60" />
           </div>
-          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-violet-400/40 animate-ping" />
-          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-violet-400/70" />
+          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-primary/40 animate-ping" />
+          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-primary/70" />
         </div>
 
         <span className="text-[12px] font-semibold text-base-content/70">Waiting for audio...</span>
@@ -625,40 +625,40 @@ export function MeetingTranscriptionWidget() {
         {/* Context card */}
         <button
           onClick={() => setView('settings')}
-          className="w-full max-w-[210px] mt-1 px-3 py-2.5 rounded-2xl bg-indigo-500/[0.07] border border-indigo-400/20 hover:bg-indigo-500/[0.12] hover:border-indigo-400/35 transition-colors text-left space-y-1.5"
+          className="w-full max-w-[210px] mt-1 px-3 py-2.5 rounded-2xl bg-primary/[0.07] border border-primary/20 hover:bg-primary/[0.12] hover:border-primary/35 transition-colors text-left space-y-1.5"
         >
           {/* Header row */}
           <div className="flex items-center justify-between">
-            <span className="text-[8px] font-bold uppercase tracking-widest text-indigo-500/50">
+            <span className="text-[8px] font-bold uppercase tracking-widest text-primary/50">
               Meeting Setup
             </span>
-            <Icon icon="mdi:pencil-outline" width={9} height={9} className="text-indigo-400/40" />
+            <Icon icon="mdi:pencil-outline" width={9} height={9} className="text-primary/40" />
           </div>
 
           {hasSettings ? (
             <>
               {settings.userName && (
                 <div className="flex items-center gap-1.5">
-                  <Icon icon="mdi:account-circle-outline" width={11} height={11} className="text-indigo-400/60 flex-shrink-0" />
-                  <span className="text-[10px] font-medium text-indigo-300/80 truncate">{settings.userName}</span>
+                  <Icon icon="mdi:account-circle-outline" width={11} height={11} className="text-primary/60 flex-shrink-0" />
+                  <span className="text-[10px] font-medium text-primary/80 truncate">{settings.userName}</span>
                 </div>
               )}
               {settings.meetingContext ? (
                 <div className="flex items-start gap-1.5">
-                  <Icon icon="mdi:text-box-outline" width={11} height={11} className="text-indigo-400/50 flex-shrink-0 mt-[1px]" />
+                  <Icon icon="mdi:text-box-outline" width={11} height={11} className="text-primary/50 flex-shrink-0 mt-[1px]" />
                   <span className="text-[9px] text-base-content/55 leading-relaxed line-clamp-2">{settings.meetingContext}</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5">
-                  <Icon icon="mdi:text-box-outline" width={11} height={11} className="text-amber-400/50 flex-shrink-0" />
-                  <span className="text-[9px] text-amber-500/60 italic">No context — tap to add</span>
+                  <Icon icon="mdi:text-box-outline" width={11} height={11} className="text-warning/50 flex-shrink-0" />
+                  <span className="text-[9px] text-warning/60 italic">No context — tap to add</span>
                 </div>
               )}
             </>
           ) : (
             <div className="flex items-center gap-1.5">
-              <Icon icon="mdi:account-plus-outline" width={11} height={11} className="text-indigo-400/50 flex-shrink-0" />
-              <span className="text-[9px] text-indigo-400/60 italic">Set your name &amp; context</span>
+              <Icon icon="mdi:account-plus-outline" width={11} height={11} className="text-primary/50 flex-shrink-0" />
+              <span className="text-[9px] text-primary/60 italic">Set your name &amp; context</span>
             </div>
           )}
         </button>
