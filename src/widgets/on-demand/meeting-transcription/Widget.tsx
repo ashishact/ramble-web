@@ -17,10 +17,12 @@ import { eventBus } from '../../../lib/eventBus';
 import { useWidgetPause } from '../useWidgetPause';
 import {
   processMeetingUpdate,
+  generateMeetingEndSummary,
   loadMeetingState,
   loadArchivedMeetings,
   loadMeetingSettings,
   archiveCurrentMeeting,
+  updateArchivedMeetingTitle,
   createInitialMeetingState,
   saveMeetingState,
   NEW_MEETING_GAP_MS,
@@ -244,8 +246,8 @@ function ArchivedMeetingRow({ meeting, onSelect }: { meeting: ArchivedMeeting; o
       className="w-full text-left px-2 py-2 hover:bg-base-200/40 rounded-lg transition-colors border border-transparent hover:border-base-200"
     >
       <div className="flex items-center justify-between gap-2 mb-0.5">
-        <span className="text-[11px] font-medium text-base-content/80">
-          {formatShortDate(meeting.startedAt)}
+        <span className="text-[11px] font-medium text-base-content/80 truncate min-w-0">
+          {meeting.title || formatShortDate(meeting.startedAt)}
         </span>
         <div className="flex items-center gap-1.5 text-[9px] text-base-content/40 flex-shrink-0">
           <Clock size={9} />
@@ -254,6 +256,9 @@ function ArchivedMeetingRow({ meeting, onSelect }: { meeting: ArchivedMeeting; o
           <span>{meeting.segmentCount} seg</span>
         </div>
       </div>
+      {meeting.title && (
+        <span className="text-[9px] text-base-content/30 block mb-0.5">{formatShortDate(meeting.startedAt)}</span>
+      )}
       <p className="text-[10px] text-base-content/50 leading-relaxed line-clamp-2">{preview}</p>
     </button>
   );
@@ -436,26 +441,57 @@ export function MeetingTranscriptionWidget() {
       }
     });
 
-    const flushOnEnd = (label: string) => {
-      if (isPausedRef.current) return;
+    async function flushPending() {
       const state = stateRef.current;
-      if (state.segmentCount === 0) return;
-
       if (pendingTextRef.current.length > 0) {
-        console.log(`[MeetingTranscription] ${label} — flushing pending text`);
-        triggerLLM(true);
+        await triggerLLM(true);
       } else if (state.lastUpdatedAt > state.lastLLMCallAt) {
         const latest = state.displayFeed[state.displayFeed.length - 1];
         if (latest) {
           pendingTextRef.current = latest.text;
           latestAudioTypeRef.current = latest.audioType;
-          triggerLLM(true);
+          await triggerLLM(true);
         }
       }
-    };
+    }
 
-    const unsubEnd = eventBus.on('native:recording-ended', () => flushOnEnd('Recording ended'));
-    const unsubCancelled = eventBus.on('native:recording-cancelled', () => flushOnEnd('Recording cancelled'));
+    // recording-ended:
+    //   1. Flush any pending transcription text (last LLM update)
+    //   2. Archive immediately — data is safe regardless of what follows
+    //   3. Generate meeting title (best-effort, small LLM call)
+    //   4. If title succeeds, patch the already-saved archive entry + update state
+    const unsubEnd = eventBus.on('native:recording-ended', () => {
+      void (async () => {
+        if (isPausedRef.current) return;
+        if (stateRef.current.segmentCount === 0) return;
+
+        // Step 1: flush
+        await flushPending();
+
+        // Step 2: archive now — safe even if step 3 fails
+        const meetingId = `meeting-${stateRef.current.startedAt}`;
+        const savedArchive = archiveCurrentMeeting(stateRef.current);
+        setArchivedMeetings(savedArchive);
+
+        // Step 3 + 4: generate title, then patch archive with it
+        try {
+          const updatedState = await generateMeetingEndSummary(stateRef.current, settingsRef.current);
+          if (updatedState.title) {
+            stateRef.current = updatedState;
+            setMeetingState(updatedState);
+            const patchedArchive = updateArchivedMeetingTitle(meetingId, updatedState.title);
+            setArchivedMeetings(patchedArchive);
+          }
+        } catch { /* generateMeetingEndSummary logs internally — archive already safe */ }
+      })();
+    });
+
+    // recording-cancelled: just flush — no end-of-meeting call
+    const unsubCancelled = eventBus.on('native:recording-cancelled', () => {
+      if (isPausedRef.current) return;
+      if (stateRef.current.segmentCount === 0) return;
+      void flushPending();
+    });
 
     return () => { unsubStart(); unsubEnd(); unsubCancelled(); };
   }, [triggerLLM]);
@@ -605,6 +641,7 @@ export function MeetingTranscriptionWidget() {
 
   if (!hasContent) {
     const hasSettings = settings.userName || settings.meetingContext;
+    const prevOpenActions = (archivedMeetings[0]?.actionItems ?? []).filter((a) => !a.done);
     return (
       <div
         className="w-full h-full flex flex-col items-center justify-center gap-2 px-4"
@@ -662,6 +699,29 @@ export function MeetingTranscriptionWidget() {
             </div>
           )}
         </button>
+
+        {/* Previous open action items */}
+        {prevOpenActions.length > 0 && (
+          <div className="w-full max-w-[210px] px-3 py-2.5 rounded-2xl bg-emerald-400/[0.06] border border-emerald-400/15 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[8px] font-bold uppercase tracking-widest text-emerald-600/50">
+                Open from last meeting
+              </span>
+              <Icon icon="mdi:checkbox-marked-circle-outline" width={9} height={9} className="text-emerald-500/40" />
+            </div>
+            <div className="space-y-1">
+              {prevOpenActions.slice(0, 3).map((item) => (
+                <div key={item.id} className="flex items-start gap-1.5">
+                  <span className="w-1 h-1 rounded-full border border-emerald-400/50 flex-shrink-0 mt-[4px]" />
+                  <span className="text-[9px] text-base-content/50 leading-relaxed">{item.text}</span>
+                </div>
+              ))}
+              {prevOpenActions.length > 3 && (
+                <span className="text-[8px] text-base-content/25">+{prevOpenActions.length - 3} more</span>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 mt-0.5">
           <PauseButton />
@@ -752,6 +812,13 @@ export function MeetingTranscriptionWidget() {
           topicStartedAt={topicStartedAt}
         />
         <NowPanel text={tree.now.text} icon={tree.now.icon} />
+        {meetingState.actionItems.length > 0 && (
+          <div className="flex items-center gap-2 px-1">
+            <div className="h-px flex-1 bg-base-300/60" />
+            <span className="text-[7px] text-base-content/20 uppercase tracking-[0.12em]">Actions</span>
+            <div className="h-px flex-1 bg-base-300/60" />
+          </div>
+        )}
         <ActionItemsList items={meetingState.actionItems} onToggle={handleToggleActionItem} />
 
         {/* Participants */}

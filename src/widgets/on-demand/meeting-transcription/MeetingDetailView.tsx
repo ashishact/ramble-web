@@ -87,9 +87,16 @@ export function MeetingDetailView({ meeting, onBack }: Props) {
           <ChevronLeft size={14} className="text-base-content/60" />
         </button>
         <div className="min-w-0 flex-1">
-          <span className="text-[11px] font-medium text-base-content/70 truncate block">
-            {formatShortDate(meeting.startedAt)}
-          </span>
+          {meeting.title ? (
+            <>
+              <span className="text-[11px] font-medium text-base-content/70 truncate block">{meeting.title}</span>
+              <span className="text-[9px] text-base-content/35 truncate block">{formatShortDate(meeting.startedAt)}</span>
+            </>
+          ) : (
+            <span className="text-[11px] font-medium text-base-content/70 truncate block">
+              {formatShortDate(meeting.startedAt)}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5 text-[9px] text-base-content/40 flex-shrink-0">
           <Clock size={9} />

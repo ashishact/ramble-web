@@ -147,6 +147,8 @@ export interface MeetingState {
   llmDurationMs: number;
   segmentCount: number;
   startedAt: number;
+  /** Auto-generated meeting title (produced by end-of-meeting LLM call) */
+  title: string;
 }
 
 export interface ArchivedMeeting {
@@ -161,6 +163,8 @@ export interface ArchivedMeeting {
   displayFeed: FeedEntry[];
   history: HistorySegment[];
   segmentCount: number;
+  /** Auto-generated meeting title (produced by end-of-meeting LLM call) */
+  title: string;
 }
 
 export interface MeetingUpdateResult {
@@ -238,6 +242,8 @@ const MeetingStateSchema = z.object({
   llmDurationMs: z.number(),
   segmentCount: z.number(),
   startedAt: z.number(),
+  // default('') so existing stored data without this field migrates instead of being wiped
+  title: z.string().default(''),
 });
 
 const ArchivedMeetingSchema = z.object({
@@ -252,6 +258,8 @@ const ArchivedMeetingSchema = z.object({
   displayFeed: z.array(FeedEntrySchema),
   history: z.array(HistorySegmentSchema),
   segmentCount: z.number(),
+  // default('') so existing archived meetings without this field migrate instead of being wiped
+  title: z.string().default(''),
 });
 
 const MeetingSettingsSchema = z.object({
@@ -331,11 +339,24 @@ export function archiveCurrentMeeting(state: MeetingState): ArchivedMeeting[] {
     displayFeed: state.displayFeed,
     history: state.history,
     segmentCount: state.segmentCount,
+    title: state.title,
   };
 
   const existing = loadArchivedMeetings();
   const deduplicated = existing.filter((m) => m.id !== archived.id);
   const updated = [archived, ...deduplicated].slice(0, MAX_ARCHIVE);
+  saveArchivedMeetings(updated);
+  return updated;
+}
+
+/**
+ * Patches the title of an already-archived meeting by id.
+ * Called after the end-of-meeting LLM call succeeds — the archive was already
+ * saved before the LLM ran, so this just fills in the title retroactively.
+ */
+export function updateArchivedMeetingTitle(meetingId: string, title: string): ArchivedMeeting[] {
+  const existing = loadArchivedMeetings();
+  const updated = existing.map((m) => (m.id === meetingId ? { ...m, title } : m));
   saveArchivedMeetings(updated);
   return updated;
 }
@@ -382,6 +403,7 @@ export function createInitialMeetingState(): MeetingState {
     llmDurationMs: 0,
     segmentCount: 0,
     startedAt: Date.now(),
+    title: '',
   };
 }
 
@@ -435,6 +457,11 @@ Most recent exchange — what is being said right now. Always update. Max 30 wor
 ━━━ ACTION ITEMS ━━━
 Extract explicit or strongly implied tasks/commitments from the NEW content only.
 Return only NEW items — do not re-list existing ones. Empty array if none.
+
+Only extract items that are clearly assignable, concrete, and would stand alone in formal meeting notes. Skip vague fragments and rhetorical statements.
+
+Before adding a new item, check the OPEN ACTION ITEMS list: if the new item substantially duplicates
+an existing open item (same task, even if phrased differently), skip it — do not add a duplicate.
 Each: short text, optional owner ("you" for mic-user, participant name, or omit), optional deadline.
 
 ━━━ SENTIMENT ━━━
@@ -503,6 +530,9 @@ function buildUserPrompt(
     ? `KNOWN PARTICIPANTS: ${state.participants.map((p) => `${p.name} (${p.audioType})`).join(', ')}\n\n`
     : '';
 
+  // Appended last so the stable prefix above remains cacheable by the LLM API.
+  const sessionTime = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+
   return `CURRENT OVERVIEW LOG:
 ${overviewBlock}
 
@@ -516,7 +546,9 @@ ${participantsLine}RECENT HISTORY:
 ${recentHistory || '(none yet)'}
 
 NEW CONTENT [source: ${latestAudioType === 'mic' ? 'MIC' : 'SYSTEM'}]:
-${truncate(accumulatedText, MAX_ACCUMULATED_TEXT_CHARS)}`;
+${truncate(accumulatedText, MAX_ACCUMULATED_TEXT_CHARS)}
+
+<meta>current_time: ${sessionTime}</meta>`;
 }
 
 // ============================================================================
@@ -673,5 +705,64 @@ export async function processMeetingUpdate(
   } catch (error) {
     console.error('[MeetingTranscription] LLM call failed:', error);
     return { state: { ...state, lastLLMCallAt: now }, llmRan: false };
+  }
+}
+
+// ============================================================================
+// End-of-meeting summary
+//
+// Single LLM call fired once when recording ends (after the final flush).
+// This is the designated slot for ALL future end-of-meeting features.
+// Currently generates: title.
+// Future: decisions log, key numbers, follow-up email draft, etc.
+// ============================================================================
+
+/**
+ * Generates a concise meeting title from the accumulated overview + topic.
+ * Uses the `small` tier for speed — fires once after recording ends.
+ * Returns the updated state (with title set) and persists it.
+ */
+export async function generateMeetingEndSummary(
+  state: MeetingState,
+  settings: MeetingSettings
+): Promise<MeetingState> {
+  if (state.segmentCount === 0) return state;
+
+  const overviewText = state.overviewItems.map((item, i) => `${i + 1}. ${item.text}`).join('\n');
+  const topicText = state.summaryTree.topic.text || '';
+  const contextLine = settings.meetingContext ? `\nMeeting context: ${settings.meetingContext}` : '';
+
+  const systemPrompt = `You generate concise meeting titles from summaries. Reply with strict JSON only, no markdown.`;
+  const userPrompt = `Generate a short meeting title (5–9 words max) that captures the main purpose or outcome.${contextLine}
+
+Overview log:
+${overviewText || '(no overview)'}
+
+Final topic: ${topicText || '(none)'}
+
+Reply format: { "title": "..." }`;
+
+  try {
+    const response = await callLLM({
+      tier: 'small',
+      prompt: userPrompt,
+      systemPrompt,
+      options: { max_tokens: 80 },
+    });
+
+    const { data } = parseLLMJSON(response.content);
+    const title =
+      data && typeof data === 'object' && typeof (data as Record<string, unknown>).title === 'string'
+        ? ((data as Record<string, unknown>).title as string).trim()
+        : '';
+
+    if (!title) return state;
+
+    const newState: MeetingState = { ...state, title };
+    saveMeetingState(newState);
+    return newState;
+  } catch (error) {
+    console.error('[MeetingTranscription] End-of-meeting summary failed:', error);
+    return state;
   }
 }

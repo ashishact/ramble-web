@@ -1,11 +1,13 @@
 export { MeetingTranscriptionWidget } from './Widget';
 export {
   processMeetingUpdate,
+  generateMeetingEndSummary,
   loadMeetingState,
   saveMeetingState,
   clearMeetingState,
   loadArchivedMeetings,
   archiveCurrentMeeting,
+  updateArchivedMeetingTitle,
   createInitialMeetingState,
   loadMeetingSettings,
   saveMeetingSettings,
