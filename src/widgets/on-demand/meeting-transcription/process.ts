@@ -3,32 +3,28 @@
  *
  * State machine for live meeting transcription + LLM summarization.
  *
- * Design:
- * - Feed entries are added by the Widget (this module never touches displayFeed)
- * - LLM is called with the accumulated text since the last call (not per-segment)
- * - MIN_ACCUMULATED_CHARS: don't waste an LLM call on tiny phrases
- * - STALE_TEXT_TIMEOUT_MS: fire anyway after silence even if text is short
- * - LLM_THROTTLE_MS: minimum gap between calls
+ * Intelligence layers:
+ *   overviewItems → additive log, one bullet per significant moment, never deleted mid-meeting
+ *   topic         → current major theme, full rewrite when discussion shifts
+ *   now           → latest exchange, always updated
+ *   actionItems   → tracked list of commitments/tasks extracted from conversation
+ *   participants  → names inferred from conversation
+ *   talkTime      → accumulated mic vs system audio duration (tracked in Widget)
+ *   sentiment     → neutral / positive / tense / negative
  *
- * 3-level summary tree (depth = SUMMARY_TREE_DEPTH):
- *   overall  → big picture, changes slowly, preserves old context
- *   topic    → current major theme, changes when conversation shifts
- *   now      → latest exchange, updates every call
+ * Overview delta approach:
+ *   LLM outputs overallDelta: string | null — appended only when genuinely new/significant.
+ *   Never rewrites old items. Compaction deferred to end-of-meeting if needed.
  *
- * Compaction rules (enforced in system prompt):
- *   - COMPACT, not summarise — preserve the original voice
- *   - No 3rd-person conversion: "I think..." stays "I think..."
- *   - Older important context must survive in `overall`
- *
- * Each level gets an LLM-generated Iconify icon for contextual visual feedback.
- *
- * Token budget worst-case (~2 K):
- *   overall   800 + topic 600 + now 400 = 1 800
- *   history   8 × 600                  = 4 800
- *   accum                              =   800
- *   overhead                           =   300
- *   ─────────────────────────────────────────
- *   total     ~7 700 chars ≈ ~1 925 tokens
+ * Token budget (approximate input):
+ *   overview (12 items × 120 chars)   =  1 440
+ *   topic 400 + now 200               =    600
+ *   action items (10 × 120)           =  1 200
+ *   history (8 × 400)                 =  3 200
+ *   new content                       =    600
+ *   overhead                          =    400
+ *   ──────────────────────────────────────────
+ *   total                     ~7 440 chars ≈ ~1 860 tokens input
  */
 
 import { z } from 'zod';
@@ -42,9 +38,7 @@ import { profileStorage } from '../../../lib/profileStorage';
 
 const STORAGE_KEY = 'meeting-transcription';
 const ARCHIVE_STORAGE_KEY = 'meeting-transcription:archive';
-
-/** Depth of the summary hierarchy. Change here + update SYSTEM_PROMPT if altered. */
-export const SUMMARY_TREE_DEPTH = 3;
+export const SETTINGS_STORAGE_KEY = 'meeting-transcription:settings';
 
 /** Min chars accumulated since last LLM call before we bother calling again */
 export const MIN_ACCUMULATED_CHARS = 80;
@@ -56,16 +50,19 @@ const LLM_THROTTLE_MS = 8_000;
 const MAX_HISTORY = 20;
 const MAX_ARCHIVE = 10;
 const LLM_HISTORY_WINDOW = 8;
+const MAX_OVERVIEW_ITEMS_IN_PROMPT = 12;
+const MAX_ACTION_ITEMS = 20;
 
 /** Gap in ms after which a new recording-started is treated as a new meeting */
 export const NEW_MEETING_GAP_MS = 3 * 60 * 1000;
 
-// LLM input caps (see token budget comment above)
-const MAX_OVERALL_CHARS = 800;
-const MAX_TOPIC_CHARS   = 600;
-const MAX_NOW_CHARS     = 400;
-const MAX_HISTORY_SEGMENT_CHARS = 600;
-const MAX_ACCUMULATED_TEXT_CHARS = 800;
+// LLM input caps
+const MAX_OVERVIEW_ITEM_CHARS = 120;
+const MAX_TOPIC_CHARS         = 400;
+const MAX_NOW_CHARS           = 200;
+const MAX_ACTION_ITEM_CHARS   = 120;
+const MAX_HISTORY_SEGMENT_CHARS = 400;
+const MAX_ACCUMULATED_TEXT_CHARS = 600;
 
 // ============================================================================
 // Types
@@ -79,12 +76,43 @@ export interface SummaryLevel {
 }
 
 export interface SummaryTree {
-  /** Big picture — why this meeting exists, key decisions. Changes slowly. */
+  /** Mirrors the latest overviewItem text — kept for archive/display compat */
   overall: SummaryLevel;
-  /** Current major topic / phase. Changes when discussion shifts. */
+  /** Current major topic / phase. Full rewrite when discussion shifts. */
   topic: SummaryLevel;
-  /** Latest exchange right now. Updates every LLM call. */
+  /** Latest exchange right now. Always updated. */
   now: SummaryLevel;
+}
+
+/** One bullet in the additive overview log. Appended, never deleted mid-meeting. */
+export interface OverviewItem {
+  text: string;
+  ts: number;
+}
+
+export interface ActionItem {
+  id: string;
+  text: string;
+  /** Inferred owner — participant name, "you", or undefined if unknown */
+  owner?: string;
+  /** Inferred deadline if mentioned, e.g. "by Friday" */
+  deadline?: string;
+  ts: number;
+  done: boolean;
+}
+
+/** 'tense' = rising conflict/disagreement; 'negative' = clear frustration/anger */
+export type SentimentLevel = 'neutral' | 'positive' | 'tense' | 'negative';
+
+export interface Participant {
+  name: string;
+  audioType: 'mic' | 'system';
+  firstSeenAt: number;
+}
+
+export interface TalkTime {
+  micMs: number;
+  systemMs: number;
 }
 
 export interface FeedEntry {
@@ -100,13 +128,20 @@ export interface HistorySegment {
   ts: number;
 }
 
+export interface MeetingSettings {
+  userName: string;
+  meetingContext: string;
+}
+
 export interface MeetingState {
   displayFeed: FeedEntry[];
   history: HistorySegment[];
   summaryTree: SummaryTree;
-  nextStep: string;
-  /** Iconify icon for the nextStep, generated by LLM. Empty = use fallback. */
-  nextStepIcon: string;
+  overviewItems: OverviewItem[];
+  actionItems: ActionItem[];
+  participants: Participant[];
+  talkTime: TalkTime;
+  sentiment: SentimentLevel;
   lastLLMCallAt: number;
   lastUpdatedAt: number;
   llmDurationMs: number;
@@ -118,9 +153,13 @@ export interface ArchivedMeeting {
   id: string;
   startedAt: number;
   endedAt: number;
-  /** overall.text at archive time */
-  summary: string;
-  nextStep: string;
+  summaryTree: SummaryTree;
+  overviewItems: OverviewItem[];
+  actionItems: ActionItem[];
+  participants: Participant[];
+  talkTime: TalkTime;
+  displayFeed: FeedEntry[];
+  history: HistorySegment[];
   segmentCount: number;
 }
 
@@ -130,7 +169,7 @@ export interface MeetingUpdateResult {
 }
 
 // ============================================================================
-// Zod schemas — used to validate data loaded from storage
+// Zod schemas
 // ============================================================================
 
 const SummaryLevelSchema = z.object({
@@ -158,12 +197,42 @@ const HistorySegmentSchema = z.object({
   ts: z.number(),
 });
 
+const OverviewItemSchema = z.object({
+  text: z.string(),
+  ts: z.number(),
+});
+
+const ActionItemSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  owner: z.string().optional(),
+  deadline: z.string().optional(),
+  ts: z.number(),
+  done: z.boolean(),
+});
+
+const ParticipantSchema = z.object({
+  name: z.string(),
+  audioType: z.enum(['mic', 'system']),
+  firstSeenAt: z.number(),
+});
+
+const TalkTimeSchema = z.object({
+  micMs: z.number(),
+  systemMs: z.number(),
+});
+
+const SentimentLevelSchema = z.enum(['neutral', 'positive', 'tense', 'negative']);
+
 const MeetingStateSchema = z.object({
   displayFeed: z.array(FeedEntrySchema),
   history: z.array(HistorySegmentSchema),
   summaryTree: SummaryTreeSchema,
-  nextStep: z.string(),
-  nextStepIcon: z.string().default(''),
+  overviewItems: z.array(OverviewItemSchema),
+  actionItems: z.array(ActionItemSchema),
+  participants: z.array(ParticipantSchema),
+  talkTime: TalkTimeSchema,
+  sentiment: SentimentLevelSchema,
   lastLLMCallAt: z.number(),
   lastUpdatedAt: z.number(),
   llmDurationMs: z.number(),
@@ -175,9 +244,19 @@ const ArchivedMeetingSchema = z.object({
   id: z.string(),
   startedAt: z.number(),
   endedAt: z.number(),
-  summary: z.string(),
-  nextStep: z.string(),
+  summaryTree: SummaryTreeSchema,
+  overviewItems: z.array(OverviewItemSchema),
+  actionItems: z.array(ActionItemSchema),
+  participants: z.array(ParticipantSchema),
+  talkTime: TalkTimeSchema,
+  displayFeed: z.array(FeedEntrySchema),
+  history: z.array(HistorySegmentSchema),
   segmentCount: z.number(),
+});
+
+const MeetingSettingsSchema = z.object({
+  userName: z.string(),
+  meetingContext: z.string(),
 });
 
 // ============================================================================
@@ -198,7 +277,7 @@ export function loadMeetingState(): MeetingState | null {
     if (raw == null) return null;
     const result = MeetingStateSchema.safeParse(raw);
     if (!result.success) {
-      console.warn('[MeetingTranscription] Stored state failed validation (schema changed?) — resetting:', result.error.issues);
+      console.warn('[MeetingTranscription] State schema changed — resetting:', result.error.issues);
       return null;
     }
     return result.data;
@@ -220,7 +299,7 @@ export function loadArchivedMeetings(): ArchivedMeeting[] {
     if (raw == null) return [];
     const result = z.array(ArchivedMeetingSchema).safeParse(raw);
     if (!result.success) {
-      console.warn('[MeetingTranscription] Stored archive failed validation — clearing:', result.error.issues);
+      console.warn('[MeetingTranscription] Archive schema changed — clearing:', result.error.issues);
       return [];
     }
     return result.data;
@@ -237,7 +316,6 @@ function saveArchivedMeetings(meetings: ArchivedMeeting[]): void {
   }
 }
 
-/** Archive the current meeting (if it has content). Returns updated archive list. */
 export function archiveCurrentMeeting(state: MeetingState): ArchivedMeeting[] {
   if (state.segmentCount === 0) return loadArchivedMeetings();
 
@@ -245,8 +323,13 @@ export function archiveCurrentMeeting(state: MeetingState): ArchivedMeeting[] {
     id: `meeting-${state.startedAt}`,
     startedAt: state.startedAt,
     endedAt: Date.now(),
-    summary: state.summaryTree.overall.text || '(no summary generated)',
-    nextStep: state.nextStep,
+    summaryTree: state.summaryTree,
+    overviewItems: state.overviewItems,
+    actionItems: state.actionItems,
+    participants: state.participants,
+    talkTime: state.talkTime,
+    displayFeed: state.displayFeed,
+    history: state.history,
     segmentCount: state.segmentCount,
   };
 
@@ -255,6 +338,25 @@ export function archiveCurrentMeeting(state: MeetingState): ArchivedMeeting[] {
   const updated = [archived, ...deduplicated].slice(0, MAX_ARCHIVE);
   saveArchivedMeetings(updated);
   return updated;
+}
+
+export function loadMeetingSettings(): MeetingSettings {
+  try {
+    const raw = profileStorage.getJSON<unknown>(SETTINGS_STORAGE_KEY);
+    if (raw == null) return { userName: '', meetingContext: '' };
+    const result = MeetingSettingsSchema.safeParse(raw);
+    return result.success ? result.data : { userName: '', meetingContext: '' };
+  } catch {
+    return { userName: '', meetingContext: '' };
+  }
+}
+
+export function saveMeetingSettings(settings: MeetingSettings): void {
+  try {
+    profileStorage.setJSON(SETTINGS_STORAGE_KEY, settings);
+  } catch (error) {
+    console.warn('[MeetingTranscription] Failed to save settings:', error);
+  }
 }
 
 // ============================================================================
@@ -270,8 +372,11 @@ export function createInitialMeetingState(): MeetingState {
       topic:   { text: '', icon: 'mdi:comment-multiple-outline', updatedAt: 0 },
       now:     { text: '', icon: 'mdi:lightning-bolt-outline', updatedAt: 0 },
     },
-    nextStep: '',
-    nextStepIcon: '',
+    overviewItems: [],
+    actionItems: [],
+    participants: [],
+    talkTime: { micMs: 0, systemMs: 0 },
+    sentiment: 'neutral',
     lastLLMCallAt: 0,
     lastUpdatedAt: Date.now(),
     llmDurationMs: 0,
@@ -284,49 +389,75 @@ export function createInitialMeetingState(): MeetingState {
 // LLM Prompts
 // ============================================================================
 
-const SYSTEM_PROMPT = `You are a live meeting intelligence assistant maintaining a 3-level context tree.
+function buildSystemPrompt(settings: MeetingSettings): string {
+  const micLabel = settings.userName ? `you (${settings.userName})` : 'you (the local user)';
+  const contextLine = settings.meetingContext
+    ? `\nMEETING CONTEXT: ${settings.meetingContext}`
+    : '';
 
-AUDIO SOURCES:
-- "mic" = the current user (microphone)
-- "system" = other participants (system/screen audio)
-ECHO WARNING: With speakers (not headphones) "system" may also appear as "mic". Use context to infer true speaker.
+  return `You are a live meeting intelligence assistant.${contextLine}
 
-━━━ COMPACTION RULES (critical) ━━━
-You COMPACT content — you do NOT summarise into 3rd-person narrative.
-✗ WRONG: "The user discussed budget concerns with the team"
-✓ RIGHT:  "Budget is tight — can't fund both projects this quarter"
-• Preserve the original voice: keep "I think", "We need", "Let's", first-person intact
-• Compress length, keep key facts, decisions, commitments, numbers
-• The tree feeds back into itself — treat it as a recursive compaction loop
+━━━ INPUT SOURCE ━━━
+Input is raw speech-to-text transcription — it may contain recognition errors or mispronunciations.
+Use surrounding context to infer intended meaning. Do not autocorrect unless highly confident.
 
-━━━ TREE LEVELS (depth = ${SUMMARY_TREE_DEPTH}) ━━━
-1. OVERALL — The big picture. Why this meeting exists. Goals, decisions, commitments made.
-   • PRESERVE old important context — it must survive even as meeting progresses
-   • Only update when something fundamentally new happens
-   • Max 120 words
+━━━ AUDIO CHANNELS ━━━
+• "mic"    = ${micLabel}
+• "system" = remote participants — one or more people, audio routed through Teams / Zoom / Meet / etc.
+             If a name is clearly audible (e.g. "Hi, I'm Sarah"), note them as a participant.
 
-2. TOPIC — Current major theme or phase of the conversation.
-   • Update when discussion clearly shifts to a new area
-   • Max 60 words
+ECHO / BLEED WARNING:
+Without headphones, system audio plays through speakers and is picked up by the mic — so the same
+speech may appear as both "system" and "mic" in close succession. If a "mic" segment is nearly
+identical in content to a recent "system" segment, treat it as echo/bleed — do NOT attribute it
+to the local user.
 
-3. NOW — The most recent exchange. What is being said right now.
-   • Always update with the latest content
-   • Max 35 words
+━━━ VOICE STYLE ━━━
+Compact, never paraphrase into 3rd-person narrative.
+✗ WRONG: "The team discussed budget concerns"
+✓ RIGHT:  "Budget tight — can't fund both projects this quarter"
+Preserve first-person voice: keep "I think", "We need", "Let's" intact.
 
-━━━ ICONS ━━━
-For each level AND for the nextStep, generate a contextual Iconify icon (mdi: prefix).
-The icon must reflect the actual content — not the level type — make it mentally satisfying.
-Examples: "mdi:target", "mdi:handshake", "mdi:rocket-launch", "mdi:alert-circle", "mdi:lightbulb-outline",
-          "mdi:calendar-check", "mdi:comment-question", "mdi:file-document-edit", "mdi:account-voice"
+━━━ OVERVIEW (additive bullet log) ━━━
+The overview is an immutable log of the whole meeting — bullets are NEVER rewritten or removed.
+• Output overallDelta ONLY when the new content contains something genuinely significant:
+  a new decision, commitment, goal, key fact, or clear topic shift.
+• If it is continuation, small-talk, repetition, or elaboration of an existing bullet — output null.
+• One short phrase, max 15 words. First-person voice.
+• You are APPENDING a new bullet, not rewriting anything.
 
-━━━ RESPONSE FORMAT (JSON only, no markdown) ━━━
+━━━ TOPIC ━━━
+Current major theme. Fully rewrite when discussion clearly shifts. Max 50 words.
+
+━━━ NOW ━━━
+Most recent exchange — what is being said right now. Always update. Max 30 words.
+
+━━━ ACTION ITEMS ━━━
+Extract explicit or strongly implied tasks/commitments from the NEW content only.
+Return only NEW items — do not re-list existing ones. Empty array if none.
+Each: short text, optional owner ("you" for mic-user, participant name, or omit), optional deadline.
+
+━━━ SENTIMENT ━━━
+Overall mood right now:
+  "neutral"  = ordinary discussion
+  "positive" = enthusiasm, agreement, good energy
+  "tense"    = disagreement, friction, raised stakes
+  "negative" = clear frustration or conflict
+
+━━━ PARTICIPANTS ━━━
+If a name is clearly introduced in the new content, return them. Empty array otherwise.
+
+━━━ RESPONSE FORMAT (strict JSON, no markdown) ━━━
 {
-  "overall": { "text": "...", "icon": "mdi:..." },
-  "topic":   { "text": "...", "icon": "mdi:..." },
-  "now":     { "text": "...", "icon": "mdi:..." },
-  "nextStep": "one line, max 12 words, guide the user on what to do or say now",
-  "nextStepIcon": "mdi:..."
+  "overallDelta": "short phrase" | null,
+  "overallIcon": "mdi:... (only when overallDelta is non-null)",
+  "topic":  { "text": "...", "icon": "mdi:..." },
+  "now":    { "text": "...", "icon": "mdi:..." },
+  "actionItems": [{ "text": "...", "owner": "..." | null, "deadline": "..." | null }],
+  "sentiment": "neutral" | "positive" | "tense" | "negative",
+  "newParticipants": [{ "name": "...", "audioType": "mic" | "system" }]
 }`;
+}
 
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
@@ -340,29 +471,52 @@ function buildUserPrompt(
 ): string {
   const { summaryTree: tree } = state;
 
-  const overallText  = tree.overall.text ? truncate(tree.overall.text, MAX_OVERALL_CHARS) : '(meeting just started)';
-  const topicText    = tree.topic.text   ? truncate(tree.topic.text,   MAX_TOPIC_CHARS)   : '(no topic yet)';
-  const nowText      = tree.now.text     ? truncate(tree.now.text,     MAX_NOW_CHARS)     : '(nothing yet)';
+  const overviewBlock = state.overviewItems.length === 0
+    ? '(meeting just started — no overview items yet)'
+    : state.overviewItems
+        .slice(-MAX_OVERVIEW_ITEMS_IN_PROMPT)
+        .map((item, i) => `${i + 1}. ${truncate(item.text, MAX_OVERVIEW_ITEM_CHARS)}`)
+        .join('\n');
+
+  const topicText = tree.topic.text ? truncate(tree.topic.text, MAX_TOPIC_CHARS) : '(none yet)';
+  const nowText   = tree.now.text   ? truncate(tree.now.text,   MAX_NOW_CHARS)   : '(nothing yet)';
+
+  const openActions = state.actionItems.filter((a) => !a.done);
+  const actionItemsBlock = openActions.length === 0
+    ? '(none)'
+    : openActions
+        .slice(-10)
+        .map((a) => {
+          let line = `• ${truncate(a.text, MAX_ACTION_ITEM_CHARS)}`;
+          if (a.owner) line += ` [${a.owner}]`;
+          if (a.deadline) line += ` — ${a.deadline}`;
+          return line;
+        })
+        .join('\n');
 
   const recentHistory = state.history
     .slice(-LLM_HISTORY_WINDOW)
-    .map((s) => `[${s.audioType.toUpperCase()}] ${truncate(s.text, MAX_HISTORY_SEGMENT_CHARS)}`)
+    .map((s) => `[${s.audioType === 'mic' ? 'MIC' : 'SYSTEM'}] ${truncate(s.text, MAX_HISTORY_SEGMENT_CHARS)}`)
     .join('\n');
 
-  const newContent = truncate(accumulatedText, MAX_ACCUMULATED_TEXT_CHARS);
+  const participantsLine = state.participants.length > 0
+    ? `KNOWN PARTICIPANTS: ${state.participants.map((p) => `${p.name} (${p.audioType})`).join(', ')}\n\n`
+    : '';
 
-  return `CURRENT TREE:
-[OVERALL] ${overallText}
-[TOPIC]   ${topicText}
-[NOW]     ${nowText}
+  return `CURRENT OVERVIEW LOG:
+${overviewBlock}
 
-RECENT HISTORY (last segments):
+CURRENT TOPIC: ${topicText}
+CURRENT NOW:   ${nowText}
+
+OPEN ACTION ITEMS:
+${actionItemsBlock}
+
+${participantsLine}RECENT HISTORY:
 ${recentHistory || '(none yet)'}
 
-NEW CONTENT TO COMPACT (audio type: ${latestAudioType.toUpperCase()}):
-${newContent}
-
-Update the tree. Compact don't summarise. Preserve voice. Preserve old context in OVERALL.`;
+NEW CONTENT [source: ${latestAudioType === 'mic' ? 'MIC' : 'SYSTEM'}]:
+${truncate(accumulatedText, MAX_ACCUMULATED_TEXT_CHARS)}`;
 }
 
 // ============================================================================
@@ -372,25 +526,15 @@ Update the tree. Compact don't summarise. Preserve voice. Preserve old context i
 /**
  * Run an LLM update cycle with the text accumulated since the last call.
  *
- * The Widget owns:
- *  - displayFeed updates (done optimistically before calling here)
- *  - segmentCount updates
- *  - accumulation logic + throttle decision
- *
- * This function owns:
- *  - The LLM call
- *  - summaryTree + nextStep updates
- *  - history updates
- *  - lastLLMCallAt + llmDurationMs
- *  - profileStorage persistence
- *
- * The returned state spreads the input state, so displayFeed/segmentCount
- * from the Widget's latest stateRef are preserved.
+ * Widget owns: displayFeed, segmentCount, talkTime, accumulation logic.
+ * This function owns: summaryTree, overviewItems, actionItems, participants,
+ *                     sentiment, history, lastLLMCallAt, llmDurationMs, storage.
  */
 export async function processMeetingUpdate(
   state: MeetingState,
   accumulatedText: string,
   latestAudioType: 'mic' | 'system',
+  settings: MeetingSettings,
   forceImmediate = false
 ): Promise<MeetingUpdateResult> {
   const now = Date.now();
@@ -405,49 +549,103 @@ export async function processMeetingUpdate(
     const response = await callLLM({
       tier: 'medium',
       prompt: buildUserPrompt(state, accumulatedText, latestAudioType),
-      systemPrompt: SYSTEM_PROMPT,
-      options: { max_tokens: 650 },
+      systemPrompt: buildSystemPrompt(settings),
+      options: { max_tokens: 900 },
     });
 
     const llmDurationMs = Math.round(performance.now() - startTime);
     const { data } = parseLLMJSON(response.content);
 
-    // Start from the current tree — only overwrite levels that the LLM returned
+    let newOverviewItems = [...state.overviewItems];
     const newTree: SummaryTree = {
       overall: { ...state.summaryTree.overall },
       topic:   { ...state.summaryTree.topic },
       now:     { ...state.summaryTree.now },
     };
-    let newNextStep = state.nextStep;
-    let newNextStepIcon = state.nextStepIcon;
+    let newActionItems = [...state.actionItems];
+    let newParticipants = [...state.participants];
+    let newSentiment: SentimentLevel = state.sentiment;
 
     if (data && typeof data === 'object') {
       const obj = data as Record<string, unknown>;
 
-      for (const level of ['overall', 'topic', 'now'] as const) {
+      // ── Overview: append delta only ──
+      if (typeof obj.overallDelta === 'string' && obj.overallDelta.trim()) {
+        const delta = obj.overallDelta.trim();
+        newOverviewItems = [...newOverviewItems, { text: delta, ts: now }];
+        const icon =
+          typeof obj.overallIcon === 'string' && obj.overallIcon.includes(':')
+            ? (obj.overallIcon as string)
+            : newTree.overall.icon;
+        newTree.overall = { text: delta, icon, updatedAt: now };
+      }
+
+      // ── Topic + Now: full rewrite ──
+      for (const level of ['topic', 'now'] as const) {
         const raw = obj[level];
         if (raw && typeof raw === 'object') {
           const l = raw as Record<string, unknown>;
           if (typeof l.text === 'string' && l.text.trim()) {
             newTree[level] = {
               text: l.text.trim(),
-              icon: typeof l.icon === 'string' && l.icon.trim() ? l.icon.trim() : newTree[level].icon,
+              icon: typeof l.icon === 'string' && l.icon.includes(':') ? l.icon : newTree[level].icon,
               updatedAt: now,
             };
           }
         }
       }
 
-      if (typeof obj.nextStep === 'string' && obj.nextStep.trim()) {
-        newNextStep = obj.nextStep.trim();
+      // ── Action items: append new ones ──
+      const rawItems = obj.actionItems;
+      if (Array.isArray(rawItems)) {
+        for (const raw of rawItems) {
+          if (raw && typeof raw === 'object') {
+            const item = raw as Record<string, unknown>;
+            if (typeof item.text === 'string' && item.text.trim()) {
+              newActionItems = [
+                ...newActionItems,
+                {
+                  id: `ai-${now}-${Math.random().toString(36).slice(2, 7)}`,
+                  text: item.text.trim(),
+                  owner: typeof item.owner === 'string' && item.owner.trim() ? item.owner.trim() : undefined,
+                  deadline: typeof item.deadline === 'string' && item.deadline.trim() ? item.deadline.trim() : undefined,
+                  ts: now,
+                  done: false,
+                },
+              ];
+            }
+          }
+        }
+        if (newActionItems.length > MAX_ACTION_ITEMS) {
+          newActionItems = newActionItems.slice(-MAX_ACTION_ITEMS);
+        }
       }
 
-      if (typeof obj.nextStepIcon === 'string' && obj.nextStepIcon.trim().includes(':')) {
-        newNextStepIcon = obj.nextStepIcon.trim();
+      // ── Sentiment ──
+      const s = obj.sentiment;
+      if (s === 'neutral' || s === 'positive' || s === 'tense' || s === 'negative') {
+        newSentiment = s;
+      }
+
+      // ── New participants: merge, no duplicates ──
+      const rawParticipants = obj.newParticipants;
+      if (Array.isArray(rawParticipants)) {
+        for (const raw of rawParticipants) {
+          if (raw && typeof raw === 'object') {
+            const p = raw as Record<string, unknown>;
+            if (typeof p.name === 'string' && p.name.trim()) {
+              const name = p.name.trim();
+              const audioType: 'mic' | 'system' = p.audioType === 'mic' ? 'mic' : 'system';
+              if (!newParticipants.some((e) => e.name.toLowerCase() === name.toLowerCase())) {
+                newParticipants = [...newParticipants, { name, audioType, firstSeenAt: now }];
+              }
+            }
+          }
+        }
       }
     }
 
-    // Add accumulated text to history as a single compacted entry
+    // ── History ──
     const historyEntry: HistorySegment = {
       text: truncate(accumulatedText, MAX_HISTORY_SEGMENT_CHARS),
       audioType: latestAudioType,
@@ -459,11 +657,13 @@ export async function processMeetingUpdate(
     }
 
     const newState: MeetingState = {
-      ...state,                 // preserves displayFeed, segmentCount, startedAt, etc.
+      ...state,
       history: updatedHistory,
       summaryTree: newTree,
-      nextStep: newNextStep,
-      nextStepIcon: newNextStepIcon,
+      overviewItems: newOverviewItems,
+      actionItems: newActionItems,
+      participants: newParticipants,
+      sentiment: newSentiment,
       lastLLMCallAt: now,
       llmDurationMs,
     };
