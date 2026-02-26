@@ -84,26 +84,27 @@ export function loadLensData(): LensData | null {
  * is resolved automatically based on user settings. We use 'small' tier for
  * meta queries since they're quick lookups, not complex reasoning.
  */
+const SYSTEM_PROMPT = `You are a helpful assistant that answers questions about the user's conversation history and context.
+You have access to the user's recent conversations, entities, topics, memories, and goals.
+Answer their question directly and concisely based on the available context.
+If the answer isn't in the context, say so honestly.`;
+
 export async function processMetaQuery(query: string): Promise<string> {
 	// Fetch current working memory context
 	const wmData = await workingMemory.fetch({ size: 'medium' });
 	const contextPrompt = workingMemory.formatForLLM(wmData);
 
-	// Build the meta query prompt
-	const systemPrompt = `You are a helpful assistant that answers questions about the user's conversation history and context.
-You have access to the user's recent conversations, entities, topics, memories, and goals.
-Answer their question directly and concisely based on the available context.
-If the answer isn't in the context, say so honestly.
+	const userPrompt = `AVAILABLE CONTEXT:
+${contextPrompt}
 
-AVAILABLE CONTEXT:
-${contextPrompt}`;
+${query}`;
 
 	try {
 		// Use the tier-based LLM abstraction - provider/model resolved from settings
 		const response = await callLLM({
 			tier: 'small', // Meta queries are quick lookups, use small tier
-			prompt: query,
-			systemPrompt,
+			prompt: userPrompt,
+			systemPrompt: SYSTEM_PROMPT,
 			options: {
 				temperature: 0.7,
 				max_tokens: 500,

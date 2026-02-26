@@ -128,7 +128,7 @@ topic = "Domain / Topic" format (e.g., "Work / Planning", "Health / Exercise")
 
 SHORT questions that prompt more input. No solutions.`;
 
-const TOPIC_FOCUSED_PROMPT = `Analyze gaps in the user's memory about: {{TOPIC}}
+const TOPIC_FOCUSED_PROMPT = `Analyze gaps in the user's memory about the topic specified in the user message.
 
 Your job is GAP ANALYSIS. Prompt the user to SPEAK MORE about this topic.
 - Frame as brief but clear questions or prompts (10-20 words)
@@ -150,7 +150,7 @@ IMPORTANT: If previous questions are provided, do NOT repeat them. Find NEW gaps
 JSON format:
 {
   "questions": [
-    { "text": "Question about the topic?", "topic": "{{TOPIC}}", "category": "missing_info", "priority": "high" }
+    { "text": "Question about the topic?", "topic": "Domain / Topic", "category": "missing_info", "priority": "high" }
   ]
 }
 
@@ -194,9 +194,7 @@ export async function generateQuestions(
   const contextPrompt = workingMemory.formatForLLM({ ...wmData, memories: [] });
 
   // Build prompt
-  const systemPrompt = focusTopic
-    ? TOPIC_FOCUSED_PROMPT.replace('{{TOPIC}}', focusTopic)
-    : SYSTEM_PROMPT;
+  const systemPrompt = focusTopic ? TOPIC_FOCUSED_PROMPT : SYSTEM_PROMPT;
 
   // Build previous questions section if available
   const previousSection = previousQuestions && previousQuestions.length > 0

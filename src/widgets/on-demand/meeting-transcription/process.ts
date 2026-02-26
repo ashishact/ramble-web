@@ -135,6 +135,8 @@ export interface MeetingSettings {
 
 export interface MeetingState {
   displayFeed: FeedEntry[];
+  /** Complete transcript — never truncated (cap 2000). Used for archiving & export. */
+  fullFeed: FeedEntry[];
   history: HistorySegment[];
   summaryTree: SummaryTree;
   overviewItems: OverviewItem[];
@@ -161,6 +163,8 @@ export interface ArchivedMeeting {
   participants: Participant[];
   talkTime: TalkTime;
   displayFeed: FeedEntry[];
+  /** Complete transcript — never truncated (cap 2000). Used for export. */
+  fullFeed: FeedEntry[];
   history: HistorySegment[];
   segmentCount: number;
   /** Auto-generated meeting title (produced by end-of-meeting LLM call) */
@@ -230,6 +234,7 @@ const SentimentLevelSchema = z.enum(['neutral', 'positive', 'tense', 'negative']
 
 const MeetingStateSchema = z.object({
   displayFeed: z.array(FeedEntrySchema),
+  fullFeed: z.array(FeedEntrySchema).default([]),
   history: z.array(HistorySegmentSchema),
   summaryTree: SummaryTreeSchema,
   overviewItems: z.array(OverviewItemSchema),
@@ -256,6 +261,7 @@ const ArchivedMeetingSchema = z.object({
   participants: z.array(ParticipantSchema),
   talkTime: TalkTimeSchema,
   displayFeed: z.array(FeedEntrySchema),
+  fullFeed: z.array(FeedEntrySchema).default([]),
   history: z.array(HistorySegmentSchema),
   segmentCount: z.number(),
   // default('') so existing archived meetings without this field migrate instead of being wiped
@@ -337,6 +343,7 @@ export function archiveCurrentMeeting(state: MeetingState): ArchivedMeeting[] {
     participants: state.participants,
     talkTime: state.talkTime,
     displayFeed: state.displayFeed,
+    fullFeed: state.fullFeed,
     history: state.history,
     segmentCount: state.segmentCount,
     title: state.title,
@@ -387,6 +394,7 @@ export function saveMeetingSettings(settings: MeetingSettings): void {
 export function createInitialMeetingState(): MeetingState {
   return {
     displayFeed: [],
+    fullFeed: [],
     history: [],
     summaryTree: {
       overall: { text: '', icon: 'mdi:flag-outline', updatedAt: 0 },
@@ -411,20 +419,15 @@ export function createInitialMeetingState(): MeetingState {
 // LLM Prompts
 // ============================================================================
 
-function buildSystemPrompt(settings: MeetingSettings): string {
-  const micLabel = settings.userName ? `you (${settings.userName})` : 'you (the local user)';
-  const contextLine = settings.meetingContext
-    ? `\nMEETING CONTEXT: ${settings.meetingContext}`
-    : '';
-
-  return `You are a live meeting intelligence assistant.${contextLine}
+function buildSystemPrompt(): string {
+  return `You are a live meeting intelligence assistant.
 
 ━━━ INPUT SOURCE ━━━
 Input is raw speech-to-text transcription — it may contain recognition errors or mispronunciations.
 Use surrounding context to infer intended meaning. Do not autocorrect unless highly confident.
 
 ━━━ AUDIO CHANNELS ━━━
-• "mic"    = ${micLabel}
+• "mic"    = you (the local user) — see MIC USER in the user message
 • "system" = remote participants — one or more people, audio routed through Teams / Zoom / Meet / etc.
              If a name is clearly audible (e.g. "Hi, I'm Sarah"), note them as a participant.
 
@@ -494,9 +497,15 @@ function truncate(text: string, max: number): string {
 function buildUserPrompt(
   state: MeetingState,
   accumulatedText: string,
-  latestAudioType: 'mic' | 'system'
+  latestAudioType: 'mic' | 'system',
+  settings: MeetingSettings
 ): string {
   const { summaryTree: tree } = state;
+
+  const micUser = settings.userName || 'the local user';
+  const contextHeader = settings.meetingContext
+    ? `MIC USER: ${micUser}\nMEETING CONTEXT: ${settings.meetingContext}\n\n`
+    : `MIC USER: ${micUser}\n\n`;
 
   const overviewBlock = state.overviewItems.length === 0
     ? '(meeting just started — no overview items yet)'
@@ -533,7 +542,7 @@ function buildUserPrompt(
   // Appended last so the stable prefix above remains cacheable by the LLM API.
   const sessionTime = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 
-  return `CURRENT OVERVIEW LOG:
+  return `${contextHeader}CURRENT OVERVIEW LOG:
 ${overviewBlock}
 
 CURRENT TOPIC: ${topicText}
@@ -580,8 +589,8 @@ export async function processMeetingUpdate(
   try {
     const response = await callLLM({
       tier: 'medium',
-      prompt: buildUserPrompt(state, accumulatedText, latestAudioType),
-      systemPrompt: buildSystemPrompt(settings),
+      prompt: buildUserPrompt(state, accumulatedText, latestAudioType, settings),
+      systemPrompt: buildSystemPrompt(),
       options: { max_tokens: 900 },
     });
 

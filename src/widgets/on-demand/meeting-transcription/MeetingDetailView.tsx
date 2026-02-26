@@ -1,6 +1,6 @@
 import { Icon } from '@iconify/react';
-import { ChevronLeft, Clock, Copy, Check } from 'lucide-react';
-import { useState } from 'react';
+import { ChevronLeft, Clock, Copy, Check, Printer } from 'lucide-react';
+import { useState, useRef } from 'react';
 import { type ArchivedMeeting } from './process';
 import { FeedEntryRow, formatTime, formatShortDate, formatDurationBetween } from './shared';
 
@@ -45,9 +45,10 @@ function buildExportText(meeting: ArchivedMeeting): string {
     lines.push('');
   }
 
-  if (meeting.displayFeed.length > 0) {
+  const transcript = meeting.fullFeed.length > 0 ? meeting.fullFeed : meeting.displayFeed;
+  if (transcript.length > 0) {
     lines.push('TRANSCRIPT');
-    meeting.displayFeed.forEach((e) => {
+    transcript.forEach((e) => {
       lines.push(`[${formatTime(e.ts)}] [${e.audioType.toUpperCase()}] ${e.text}`);
     });
   }
@@ -66,6 +67,7 @@ interface Props {
 
 export function MeetingDetailView({ meeting, onBack }: Props) {
   const [copied, setCopied] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   function handleExport() {
     const text = buildExportText(meeting);
@@ -75,12 +77,70 @@ export function MeetingDetailView({ meeting, onBack }: Props) {
     });
   }
 
+  function handlePrint() {
+    const el = containerRef.current;
+    if (!el) return;
+
+    // Deep clone — no DOM mutation on the live widget
+    const clone = el.cloneNode(true) as HTMLElement;
+
+    // Root: switch from fixed-height flex column to auto-height block
+    clone.style.cssText = 'width:100%;height:auto;overflow:visible;display:block;';
+
+    // All descendants: remove overflow clips and max-height caps
+    clone.querySelectorAll<HTMLElement>('*').forEach((child) => {
+      child.style.overflow = 'visible';
+      child.style.maxHeight = 'none';
+    });
+
+    // Flex-1 / overflow-auto regions collapse without an explicit height —
+    // switch them to block so they expand to their full content
+    clone.querySelectorAll<HTMLElement>('[class*="flex-1"],[class*="overflow-auto"]').forEach((child) => {
+      child.style.flex = 'none';
+      child.style.height = 'auto';
+    });
+
+    // Bring over all styles (Tailwind bundle + any injected <style> tags)
+    const headStyles = Array.from(
+      document.head.querySelectorAll<HTMLElement>('style, link[rel="stylesheet"]')
+    ).map((n) => n.outerHTML).join('\n');
+
+    // Preserve the DaisyUI theme (set on <html data-theme="...">)
+    const theme = document.documentElement.getAttribute('data-theme') ?? '';
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) return;
+
+    printWin.document.write(`<!DOCTYPE html>
+<html data-theme="${theme}">
+<head>
+  <meta charset="utf-8">
+  <title>${meeting.title || 'Meeting'}</title>
+  ${headStyles}
+  <style>
+    html, body { margin: 0; padding: 12px 16px; }
+    @page { margin: 1.5cm; size: A4; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  </style>
+</head>
+<body>${clone.outerHTML}</body>
+</html>`);
+
+    printWin.document.close();
+    printWin.focus();
+    // Give the browser time to parse and apply the transferred stylesheets
+    setTimeout(() => {
+      printWin.print();
+      printWin.close();
+    }, 600);
+  }
+
   const openActions = meeting.actionItems.filter((a) => !a.done);
   const doneActions = meeting.actionItems.filter((a) => a.done);
   const totalTalkMs = meeting.talkTime.micMs + meeting.talkTime.systemMs;
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden text-base-content">
+    <div ref={containerRef} className="w-full h-full flex flex-col overflow-hidden text-base-content">
       {/* Header */}
       <div className="flex-shrink-0 px-2 py-1.5 border-b border-base-200 flex items-center gap-2">
         <button onClick={onBack} className="p-1 hover:bg-base-200 rounded transition-colors">
@@ -111,6 +171,14 @@ export function MeetingDetailView({ meeting, onBack }: Props) {
         >
           {copied ? <Check size={10} className="text-emerald-500" /> : <Copy size={10} />}
           {copied ? 'Copied' : 'Copy'}
+        </button>
+        <button
+          onClick={handlePrint}
+          className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] text-base-content/40 hover:text-base-content/70 hover:bg-base-200 rounded transition-colors"
+          title="Print"
+        >
+          <Printer size={10} />
+          Print
         </button>
       </div>
 
@@ -217,23 +285,21 @@ export function MeetingDetailView({ meeting, onBack }: Props) {
                 </span>
               )}
             </div>
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {openActions.map((item) => (
-                <div key={item.id} className="flex items-start gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/60 flex-shrink-0 mt-[4px]" />
-                  <div className="min-w-0">
-                    <span className="text-[10px] text-base-content/75">{item.text}</span>
-                    {(item.owner || item.deadline) && (
-                      <span className="text-[8px] text-base-content/35 ml-1">
-                        {item.owner && `[${item.owner}]`} {item.deadline && `— ${item.deadline}`}
-                      </span>
-                    )}
-                  </div>
+                <div key={item.id}>
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400/60 mr-1 align-middle" />
+                  <span className="text-[10px] text-base-content/75">{item.text}</span>
+                  {(item.owner || item.deadline) && (
+                    <span className="text-[8px] text-base-content/35 ml-1">
+                      {item.owner && `[${item.owner}]`} {item.deadline && `— ${item.deadline}`}
+                    </span>
+                  )}
                 </div>
               ))}
               {doneActions.map((item) => (
-                <div key={item.id} className="flex items-start gap-1.5 opacity-40">
-                  <Icon icon="mdi:check-circle" width={10} height={10} className="text-emerald-500 flex-shrink-0 mt-[2px]" />
+                <div key={item.id} className="opacity-40">
+                  <Icon icon="mdi:check-circle" width={10} height={10} className="inline-block mr-1 text-emerald-500 align-middle" />
                   <span className="text-[10px] text-base-content/50 line-through">{item.text}</span>
                 </div>
               ))}
@@ -242,18 +308,22 @@ export function MeetingDetailView({ meeting, onBack }: Props) {
         )}
 
         {/* Transcript */}
-        {meeting.displayFeed.length > 0 && (
-          <div className="border-t border-base-200/50 pt-1.5">
-            <div className="text-[8px] uppercase tracking-widest text-base-content/30 mb-1 px-1">
-              Transcript ({meeting.displayFeed.length} segments)
+        {(() => {
+          const transcript = meeting.fullFeed.length > 0 ? meeting.fullFeed : meeting.displayFeed;
+          if (transcript.length === 0) return null;
+          return (
+            <div className="border-t border-base-200/50 pt-1.5">
+              <div className="text-[8px] uppercase tracking-widest text-base-content/30 mb-1 px-1">
+                Transcript ({transcript.length} segments)
+              </div>
+              <div className="space-y-0">
+                {transcript.map((entry) => (
+                  <FeedEntryRow key={entry.id} entry={entry} />
+                ))}
+              </div>
             </div>
-            <div className="space-y-0">
-              {meeting.displayFeed.map((entry) => (
-                <FeedEntryRow key={entry.id} entry={entry} />
-              ))}
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

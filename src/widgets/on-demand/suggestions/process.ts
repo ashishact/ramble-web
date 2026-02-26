@@ -128,7 +128,7 @@ topic = "Domain / Topic" format (e.g., "Work / Planning", "Health / Exercise")
 
 Actionable suggestions only. Be helpful and specific.`;
 
-const TOPIC_FOCUSED_PROMPT = `Provide actionable suggestions about: {{TOPIC}}
+const TOPIC_FOCUSED_PROMPT = `Provide actionable suggestions about the topic specified in the user message.
 
 Your job is to SUGGEST SOLUTIONS and ACTIONS about this topic.
 - Provide concrete, actionable advice (10-30 words)
@@ -150,7 +150,7 @@ IMPORTANT: If previous suggestions are provided, do NOT repeat them. Suggest NEW
 JSON format:
 {
   "suggestions": [
-    { "text": "Suggestion about the topic.", "topic": "{{TOPIC}}", "category": "action", "priority": "high" }
+    { "text": "Suggestion about the topic.", "topic": "Domain / Topic", "category": "action", "priority": "high" }
   ]
 }
 
@@ -194,9 +194,7 @@ export async function generateSuggestions(
   const contextPrompt = workingMemory.formatForLLM({ ...wmData, memories: [] });
 
   // Build prompt
-  const systemPrompt = focusTopic
-    ? TOPIC_FOCUSED_PROMPT.replace(/\{\{TOPIC\}\}/g, focusTopic)
-    : SYSTEM_PROMPT;
+  const systemPrompt = focusTopic ? TOPIC_FOCUSED_PROMPT : SYSTEM_PROMPT;
 
   // Build previous suggestions section if available
   const previousSection = previousSuggestions && previousSuggestions.length > 0

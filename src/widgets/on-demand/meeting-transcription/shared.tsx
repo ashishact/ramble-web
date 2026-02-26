@@ -35,7 +35,7 @@ export function formatDurationBetween(startedAt: number, endedAt: number): strin
 export function FeedEntryRow({ entry }: { entry: FeedEntry }) {
   const isMic = entry.audioType === 'mic';
   return (
-    <div className="flex items-start gap-1.5 py-[3px]">
+    <div className={`flex items-start gap-1.5 py-[3px] px-1 rounded ${isMic ? 'bg-blue-400/[0.06]' : ''}`}>
       <span className="text-[9px] text-base-content/25 font-mono flex-shrink-0 tabular-nums leading-[1.4]">
         {formatTime(entry.ts)}
       </span>

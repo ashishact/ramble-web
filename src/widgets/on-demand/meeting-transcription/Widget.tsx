@@ -202,31 +202,29 @@ function ActionItemsList({
           </span>
         )}
       </div>
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         {open.map((item, idx) => (
           <button
             key={item.id}
             onClick={() => onToggle(item.id)}
-            className={`w-full flex items-start gap-1.5 text-left group ${idx === open.length - 1 ? 'opacity-100' : 'opacity-70'}`}
+            className={`w-full text-left block group ${idx === open.length - 1 ? 'opacity-100' : 'opacity-70'}`}
           >
-            <span className="w-1.5 h-1.5 rounded-full border border-emerald-400/60 flex-shrink-0 mt-[4px] group-hover:bg-emerald-400/40 transition-colors" />
-            <div className="min-w-0">
-              <span className="text-[10px] text-base-content/75">{item.text}</span>
-              {(item.owner || item.deadline) && (
-                <span className="text-[8px] text-base-content/35 ml-1">
-                  {item.owner && `[${item.owner}]`}{item.deadline && ` — ${item.deadline}`}
-                </span>
-              )}
-            </div>
+            <span className="inline-block w-1.5 h-1.5 rounded-full border border-emerald-400/60 mr-1 align-middle group-hover:bg-emerald-400/40 transition-colors" />
+            <span className="text-[10px] text-base-content/75">{item.text}</span>
+            {(item.owner || item.deadline) && (
+              <span className="text-[8px] text-base-content/35 ml-1">
+                {item.owner && `[${item.owner}]`}{item.deadline && ` — ${item.deadline}`}
+              </span>
+            )}
           </button>
         ))}
         {done.map((item) => (
           <button
             key={item.id}
             onClick={() => onToggle(item.id)}
-            className="w-full flex items-start gap-1.5 text-left opacity-35"
+            className="w-full text-left block opacity-35"
           >
-            <Icon icon="mdi:check-circle" width={10} height={10} className="text-emerald-500 flex-shrink-0 mt-[2px]" />
+            <Icon icon="mdi:check-circle" width={10} height={10} className="inline-block mr-1 text-emerald-500 align-middle" />
             <span className="text-[10px] text-base-content/50 line-through">{item.text}</span>
           </button>
         ))}
@@ -344,6 +342,7 @@ export function MeetingTranscriptionWidget() {
         const merged: MeetingState = {
           ...newState,
           displayFeed: stateRef.current.displayFeed,
+          fullFeed: stateRef.current.fullFeed,
           segmentCount: stateRef.current.segmentCount,
           talkTime: stateRef.current.talkTime,
         };
@@ -391,9 +390,13 @@ export function MeetingTranscriptionWidget() {
       const updatedFeed = [...currentState.displayFeed, newEntry];
       if (updatedFeed.length > 60) updatedFeed.splice(0, updatedFeed.length - 60);
 
+      const updatedFullFeed = [...currentState.fullFeed, newEntry];
+      if (updatedFullFeed.length > 2000) updatedFullFeed.splice(0, updatedFullFeed.length - 2000);
+
       const updated: MeetingState = {
         ...currentState,
         displayFeed: updatedFeed,
+        fullFeed: updatedFullFeed,
         segmentCount: currentState.segmentCount + 1,
         talkTime: updatedTalkTime,
         lastUpdatedAt: now,
