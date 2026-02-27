@@ -19,13 +19,13 @@
  */
 
 import { appSchema, tableSchema } from '@nozbe/watermelondb'
-import { createTable, schemaMigrations } from '@nozbe/watermelondb/Schema/migrations'
+import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/Schema/migrations'
 
 // Database name - fresh start
 export const DATABASE_NAME = 'ramble_v3'
 
 export const schema = appSchema({
-  version: 3,
+  version: 6,
   tables: [
     // ========================================================================
     // CORE - Foundation (Keep from v4)
@@ -52,10 +52,13 @@ export const schema = appSchema({
         { name: 'rawText', type: 'string' },
         { name: 'sanitizedText', type: 'string' },
         { name: 'summary', type: 'string', isOptional: true },  // LLM-generated summary for large texts
-        { name: 'source', type: 'string' },      // 'speech' | 'text'
+        { name: 'source', type: 'string' },      // 'speech' | 'typed' | 'pasted' | 'document' | 'meeting'
         { name: 'speaker', type: 'string' },      // 'user' | 'agent'
         { name: 'processed', type: 'boolean', isIndexed: true },
         { name: 'createdAt', type: 'number', isIndexed: true },
+        // v4 additions
+        { name: 'normalizedText', type: 'string', isOptional: true },   // Phase 1 output: cleaned full text
+        { name: 'sentences', type: 'string', isOptional: true },        // JSON array of { text, speakerHint }
       ]
     }),
 
@@ -147,6 +150,14 @@ export const schema = appSchema({
         // Metadata
         { name: 'metadata', type: 'string' },       // JSON for emotions, stakes, etc.
         { name: 'createdAt', type: 'number', isIndexed: true },
+        // v4 additions
+        { name: 'state', type: 'string', isIndexed: true, isOptional: true },           // 'provisional' | 'stable' | 'contested' | 'superseded'
+        { name: 'origin', type: 'string', isOptional: true },                            // 'speech' | 'typed' | 'pasted' | 'document' | 'meeting'
+        { name: 'ownershipScore', type: 'number' },                                      // 0-1
+        { name: 'activityScore', type: 'number', isIndexed: true },                      // 0-1, dynamic, decays over time
+        { name: 'extractionVersion', type: 'string', isOptional: true },                 // tracks which model/prompt version created this
+        // v5 additions
+        { name: 'contradicts', type: 'string', isOptional: true },                       // JSON array of memory IDs this belief competes with
       ]
     }),
 
@@ -281,12 +292,88 @@ export const schema = appSchema({
         { name: 'updatedAt', type: 'number' },
       ]
     }),
+
+    // ========================================================================
+    // WIDGET RECORDS - Generic on-demand widget storage (v6)
+    // ========================================================================
+
+    // Widget Records - Generic storage for LLM-generated widget output
+    // Used by: suggestions, questions, meeting transcription, speak-better, future widgets
+    // Indexed by type so queries never cross-contaminate between widget types.
+    // Full history preserved — each generation appends a new row (except meeting active state).
+    tableSchema({
+      name: 'widget_records',
+      columns: [
+        { name: 'type',      type: 'string', isIndexed: true },              // 'suggestion' | 'question' | 'meeting' | 'speak_better' | ...
+        { name: 'subtype',   type: 'string', isOptional: true, isIndexed: true },  // e.g. 'active' | 'archive' for meetings
+        { name: 'sessionId', type: 'string', isOptional: true, isIndexed: true },  // optional link to sessions table
+        { name: 'title',     type: 'string', isOptional: true },             // human-readable label
+        { name: 'content',   type: 'string' },                               // full JSON payload (type-specific)
+        { name: 'tags',      type: 'string', isOptional: true },             // JSON string array for cross-type search
+        { name: 'createdAt', type: 'number', isIndexed: true },              // immutable creation timestamp
+        { name: 'updatedAt', type: 'number' },                               // last mutation timestamp
+      ]
+    }),
   ]
 })
 
 // Migrations - IMPORTANT: Only additive changes to preserve data
 export const migrations = schemaMigrations({
   migrations: [
+    {
+      // v5 → v6: Add widget_records table for generic on-demand widget storage
+      toVersion: 6,
+      steps: [
+        createTable({
+          name: 'widget_records',
+          columns: [
+            { name: 'type',      type: 'string', isIndexed: true },
+            { name: 'subtype',   type: 'string', isOptional: true, isIndexed: true },
+            { name: 'sessionId', type: 'string', isOptional: true, isIndexed: true },
+            { name: 'title',     type: 'string', isOptional: true },
+            { name: 'content',   type: 'string' },
+            { name: 'tags',      type: 'string', isOptional: true },
+            { name: 'createdAt', type: 'number', isIndexed: true },
+            { name: 'updatedAt', type: 'number' },
+          ],
+        }),
+      ],
+    },
+    {
+      // v4 → v5: Add contradicts column to memories (belief competition model)
+      toVersion: 5,
+      steps: [
+        addColumns({
+          table: 'memories',
+          columns: [
+            { name: 'contradicts', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
+    {
+      // v3 → v4: Add state/origin/scoring columns to memories, add normalizedText/sentences to conversations
+      toVersion: 4,
+      steps: [
+        addColumns({
+          table: 'memories',
+          columns: [
+            { name: 'state', type: 'string', isIndexed: true, isOptional: true },
+            { name: 'origin', type: 'string', isOptional: true },
+            { name: 'ownershipScore', type: 'number' },
+            { name: 'activityScore', type: 'number', isIndexed: true },
+            { name: 'extractionVersion', type: 'string', isOptional: true },
+          ],
+        }),
+        addColumns({
+          table: 'conversations',
+          columns: [
+            { name: 'normalizedText', type: 'string', isOptional: true },
+            { name: 'sentences', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
     {
       // v1 → v2: Add learned_corrections table
       toVersion: 2,

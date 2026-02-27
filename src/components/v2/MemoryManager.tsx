@@ -71,11 +71,14 @@ export function MemoryManager({ onClose }: MemoryManagerProps) {
   const allTypes = [...new Set(memories.map(m => m.type))].sort();
 
   // Stats
-  const activeMemories = memories.filter(m => !m.supersededBy);
+  const tombstoned = memories.filter(m => !!m.supersededBy || m.state === 'superseded');
+  const contested = memories.filter(m => !m.supersededBy && m.state === 'contested');
+  const activeMemories = memories.filter(m => !m.supersededBy && m.state !== 'superseded');
   const stats = {
     total: memories.length,
     active: activeMemories.length,
-    superseded: memories.length - activeMemories.length,
+    contested: contested.length,
+    superseded: tombstoned.length,
     byType: allTypes.reduce((acc, type) => {
       acc[type] = activeMemories.filter(m => m.type === type).length;
       return acc;
@@ -248,6 +251,9 @@ export function MemoryManager({ onClose }: MemoryManagerProps) {
             <Icon icon="mdi:brain" className="w-6 h-6 text-accent" />
             <h2 className="text-xl font-bold">Memory Manager</h2>
             <span className="badge badge-ghost">{stats.active} active</span>
+            {stats.contested > 0 && (
+              <span className="badge badge-warning opacity-80" title="These beliefs have competing memories — winner resolved by confidence">{stats.contested} contested</span>
+            )}
             {stats.superseded > 0 && (
               <span className="badge badge-ghost opacity-50">{stats.superseded} superseded</span>
             )}
@@ -281,7 +287,7 @@ export function MemoryManager({ onClose }: MemoryManagerProps) {
               checked={showSuperseded}
               onChange={e => setShowSuperseded(e.target.checked)}
             />
-            <span className="text-xs opacity-60">Show superseded</span>
+            <span className="text-xs opacity-60">Show tombstoned</span>
           </label>
         </div>
 
@@ -380,7 +386,7 @@ export function MemoryManager({ onClose }: MemoryManagerProps) {
               </thead>
               <tbody>
                 {filteredMemories.map(memory => (
-                  <tr key={memory.id} className={`hover ${memory.supersededBy ? 'opacity-50' : ''}`}>
+                  <tr key={memory.id} className={`hover ${memory.supersededBy ? 'opacity-40' : ''}`}>
                     <td>
                       <input
                         type="checkbox"
@@ -392,7 +398,12 @@ export function MemoryManager({ onClose }: MemoryManagerProps) {
                     <td className="max-w-[350px]">
                       <div className="truncate">{memory.content}</div>
                       {memory.supersededBy && (
-                        <span className="text-xs text-error opacity-60">Superseded</span>
+                        <span className="text-xs text-error opacity-60">Tombstoned</span>
+                      )}
+                      {!memory.supersededBy && memory.state === 'contested' && (
+                        <span className="text-xs text-warning opacity-70" title={`Competing with ${memory.contradictsParsed.length} other belief(s) — currently ${memory.isContested ? 'contested' : 'stable'}`}>
+                          ⚡ contested ({memory.contradictsParsed.length})
+                        </span>
                       )}
                     </td>
                     <td>
@@ -422,7 +433,7 @@ export function MemoryManager({ onClose }: MemoryManagerProps) {
                           <button
                             className="btn btn-ghost btn-xs text-accent"
                             onClick={() => handleReinforce(memory.id)}
-                            title="Reinforce"
+                            title={memory.state === 'contested' ? 'Reinforce — boost confidence to win the contradiction' : 'Reinforce'}
                           >
                             <Icon icon="mdi:refresh" className="w-4 h-4" />
                           </button>

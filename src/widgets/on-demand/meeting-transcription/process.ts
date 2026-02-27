@@ -1,6 +1,33 @@
 /**
  * Meeting Transcription Process
  *
+ * PARADIGM: STREAMING (live meeting mode) ────────────────────────────────────
+ * This module owns the real-time LLM loop for an active meeting. It is called
+ * continuously while recording is in progress — NOT after it ends.
+ *
+ * FOCUS CONTEXT: OUT-OF-APP primarily.
+ * Data comes from the native app's system audio (remote participants via
+ * Zoom/Meet/Teams) and mic audio (local user), streamed via WebSocket.
+ * The user is typically in another app while this runs.
+ *
+ * Trigger cadence:
+ *   - Main loop: every 8s minimum (LLM_THROTTLE_MS), or when MIN_ACCUMULATED_CHARS
+ *     is reached (80 chars), or after STALE_TEXT_TIMEOUT_MS silence (20s).
+ *   - End-of-meeting: generateMeetingEndSummary() fires once after recording ends
+ *     (the designated slot for post-meeting batch features: title, decisions, etc.)
+ *
+ * This module does NOT call processInput() / the core processor. It has its
+ * own independent LLM prompt and state machine. Completed meeting data is
+ * stored in WatermelonDB via widgetRecordStore, not the conversations table.
+ *
+ * GAP — INTEGRATION WITH WORKING MEMORY:
+ *   Live meeting segments are never fed into WorkingMemory (which only reads
+ *   the conversations DB). This means the core processor's entity/topic/memory
+ *   extraction is not enriched by live meeting content in real time.
+ *   Future: after a meeting ends, push the full transcript through processInput()
+ *   so entities, topics, and memories get extracted and persist cross-session.
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
  * State machine for live meeting transcription + LLM summarization.
  *
  * Intelligence layers:
@@ -31,14 +58,19 @@ import { z } from 'zod';
 import { callLLM } from '../../../program/llmClient';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
 import { profileStorage } from '../../../lib/profileStorage';
+import { widgetRecordStore } from '../../../db/stores';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const STORAGE_KEY = 'meeting-transcription';
-const ARCHIVE_STORAGE_KEY = 'meeting-transcription:archive';
+// Settings stay in profileStorage — they are user preferences, not LLM-generated data
 export const SETTINGS_STORAGE_KEY = 'meeting-transcription:settings';
+
+// WatermelonDB widget type / subtype constants
+const MEETING_WIDGET_TYPE = 'meeting';
+const MEETING_SUBTYPE_ACTIVE = 'active';
+const MEETING_SUBTYPE_ARCHIVE = 'archive';
 
 /** Min chars accumulated since last LLM call before we bother calling again */
 export const MIN_ACCUMULATED_CHARS = 80;
@@ -274,22 +306,28 @@ const MeetingSettingsSchema = z.object({
 });
 
 // ============================================================================
-// Storage
+// Storage — meeting state + archive → WatermelonDB; settings → profileStorage
 // ============================================================================
 
+/**
+ * Save active meeting state (fire-and-forget upsert — never throws).
+ * Keeps sync signature so Widget.tsx call sites don't need to change.
+ */
 export function saveMeetingState(state: MeetingState): void {
-  try {
-    profileStorage.setJSON(STORAGE_KEY, state);
-  } catch (error) {
-    console.warn('[MeetingTranscription] Failed to save state:', error);
-  }
+  widgetRecordStore.upsert(MEETING_WIDGET_TYPE, MEETING_SUBTYPE_ACTIVE, {
+    content: state,
+    title: state.title || 'Active Meeting',
+  }).catch(e => console.warn('[MeetingTranscription] Failed to save state:', e));
 }
 
-export function loadMeetingState(): MeetingState | null {
+/**
+ * Load active meeting state from WatermelonDB with Zod validation.
+ */
+export async function loadMeetingState(): Promise<MeetingState | null> {
   try {
-    const raw = profileStorage.getJSON<unknown>(STORAGE_KEY);
-    if (raw == null) return null;
-    const result = MeetingStateSchema.safeParse(raw);
+    const record = await widgetRecordStore.getLatest(MEETING_WIDGET_TYPE, MEETING_SUBTYPE_ACTIVE);
+    if (!record) return null;
+    const result = MeetingStateSchema.safeParse(record.contentParsed);
     if (!result.success) {
       console.warn('[MeetingTranscription] State schema changed — resetting:', result.error.issues);
       return null;
@@ -301,36 +339,40 @@ export function loadMeetingState(): MeetingState | null {
   }
 }
 
+/**
+ * Clear the active meeting state (fire-and-forget — never throws).
+ */
 export function clearMeetingState(): void {
-  try {
-    profileStorage.removeItem(STORAGE_KEY);
-  } catch { /* ignore */ }
+  widgetRecordStore.getLatest(MEETING_WIDGET_TYPE, MEETING_SUBTYPE_ACTIVE)
+    .then(record => record ? widgetRecordStore.delete(record.id) : undefined)
+    .catch(e => console.warn('[MeetingTranscription] Failed to clear state:', e));
 }
 
-export function loadArchivedMeetings(): ArchivedMeeting[] {
+/**
+ * Load archived meetings from WatermelonDB (up to MAX_ARCHIVE, most recent first).
+ */
+export async function loadArchivedMeetings(): Promise<ArchivedMeeting[]> {
   try {
-    const raw = profileStorage.getJSON<unknown>(ARCHIVE_STORAGE_KEY);
-    if (raw == null) return [];
-    const result = z.array(ArchivedMeetingSchema).safeParse(raw);
-    if (!result.success) {
-      console.warn('[MeetingTranscription] Archive schema changed — clearing:', result.error.issues);
-      return [];
+    const rows = await widgetRecordStore.getRecent(MEETING_WIDGET_TYPE, MAX_ARCHIVE, MEETING_SUBTYPE_ARCHIVE);
+    const meetings: ArchivedMeeting[] = [];
+    for (const row of rows) {
+      const result = ArchivedMeetingSchema.safeParse(row.contentParsed);
+      if (result.success) {
+        meetings.push(result.data);
+      }
     }
-    return result.data;
+    return meetings;
   } catch {
     return [];
   }
 }
 
-function saveArchivedMeetings(meetings: ArchivedMeeting[]): void {
-  try {
-    profileStorage.setJSON(ARCHIVE_STORAGE_KEY, meetings);
-  } catch (error) {
-    console.warn('[MeetingTranscription] Failed to save archive:', error);
-  }
-}
-
-export function archiveCurrentMeeting(state: MeetingState): ArchivedMeeting[] {
+/**
+ * Archive the current meeting.
+ * Transitions the active row to 'archive' subtype (or creates a new archive row if missing).
+ * Returns the updated list of archived meetings.
+ */
+export async function archiveCurrentMeeting(state: MeetingState): Promise<ArchivedMeeting[]> {
   if (state.segmentCount === 0) return loadArchivedMeetings();
 
   const archived: ArchivedMeeting = {
@@ -349,23 +391,46 @@ export function archiveCurrentMeeting(state: MeetingState): ArchivedMeeting[] {
     title: state.title,
   };
 
-  const existing = loadArchivedMeetings();
-  const deduplicated = existing.filter((m) => m.id !== archived.id);
-  const updated = [archived, ...deduplicated].slice(0, MAX_ARCHIVE);
-  saveArchivedMeetings(updated);
-  return updated;
+  // Transition the existing active row to 'archive', or create a fresh archive row
+  const activeRecord = await widgetRecordStore.getLatest(MEETING_WIDGET_TYPE, MEETING_SUBTYPE_ACTIVE);
+  if (activeRecord) {
+    await widgetRecordStore.update(activeRecord.id, {
+      content: archived,
+      subtype: MEETING_SUBTYPE_ARCHIVE,
+      title: archived.title || undefined,
+    });
+  } else {
+    // No active row exists — create a new archive row directly
+    await widgetRecordStore.create({
+      type: MEETING_WIDGET_TYPE,
+      subtype: MEETING_SUBTYPE_ARCHIVE,
+      content: archived,
+      title: archived.title || undefined,
+      createdAt: archived.startedAt,
+    });
+  }
+
+  return loadArchivedMeetings();
 }
 
 /**
- * Patches the title of an already-archived meeting by id.
- * Called after the end-of-meeting LLM call succeeds — the archive was already
- * saved before the LLM ran, so this just fills in the title retroactively.
+ * Patch the title of an already-archived meeting by id.
+ * Called after the end-of-meeting LLM title generation — archive was already saved.
  */
-export function updateArchivedMeetingTitle(meetingId: string, title: string): ArchivedMeeting[] {
-  const existing = loadArchivedMeetings();
-  const updated = existing.map((m) => (m.id === meetingId ? { ...m, title } : m));
-  saveArchivedMeetings(updated);
-  return updated;
+export async function updateArchivedMeetingTitle(meetingId: string, title: string): Promise<ArchivedMeeting[]> {
+  // Find the archive row whose content has the matching id
+  const rows = await widgetRecordStore.getRecent(MEETING_WIDGET_TYPE, MAX_ARCHIVE, MEETING_SUBTYPE_ARCHIVE);
+  for (const row of rows) {
+    const parsed = ArchivedMeetingSchema.safeParse(row.contentParsed);
+    if (parsed.success && parsed.data.id === meetingId) {
+      await widgetRecordStore.update(row.id, {
+        content: { ...parsed.data, title },
+        title,
+      });
+      break;
+    }
+  }
+  return loadArchivedMeetings();
 }
 
 export function loadMeetingSettings(): MeetingSettings {

@@ -27,6 +27,9 @@ export { default as ExtractionLog } from './ExtractionLog'
 // Data storage
 export { default as Data } from './Data'
 
+// Widget records (generic on-demand widget storage)
+export { default as WidgetRecord } from './WidgetRecord'
+
 // Re-export types
 export type { ConversationSource, Speaker } from './Conversation'
 export type { TaskStatus } from './Task'

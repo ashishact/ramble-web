@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   generateQuestions,
+  generateMeetingQuestions,
   saveQuestionsToStorage,
   loadQuestionsFromStorage,
   type Question,
   type QuestionResult,
 } from './process';
 import { pipelineStatus, type PipelineState } from '../../../program/kernel/pipelineStatus';
+import { meetingStatus, type MeetingSegment } from '../../../program/kernel/meetingStatus';
 import { useWidgetPause } from '../useWidgetPause';
+import { Icon } from '@iconify/react';
 import {
   HelpCircle,
   RefreshCw,
@@ -49,11 +52,16 @@ const categoryLabels: Record<Question['category'], string> = {
   explore: 'explore',
 };
 
+// Meeting mode accumulation thresholds
+const MEETING_MIN_CHARS = 200;
+const MEETING_THROTTLE_MS = 30_000;
+
 export function QuestionWidget() {
   const [result, setResult] = useState<QuestionResult | null>(null);
   const [loadingState, setLoadingState] = useState<LoadingState>('idle');
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isMeetingMode, setIsMeetingMode] = useState(() => meetingStatus.getState().isActive);
 
   // Pause functionality
   const { isPaused, PauseButton, PauseOverlay } = useWidgetPause('questions', 'Questions');
@@ -61,12 +69,17 @@ export function QuestionWidget() {
   const wasRunningRef = useRef(false);
   const hasLoadedFromStorageRef = useRef(false);
 
+  // Meeting mode accumulation refs
+  const pendingMeetingCharsRef = useRef(0);
+  const lastMeetingGenRef = useRef(0);
+
+  // ── BATCH mode: generate from working memory (solo / in-app) ─────────────
+  // Triggered after pipelineStatus completes (new speech or typed input committed).
+  // Uses WorkingMemory (DB conversations, entities, topics, memories).
   const fetchQuestions = useCallback(async (focusTopic?: string) => {
     setLoadingState('loading');
     setError(null);
-
     const previousQuestions = result?.questions.map(q => q.text) ?? [];
-
     try {
       const questions = await generateQuestions(focusTopic, previousQuestions);
       setResult(questions);
@@ -78,36 +91,89 @@ export function QuestionWidget() {
     }
   }, [result]);
 
+  // ── STREAMING mode: generate from live meeting transcript (meeting / out-of-app) ──
+  // Triggered by meetingStatus accumulation (200 chars, 30s throttle).
+  // Uses the raw live segments — NOT WorkingMemory — so questions are about
+  // what's being said right now, not the user's past conversation history.
+  const fetchMeetingQuestions = useCallback(async (segments: MeetingSegment[]) => {
+    setLoadingState('loading');
+    setError(null);
+    const previousQuestions = result?.questions.map(q => q.text) ?? [];
+    try {
+      const questions = await generateMeetingQuestions(segments, previousQuestions);
+      setResult(questions);
+      setLoadingState('success');
+      saveQuestionsToStorage(questions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate meeting questions');
+      setLoadingState('error');
+    }
+  }, [result]);
+
+  // Keep a stable ref so the meetingStatus effect never needs fetchMeetingQuestions in its deps
+  const fetchMeetingQuestionsRef = useRef(fetchMeetingQuestions);
+  fetchMeetingQuestionsRef.current = fetchMeetingQuestions;
+
+  // ── Load persisted result on mount ─────────────────────────────────────────
   useEffect(() => {
     if (hasLoadedFromStorageRef.current) return;
     hasLoadedFromStorageRef.current = true;
-
-    const stored = loadQuestionsFromStorage();
-    if (stored) {
-      setResult(stored);
-      setLoadingState('success');
-    }
+    loadQuestionsFromStorage().then(stored => {
+      if (stored) { setResult(stored); setLoadingState('success'); }
+    }).catch(() => {});
   }, []);
 
+  // ── Track meeting mode ─────────────────────────────────────────────────────
   useEffect(() => {
-    // Don't subscribe when paused
-    if (isPaused) return;
+    return meetingStatus.subscribe((state) => {
+      setIsMeetingMode(state.isActive);
+    });
+  }, []);
+
+  // ── Normal pipeline trigger (disabled in meeting mode) ────────────────────
+  useEffect(() => {
+    if (isPaused || isMeetingMode) return;
 
     const unsubscribe = pipelineStatus.subscribe((state: PipelineState) => {
       const wasRunning = wasRunningRef.current;
       const isNowComplete = !state.isRunning;
       const doneStep = state.steps.find(s => s.id === 'done');
       const isSuccess = doneStep?.status === 'success';
-
       if (wasRunning && isNowComplete && isSuccess) {
         fetchQuestions();
       }
-
       wasRunningRef.current = state.isRunning;
     });
 
     return unsubscribe;
-  }, [fetchQuestions, isPaused]);
+  }, [fetchQuestions, isPaused, isMeetingMode]);
+
+  // ── Meeting mode accumulation trigger ─────────────────────────────────────
+  useEffect(() => {
+    if (!isMeetingMode || isPaused) return;
+
+    let lastSegCount = meetingStatus.getState().segments.length;
+    pendingMeetingCharsRef.current = 0;
+
+    return meetingStatus.subscribe((state) => {
+      if (!state.isActive) return;
+
+      const newSegs = state.segments.slice(lastSegCount);
+      if (newSegs.length === 0) return;
+      lastSegCount = state.segments.length;
+
+      pendingMeetingCharsRef.current += newSegs.reduce((acc, s) => acc + s.text.length, 0);
+
+      const now = Date.now();
+      const throttleOk = now - lastMeetingGenRef.current >= MEETING_THROTTLE_MS;
+
+      if (pendingMeetingCharsRef.current >= MEETING_MIN_CHARS && throttleOk) {
+        pendingMeetingCharsRef.current = 0;
+        lastMeetingGenRef.current = now;
+        fetchMeetingQuestionsRef.current(state.segments);
+      }
+    });
+  }, [isMeetingMode, isPaused]);
 
   const handleTopicClick = useCallback((topic: string) => {
     if (selectedTopic === topic) {
@@ -121,8 +187,15 @@ export function QuestionWidget() {
 
   const handleRefresh = useCallback(() => {
     setSelectedTopic(null);
-    fetchQuestions();
-  }, [fetchQuestions]);
+    if (isMeetingMode) {
+      const segments = meetingStatus.getState().segments;
+      if (segments.length > 0) {
+        fetchMeetingQuestionsRef.current(segments);
+      }
+    } else {
+      fetchQuestions();
+    }
+  }, [fetchQuestions, isMeetingMode]);
 
   // Error state
   if (loadingState === 'error') {
@@ -134,10 +207,7 @@ export function QuestionWidget() {
         <PauseOverlay />
         <AlertCircle className="w-5 h-5 mb-1 text-error" />
         <span className="text-[10px] text-base-content/60">{error}</span>
-        <button
-          onClick={() => fetchQuestions()}
-          className="btn btn-xs btn-ghost mt-2"
-        >
+        <button onClick={() => fetchQuestions()} className="btn btn-xs btn-ghost mt-2">
           Retry
         </button>
       </div>
@@ -149,19 +219,27 @@ export function QuestionWidget() {
     return (
       <div
         className="w-full h-full relative flex flex-col items-center justify-center text-base-content/50 p-2"
-        data-doc='{"icon":"mdi:help-circle","title":"Questions","desc":"AI-generated questions will appear here after you start a conversation. Click Refresh to generate questions."}'
+        data-doc='{"icon":"mdi:help-circle","title":"Questions","desc":"AI-generated questions will appear here after you start a conversation. In meeting mode, questions update live from the meeting transcript."}'
       >
         <PauseOverlay />
         <HelpCircle className="w-5 h-5 mb-1 opacity-40" />
-        <span className="text-[10px]">No questions</span>
-        <span className="text-[9px] opacity-50">Start talking first</span>
-        <button
-          onClick={handleRefresh}
-          className="btn btn-xs btn-ghost mt-2 gap-1"
-        >
-          <RefreshCw size={10} />
-          Refresh
-        </button>
+        {isMeetingMode ? (
+          <>
+            <span className="text-[10px]">Listening to meeting...</span>
+            <span className="text-[9px] opacity-50">Questions will appear as conversation accumulates</span>
+          </>
+        ) : (
+          <>
+            <span className="text-[10px]">No questions</span>
+            <span className="text-[9px] opacity-50">Start talking first</span>
+          </>
+        )}
+        {!isMeetingMode && (
+          <button onClick={handleRefresh} className="btn btn-xs btn-ghost mt-2 gap-1">
+            <RefreshCw size={10} />
+            Refresh
+          </button>
+        )}
       </div>
     );
   }
@@ -169,7 +247,7 @@ export function QuestionWidget() {
   return (
     <div
       className="w-full h-full relative flex flex-col overflow-hidden"
-      data-doc='{"icon":"mdi:help-circle","title":"Questions","desc":"AI questions to prompt you for more info. Categorized as: missing info, follow-up, clarification, action, or explore. Filter by topic at the bottom. Auto-refreshes after each conversation."}'
+      data-doc='{"icon":"mdi:help-circle","title":"Questions","desc":"AI questions to prompt you for more info. In meeting mode (Group), generates questions to ask other participants based on the live transcript."}'
     >
       <PauseOverlay />
       {/* Header */}
@@ -186,6 +264,12 @@ export function QuestionWidget() {
               <span className="text-[11px] font-medium text-base-content/70">
                 {selectedTopic ? selectedTopic : 'Questions'}
               </span>
+              {isMeetingMode && (
+                <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-violet-400/15 border border-violet-400/25">
+                  <Icon icon="mdi:account-group" width={9} height={9} className="text-violet-500/80" />
+                  <span className="text-[8px] font-semibold text-violet-500/80 tracking-wide">Group</span>
+                </span>
+              )}
             </>
           )}
         </div>
@@ -207,7 +291,6 @@ export function QuestionWidget() {
         {result.questions.map((question, index) => {
           const Icon = categoryIcons[question.category];
           const isOdd = index % 2 === 1;
-          // Parse topic namespace: "Domain / Topic" -> { domain, topic }
           const topicParts = question.topic.split(' / ').map(p => p.trim());
           const domain = topicParts.length > 1 ? topicParts[0] : null;
           const topicName = topicParts.length > 1 ? topicParts.slice(1).join(' / ') : topicParts[0];
@@ -221,17 +304,12 @@ export function QuestionWidget() {
               <div className="flex items-start gap-1.5">
                 <Icon size={14} className={`flex-shrink-0 mt-0.5 opacity-70 ${categoryColors[question.category]}`} />
                 <div className="flex-1 min-w-0">
-                  {/* Topic badge */}
                   <div className="flex items-center gap-1 mb-0.5">
                     {domain && (
-                      <span className="text-[9px] font-medium text-primary/70 uppercase">
-                        {domain}
-                      </span>
+                      <span className="text-[9px] font-medium text-primary/70 uppercase">{domain}</span>
                     )}
                     {domain && <span className="text-[9px] text-base-content/30">/</span>}
-                    <span className="text-[9px] text-base-content/50">
-                      {topicName}
-                    </span>
+                    <span className="text-[9px] text-base-content/50">{topicName}</span>
                   </div>
                   <p className="text-xs text-base-content/70 leading-snug">{question.text}</p>
                   <span className="text-[9px] text-base-content/40 mt-0.5">
@@ -248,15 +326,10 @@ export function QuestionWidget() {
       {result.availableTopics.length > 0 && (
         <div className={`flex-shrink-0 px-2 py-1 border-t border-base-200/50 ${loadingState === 'loading' ? 'opacity-50 pointer-events-none' : ''}`}>
           <div className="flex items-center gap-1 mb-0.5">
-            <span className="text-[9px] text-base-content/40 uppercase tracking-wide">
-              Topics
-            </span>
+            <span className="text-[9px] text-base-content/40 uppercase tracking-wide">Topics</span>
             {selectedTopic && (
               <button
-                onClick={() => {
-                  setSelectedTopic(null);
-                  fetchQuestions();
-                }}
+                onClick={() => { setSelectedTopic(null); fetchQuestions(); }}
                 disabled={loadingState === 'loading'}
                 className="ml-auto p-0.5 hover:bg-base-200 rounded disabled:opacity-50"
               >

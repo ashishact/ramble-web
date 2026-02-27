@@ -88,6 +88,7 @@ export const collections = {
   get learnedCorrections() { return getDatabase().get('learned_corrections') },
   get extractionLogs() { return getDatabase().get('extraction_logs') },
   get data() { return getDatabase().get('data') },
+  get widgetRecords() { return getDatabase().get('widget_records') },
 }
 
 // Type-safe collection getters

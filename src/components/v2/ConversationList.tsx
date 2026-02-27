@@ -8,26 +8,70 @@
  * - Load more pagination
  * - Summary display (if available)
  * - Expandable long text with show more/less
+ * - Pipeline step strip shown below the newest conversation while processing
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Icon } from '@iconify/react';
+import { Check, X, Loader2, Circle } from 'lucide-react';
 import type Conversation from '../../db/models/Conversation';
 import { ExpandableText } from '../ui/ExpandableText';
+import { pipelineStatus, type PipelineState, type StepStatus } from '../../program/kernel/pipelineStatus';
 
 interface ConversationListProps {
   conversations: Conversation[];
   onClose?: () => void;
-  /** When true, the latest conversation is treated as processed even if DB hasn't updated yet */
-  pipelineDone?: boolean;
 }
 
-// Truncate text if longer than this many characters
 const TRUNCATE_LENGTH = 150;
+const AUTO_HIDE_DELAY = 5000;
 
-export function ConversationList({ conversations, onClose, pipelineDone }: ConversationListProps) {
+const stepIcon = (status: StepStatus) => {
+  switch (status) {
+    case 'running':
+      return <Loader2 size={9} className="animate-spin text-info" />;
+    case 'success':
+      return <Check size={9} className="text-success" />;
+    case 'error':
+      return <X size={9} className="text-error" />;
+    default:
+      return <Circle size={7} className="text-base-content/25" />;
+  }
+};
+
+export function ConversationList({ conversations, onClose }: ConversationListProps) {
   const [showRawText, setShowRawText] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(20);
+  const [pipelineState, setPipelineState] = useState<PipelineState>(pipelineStatus.getState());
+  const [pipelineVisible, setPipelineVisible] = useState(false);
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return pipelineStatus.subscribe(setPipelineState);
+  }, []);
+
+  // Auto-hide pipeline strip 5s after pipeline completes
+  useEffect(() => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+
+    if (pipelineState.isRunning) {
+      setPipelineVisible(true);
+    } else if (pipelineState.steps.length > 0) {
+      hideTimeoutRef.current = setTimeout(() => setPipelineVisible(false), AUTO_HIDE_DELAY);
+    }
+
+    return () => {
+      if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+    };
+  }, [pipelineState.isRunning, pipelineState.steps.length]);
+
+  // Derive pipelineDone for the latest conversation's processed state
+  const pipelineDone =
+    !pipelineState.isRunning &&
+    pipelineState.steps.find(s => s.id === 'done')?.status === 'success';
 
   return (
     <div className="w-full h-full bg-base-100 flex flex-col">
@@ -88,12 +132,9 @@ export function ConversationList({ conversations, onClose, pipelineDone }: Conve
               const displayText = showRawText ? conv.rawText : conv.sanitizedText;
               const hasChanges = conv.rawText !== conv.sanitizedText;
 
-              // Check if this is the start of a new session
               const prevConv = arr[index - 1];
               const isSessionStart = !prevConv || prevConv.sessionId !== conv.sessionId;
 
-              // For the latest conversation (index 0), use pipelineDone to override processed status
-              // This provides immediate feedback since WatermelonDB observer can have slight delay
               const isProcessed = conv.processed || (index === 0 && pipelineDone);
 
               return (
@@ -163,6 +204,31 @@ export function ConversationList({ conversations, onClose, pipelineDone }: Conve
                       </span>
                     </div>
                   </div>
+
+                  {/* Pipeline step strip — shown below the newest conversation only */}
+                  {index === 0 && pipelineVisible && pipelineState.steps.length > 0 && (
+                    <div className="mt-1.5 flex items-center gap-0.5 flex-wrap px-1">
+                      {pipelineState.steps.map((step, i) => (
+                        <div key={step.id} className="flex items-center gap-0.5">
+                          {i > 0 && <span className="text-base-content/20 text-[9px] mx-0.5">→</span>}
+                          <span
+                            className={`flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium ${
+                              step.status === 'running'
+                                ? 'bg-info/10 text-info'
+                                : step.status === 'success'
+                                ? 'text-base-content/35'
+                                : step.status === 'error'
+                                ? 'bg-error/10 text-error'
+                                : 'text-base-content/25'
+                            }`}
+                          >
+                            {stepIcon(step.status)}
+                            <span className="ml-0.5">{step.label}</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}

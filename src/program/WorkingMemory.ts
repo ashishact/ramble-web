@@ -1,6 +1,25 @@
 /**
  * Working Memory - Unified LLM Context System
  *
+ * PARADIGM: BATCH only ────────────────────────────────────────────────────────
+ * Reads exclusively from WatermelonDB (committed conversations, entities,
+ * topics, memories, goals). It only knows about COMPLETED, stored data.
+ *
+ * FOCUS CONTEXT: Both — but only reflects data that has already been committed.
+ * In-app typed input and out-of-app completed utterances both end up in DB and
+ * are therefore visible here.
+ *
+ * GAP — LIVE STREAMING DATA NOT INCLUDED:
+ *   While a meeting is active, the live segments flowing through meetingStatus
+ *   are NOT part of this context. WorkingMemory will not know what is being
+ *   said in the current meeting until the meeting ends and its data is persisted.
+ *   This means in meeting mode, Questions/Suggestions use the live transcript
+ *   directly (not WorkingMemory) — but the core processor's extraction context
+ *   never includes in-progress meeting content.
+ *   Future: add a `liveSegments?: MeetingSegment[]` option that appends the
+ *   current meeting transcript to the LLM context block.
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
  * Single source of truth for LLM context. Used by:
  * - UI components (WorkingMemory.tsx)
  * - Core processor (processor.ts)
@@ -88,6 +107,7 @@ export interface TopicRef {
 
 export interface MemoryRef {
   id: string;
+  shortId: string;      // 'm1', 'm2', etc. — used by LLM to reference this memory in contradicts field
   content: string;
   type: string;
   importance: number;
@@ -158,9 +178,10 @@ function toTopicRef(t: Topic): TopicRef {
   };
 }
 
-function toMemoryRef(m: Memory): MemoryRef {
+function toMemoryRef(m: Memory, index: number): MemoryRef {
   return {
     id: m.id,
+    shortId: `m${index + 1}`,
     content: m.content,
     type: m.type,
     importance: m.importance,
@@ -246,7 +267,7 @@ class WorkingMemory {
       conversationStore.getRecent(50),  // Returns newest first (DESC)
       entityStore.getRecent(50),
       topicStore.getRecent(50),
-      memoryStore.getMostImportant(50),
+      memoryStore.getByRetrievalScore(50),
       goalStore.getActive(),
       dataStore.getUserProfile(),
     ]);
@@ -290,7 +311,7 @@ class WorkingMemory {
     const deduplicatedMemories = filterRedundantMemories(timeFilteredMemories, conversationIdsInContext);
     const memories = deduplicatedMemories
       .slice(0, limits.memories)
-      .map(toMemoryRef);
+      .map((m, i) => toMemoryRef(m, i));
 
     // Goals get short IDs assigned based on position
     const filteredGoals = allGoals
@@ -366,11 +387,12 @@ class WorkingMemory {
       }
     }
 
-    // Working memories
+    // Working memories — shortId allows LLM to reference specific memories
+    // (e.g. in contradicts field when a new belief conflicts with m3)
     if (data.memories.length > 0) {
       parts.push('\n## Working Memory');
       for (const m of data.memories) {
-        parts.push(`- [${m.type}] ${m.content}`);
+        parts.push(`- [${m.shortId}] [${m.type}] ${m.content}`);
       }
     }
 
@@ -443,6 +465,14 @@ class WorkingMemory {
    */
   findGoalByShortId(data: WorkingMemoryData, shortId: string): GoalRef | undefined {
     return data.goals.find(g => g.shortId === shortId);
+  }
+
+  /**
+   * Find a memory by its short ID (m1, m2, etc.)
+   * Used in saveExtraction to resolve contradiction references from the LLM.
+   */
+  findMemoryByShortId(data: WorkingMemoryData, shortId: string): MemoryRef | undefined {
+    return data.memories.find(m => m.shortId === shortId);
   }
 
   /**

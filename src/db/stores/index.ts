@@ -26,3 +26,6 @@ export { extractionLogStore } from './extractionLogStore'
 
 // Data storage
 export { dataStore } from './dataStore'
+
+// Widget records (generic on-demand widget storage)
+export { widgetRecordStore } from './widgetRecordStore'

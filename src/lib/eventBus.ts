@@ -36,6 +36,49 @@
  * - stt:*    - Speech-to-text events (recording, transcription)
  * - tts:*    - Text-to-speech events (speak, started, ended)
  * - custom:* - Future extensibility
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ARCHITECTURAL OVERVIEW: TWO PARADIGMS × TWO FOCUS CONTEXTS
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * PARADIGM A — STREAMING (live / meeting mode)
+ *   Triggered when native app is in 'meeting' mode.
+ *   Events: native:transcription-intermediate (continuous, per VAD segment)
+ *   Consumers: meetingStatus (accumulates segments) → MeetingTranscription
+ *              widget (own LLM loop, 8s throttle) + Questions/Suggestions
+ *              widgets (30s throttle, 200 char threshold).
+ *   Key property: LLM is called WHILE recording is still in progress.
+ *   Data flow: intermediate text → meetingStatus.segments → widget LLM calls
+ *
+ * PARADIGM B — BATCH (stop-and-process / solo mode)
+ *   Triggered when a recording ends (native:transcription-final) or user
+ *   types/pastes content directly into Ramble.
+ *   Events: native:transcription-final, or direct processInput() call
+ *   Consumers: processor.ts (WorkingMemory + LLM extraction → DB) →
+ *              pipelineStatus notifies → Questions/Suggestions/SpeakBetter
+ *              widgets refresh after pipeline completes.
+ *   Key property: LLM is called AFTER recording stops and text is final.
+ *   Data flow: final text → processInput → DB → pipelineStatus → widgets
+ *
+ * FOCUS CONTEXT 1 — IN-APP
+ *   User is actively using the Ramble web app.
+ *   Input arrives via typing, paste, or speech (solo mode).
+ *   Conversation source: 'typed' | 'pasted' | 'speech' (solo)
+ *
+ * FOCUS CONTEXT 2 — OUT-OF-APP
+ *   User is in another app (Zoom, Meet, browser, etc.).
+ *   Ramble native runs in the background and sends data via WebSocket.
+ *   Conversation source: 'speech' (solo out-of-app) | 'meeting' (meeting mode)
+ *   NOTE: The app currently does NOT track whether window has focus.
+ *         Both contexts are processed identically — document.hasFocus() is
+ *         never checked. This is a known gap: behaviour cannot yet be tuned
+ *         based on whether the user is looking at Ramble or not.
+ *
+ * GAP — FOCUS CONTEXT NOT TRACKED:
+ *   No code checks document.hasFocus() or Page Visibility API.
+ *   Future: emit a 'focus:changed' event here so widgets can adapt
+ *   (e.g. louder TTS when out-of-app, silent when Ramble is in foreground).
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 type EventHandler<T = unknown> = (payload: T) => void;

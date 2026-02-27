@@ -9,13 +9,10 @@ import { z } from 'zod';
 import { callLLM } from '../../../program/llmClient';
 import { workingMemory } from '../../../program/WorkingMemory';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
-import { profileStorage } from '../../../lib/profileStorage';
+import { widgetRecordStore } from '../../../db/stores';
+import type { MeetingSegment } from '../../../program/kernel/meetingStatus';
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-const STORAGE_KEY = 'questions';
+// (no localStorage key needed — storage is WatermelonDB via widgetRecordStore)
 
 // ============================================================================
 // Zod Schemas for validation
@@ -43,50 +40,43 @@ export type Question = z.infer<typeof QuestionSchema>;
 export type QuestionResult = z.infer<typeof QuestionResultSchema>;
 
 // ============================================================================
-// LocalStorage Persistence
+// WatermelonDB Persistence
 // ============================================================================
 
+const WIDGET_TYPE = 'question';
+
 /**
- * Save questions to profile-scoped storage
+ * Save questions to WatermelonDB (fire-and-forget — never throws).
+ * Appends a new row each call; full generation history is preserved.
  */
 export function saveQuestionsToStorage(result: QuestionResult): void {
-  try {
-    profileStorage.setJSON(STORAGE_KEY, result);
-  } catch (error) {
-    console.warn('Failed to save questions to storage:', error);
-  }
+  widgetRecordStore.create({
+    type: WIDGET_TYPE,
+    content: result,
+    createdAt: result.generatedAt,
+  }).catch(e => console.warn('Failed to save questions to DB:', e));
 }
 
 /**
- * Load questions from profile-scoped storage with Zod validation
- * Returns null if not found or invalid
+ * Load the latest questions from WatermelonDB with Zod validation.
+ * Returns null if not found or invalid.
  */
-export function loadQuestionsFromStorage(): QuestionResult | null {
+export async function loadQuestionsFromStorage(): Promise<QuestionResult | null> {
   try {
-    const parsed = profileStorage.getJSON<unknown>(STORAGE_KEY);
-    if (!parsed) return null;
+    const record = await widgetRecordStore.getLatest(WIDGET_TYPE);
+    if (!record) return null;
 
-    const validated = QuestionResultSchema.safeParse(parsed);
-
+    const validated = QuestionResultSchema.safeParse(record.contentParsed);
     if (validated.success) {
       return validated.data;
     } else {
-      console.warn('Invalid questions in storage, clearing:', validated.error);
-      profileStorage.removeItem(STORAGE_KEY);
+      console.warn('Invalid questions in DB:', validated.error);
       return null;
     }
   } catch (error) {
-    console.warn('Failed to load questions from storage:', error);
-    profileStorage.removeItem(STORAGE_KEY);
+    console.warn('Failed to load questions from DB:', error);
     return null;
   }
-}
-
-/**
- * Clear questions from profile-scoped storage
- */
-export function clearQuestionsFromStorage(): void {
-  profileStorage.removeItem(STORAGE_KEY);
 }
 
 // ============================================================================
@@ -237,6 +227,110 @@ Analyze this working memory and identify gaps. Avoid repeating previous question
   } catch (error) {
     console.error('Questions process failed:', error);
     return { questions: [], availableTopics, generatedAt: Date.now() };
+  }
+}
+
+// ============================================================================
+// Meeting mode prompts
+// ============================================================================
+
+const MEETING_SYSTEM_PROMPT = `You are a real-time meeting assistant. Help the user identify the best questions to ask other participants during a live meeting.
+
+AUDIO SOURCES:
+- [MIC] = the user (person you are helping)
+- [SYSTEM] = remote participants (Zoom / Meet / Teams audio)
+
+TASK: Based on the live transcript, generate 4 targeted questions the user could ASK THE OTHER PARTICIPANTS right now.
+
+Focus on:
+- Gaps or ambiguities in what [SYSTEM] participants said
+- Claims or decisions that need more detail
+- Next steps or ownership that are unclear
+- Things raised by [SYSTEM] the user should probe deeper
+
+AVOID:
+- Questions about what [MIC] already said (they know what they said)
+- Generic filler questions
+- Repeating questions already shown
+
+Categories:
+- clarification: Something vague or ambiguous a [SYSTEM] participant said
+- missing_info: Important information that wasn't covered
+- follow_up: Dig deeper into a point [SYSTEM] made
+- action: Clarify ownership, next steps, or deadlines
+- explore: Open up a related angle worth investigating
+
+Priority: high = urgent or important right now, medium = helpful, low = nice to have
+
+Return exactly 4 questions, last = most immediately relevant to the latest exchange.
+
+JSON format:
+{
+  "questions": [
+    { "text": "...", "topic": "Meeting / SubTopic", "category": "clarification", "priority": "high" }
+  ]
+}
+
+topic = "Meeting / SubTopic" format. Keep questions concise (10–25 words).`;
+
+// ============================================================================
+// Meeting mode process
+// ============================================================================
+
+/**
+ * Generate questions to ask other meeting participants based on the live transcript.
+ * Called during an active meeting when mode === 'meeting'.
+ * Uses the last 40 segments for context, prefixed with [MIC] / [SYSTEM] labels.
+ */
+export async function generateMeetingQuestions(
+  segments: MeetingSegment[],
+  previousQuestions?: string[]
+): Promise<QuestionResult> {
+  if (segments.length === 0) {
+    return { questions: [], availableTopics: [], generatedAt: Date.now() };
+  }
+
+  // Use last 40 segments for focused context
+  const recentSegments = segments.slice(-40);
+  const transcript = recentSegments
+    .map(s => `[${s.audioType === 'mic' ? 'MIC' : 'SYSTEM'}] ${s.text}`)
+    .join('\n');
+
+  const previousSection = previousQuestions && previousQuestions.length > 0
+    ? `\n## Questions already shown — do NOT repeat:\n${previousQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n`
+    : '';
+
+  const userPrompt = `Current time: ${new Date().toLocaleTimeString()}
+
+## Live Meeting Transcript (most recent last):
+${transcript}
+${previousSection}
+Generate 4 questions to ask the [SYSTEM] participants right now. Respond with JSON only.`;
+
+  try {
+    const response = await callLLM({
+      tier: 'small',
+      prompt: userPrompt,
+      systemPrompt: MEETING_SYSTEM_PROMPT,
+      options: { temperature: 0.7, max_tokens: 800 },
+    });
+
+    const { data, error } = parseLLMJSON(response.content);
+    if (error || !data) {
+      console.error('[Meeting Questions] Failed to parse response:', error);
+      return { questions: [], availableTopics: [], generatedAt: Date.now() };
+    }
+
+    const questions = normalizeQuestions(data);
+    // Derive available topics from the questions' topic fields
+    const availableTopics = [...new Set(
+      questions.map(q => q.topic).filter(t => t !== 'General' && t !== 'Meeting')
+    )];
+
+    return { questions, availableTopics, generatedAt: Date.now() };
+  } catch (error) {
+    console.error('[Meeting Questions] Generation failed:', error);
+    return { questions: [], availableTopics: [], generatedAt: Date.now() };
   }
 }
 

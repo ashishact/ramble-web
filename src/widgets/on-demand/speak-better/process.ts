@@ -14,13 +14,17 @@ import { z } from 'zod';
 import { callLLM } from '../../../program/llmClient';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
 import { profileStorage } from '../../../lib/profileStorage';
+import { widgetRecordStore } from '../../../db/stores';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const STORAGE_KEY = 'speak-better';
+// Tone preference stays in profileStorage — it is a user preference, not LLM-generated data
 const TONE_STORAGE_KEY = 'speak-better-tone';
+
+// WatermelonDB widget type for analysis results
+const WIDGET_TYPE = 'speak_better';
 
 // Maximum characters to send to LLM (roughly ~4000 tokens)
 // High limit since we're only sending one conversation, not full working memory
@@ -131,32 +135,39 @@ export type Suggestion = z.infer<typeof SuggestionSchema>;
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
 
 // ============================================================================
-// Storage
+// WatermelonDB Persistence (analysis results) + profileStorage (tone preference)
 // ============================================================================
 
+/**
+ * Save analysis result to WatermelonDB (fire-and-forget — never throws).
+ * Appends a new row; full analysis history is preserved.
+ */
 export function saveToStorage(result: AnalysisResult): void {
-	try {
-		profileStorage.setJSON(STORAGE_KEY, result);
-	} catch (error) {
-		console.warn('Failed to save speak-better result:', error);
-	}
+	widgetRecordStore.create({
+		type: WIDGET_TYPE,
+		content: result,
+		createdAt: result.generatedAt,
+	}).catch(e => console.warn('Failed to save speak-better result to DB:', e));
 }
 
-export function loadFromStorage(): AnalysisResult | null {
+/**
+ * Load the latest analysis result from WatermelonDB with Zod validation.
+ * Returns null if not found or invalid.
+ */
+export async function loadFromStorage(): Promise<AnalysisResult | null> {
 	try {
-		const parsed = profileStorage.getJSON<unknown>(STORAGE_KEY);
-		if (!parsed) return null;
+		const record = await widgetRecordStore.getLatest(WIDGET_TYPE);
+		if (!record) return null;
 
-		const validated = AnalysisResultSchema.safeParse(parsed);
+		const validated = AnalysisResultSchema.safeParse(record.contentParsed);
 		if (validated.success) {
 			return validated.data;
 		} else {
-			console.warn('Invalid speak-better data in storage:', validated.error);
-			profileStorage.removeItem(STORAGE_KEY);
+			console.warn('Invalid speak-better data in DB:', validated.error);
 			return null;
 		}
 	} catch (error) {
-		console.warn('Failed to load speak-better from storage:', error);
+		console.warn('Failed to load speak-better from DB:', error);
 		return null;
 	}
 }

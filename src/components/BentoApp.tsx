@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import { runV4PostMigrationIfNeeded, runDecayIfDue } from '../program/services/decayService';
 import {
   BentoNodeComponent,
   createInitialTree,
@@ -32,7 +33,6 @@ import { MetaQueryLensWidget } from '../widgets/lens';
 import { RotateCcw, PencilRuler, Loader2, Settings } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { GlobalSTTController } from './GlobalSTTController';
-import { PipelineBreadcrumb } from './PipelineBreadcrumb';
 import { RambleNativeStatus } from './RambleNativeStatus';
 import { CloudSTTStatus } from './CloudSTTStatus';
 import { HelpStrip } from './HelpStrip';
@@ -71,6 +71,17 @@ export const BentoApp: React.FC = () => {
   useEffect(() => {
     saveTreeToStorage(tree);
   }, [tree]);
+
+  // Run data maintenance on mount (non-blocking fire-and-forget)
+  // Widget migration runs first (so WatermelonDB has data before widgets query),
+  // then the v4 post-migration fix, then decay — all idempotent.
+  useEffect(() => {
+    const runMaintenance = async () => {
+      await runV4PostMigrationIfNeeded();
+      await runDecayIfDue();
+    };
+    runMaintenance().catch(console.error);
+  }, []);
 
   const handleSplit = useCallback((id: string, direction: 'horizontal' | 'vertical', ratio = 0.5) => {
     setTree((prev) => splitNode(prev, id, direction, ratio));
@@ -184,8 +195,7 @@ export const BentoApp: React.FC = () => {
       <div className="w-screen h-screen flex flex-col bg-slate-100">
         {/* Header */}
         <header className="h-9 bg-white border-b border-slate-200 flex items-center gap-3 px-3 flex-shrink-0">
-          <h1 className="text-xs font-bold text-slate-700 flex-shrink-0">Ramble</h1>
-          <PipelineBreadcrumb />
+          <img src="/ramble-icon.png" alt="Ramble" className="w-5 h-5 flex-shrink-0" />
           <RambleNativeStatus />
           <CloudSTTStatus />
           <ActiveGoalTimer />

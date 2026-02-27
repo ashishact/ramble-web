@@ -1,6 +1,22 @@
 /**
  * Input Processor
  *
+ * PARADIGM: BATCH (stop-and-process) ─────────────────────────────────────────
+ * This processor runs AFTER a recording ends or text is submitted. It never
+ * sees intermediate/streaming text. Called from:
+ *   - GlobalSTTController: after native:transcription-final (out-of-app speech)
+ *   - ConversationWidget or input handlers: after user types/pastes (in-app)
+ *
+ * FOCUS CONTEXT: Both in-app and out-of-app — the source param distinguishes:
+ *   source: 'speech'   → native app sent a completed utterance
+ *   source: 'text'     → user typed directly in Ramble
+ *   source: 'pasted'   → user pasted content
+ *   source: 'meeting'  → meeting widget committed a segment (batch post-process)
+ *
+ * NOT used by the Meeting Transcription widget during live streaming —
+ * that widget runs its own independent LLM loop (see meeting-transcription/process.ts).
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
  * Core processing logic:
  * 1. Build context
  * 2. Call LLM with structured prompt
@@ -10,6 +26,7 @@
 import { callLLM } from '../llmClient';
 import { workingMemory, type WorkingMemoryData } from '../WorkingMemory';
 import { findPhoneticMatches, findSpellingMatches, formatMatchesForLLM } from '../services/phoneticMatcher';
+import { normalizeInput } from '../services/normalizeInput';
 import { parseLLMJSON } from '../utils/jsonUtils';
 import {
   entityStore,
@@ -20,10 +37,40 @@ import {
   correctionStore,
   conversationStore,
 } from '../../db/stores';
+import type { MemoryOrigin } from '../../db/stores/memoryStore';
+import type { ConversationSource } from '../../db/models/Conversation';
 import { runPlugins, type PluginOutput } from '../plugins';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger('Pipeline');
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/**
+ * Identifies the model/prompt version used for extraction.
+ * Update this string when the system prompt or model changes so memories
+ * carry a breadcrumb of how they were created.
+ */
+const EXTRACTION_VERSION = 'v1-groq-gpt120b';
+
+/**
+ * Map conversation source to memory origin.
+ * 'text' is the legacy value — treated as 'typed'.
+ */
+function sourceToOrigin(source: ConversationSource | string): MemoryOrigin {
+  switch (source) {
+    case 'speech': return 'speech';
+    case 'meeting': return 'meeting';
+    case 'pasted': return 'pasted';
+    case 'document': return 'document';
+    case 'typed':
+    case 'text':
+    default:
+      return 'typed';
+  }
+}
 
 // ============================================================================
 // Types
@@ -73,7 +120,13 @@ export interface ProcessingResult {
 interface NormalizedExtraction {
   entities: Array<{ name: string; type: string }>;
   topics: Array<{ name: string; category?: string }>;
-  memories: Array<{ content: string; type: string; importance?: number; subject?: string }>;
+  memories: Array<{
+    content: string;
+    type: string;
+    importance?: number;
+    subject?: string;
+    contradicts?: string[];  // short IDs (m1, m2...) of memories this belief competes with
+  }>;
   goals: Array<{ statement: string; type: string; status?: string; progress?: number; shortId?: string }>;
   corrections: Array<{ wrong: string; correct: string }>;
   summary?: string;  // LLM-generated summary for large inputs
@@ -116,7 +169,7 @@ function normalizeTopic(t: unknown): { name: string; category?: string } | null 
 /**
  * Normalize a single memory (handles string or object)
  */
-function normalizeMemory(m: unknown): { content: string; type: string; importance?: number; subject?: string } | null {
+function normalizeMemory(m: unknown): { content: string; type: string; importance?: number; subject?: string; contradicts?: string[] } | null {
   if (typeof m === 'string' && m.trim()) {
     return { content: m.trim(), type: 'fact' };
   }
@@ -124,11 +177,20 @@ function normalizeMemory(m: unknown): { content: string; type: string; importanc
     const obj = m as Record<string, unknown>;
     const content = typeof obj.content === 'string' ? obj.content.trim() : null;
     if (content) {
+      // Extract contradiction references — must be an array of non-empty strings
+      let contradicts: string[] | undefined;
+      if (Array.isArray(obj.contradicts)) {
+        const ids = (obj.contradicts as unknown[])
+          .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+          .map(id => id.trim());
+        if (ids.length > 0) contradicts = ids;
+      }
       return {
         content,
         type: typeof obj.type === 'string' ? obj.type : 'fact',
         importance: typeof obj.importance === 'number' ? obj.importance : undefined,
         subject: typeof obj.subject === 'string' ? obj.subject : undefined,
+        contradicts,
       };
     }
   }
@@ -258,14 +320,22 @@ Given the user's latest input and the context, extract:
 1. **entities**: People, places, organizations, projects, or named concepts.
    Do NOT include: dates, times, numbers, or temporal expressions.
 2. **topics**: Detect topic switches - what is the user talking about now? Format: "Domain / Topic" (e.g., "Work / Planning", "Health / Exercise"). Reuse existing domains.
-3. **memories**: Facts, beliefs, preferences, concerns, or intentions to remember
-4. **goals**: Goals mentioned - can be new goals, progress updates, or completions
-5. **corrections**: STT errors you can identify
+3. **memories**: Facts, beliefs, preferences, concerns, or intentions to remember.
+4. **goals**: Goals mentioned - can be new goals, progress updates, or completions.
+5. **corrections**: STT errors you can identify.
 
 IMPORTANT:
 - Check if names in the input might be mishearings of Known Entities listed in the context.
 - Speech-to-text often mishears names. If a name sounds similar to a known entity, use the known entity.
 - Prefer matching against existing entities rather than creating duplicates.
+
+MEMORIES - Belief competition model:
+Working Memory lists existing memories with short IDs like [m1], [m2], etc.
+If a new memory CONTRADICTS an existing one (e.g. different person assigned to same task, conflicting facts), include a "contradicts" field with the short IDs of the competing memories.
+Do NOT omit or replace the old memory — both beliefs coexist. The system resolves the winner at read time based on confidence.
+
+Example: if [m3] says "Gopi will send the draft" and the user now says Ashish is sending it:
+{"content": "Ashish will send the draft", "type": "belief", "contradicts": ["m3"]}
 
 GOALS - Hierarchical namespace. Active goals listed with short IDs (g1, g2, etc.).
 
@@ -308,6 +378,11 @@ Be concise. Only extract what's clearly stated or strongly implied.`;
 
 /**
  * Process a user input through the core loop
+ *
+ * New two-phase flow:
+ *  Phase 1 (cheap) — normalize punctuation/sentences, store on conversation
+ *  Phase 2 (existing) — extract entities/topics/memories/goals using normalizedText
+ *  Post-save — deterministic auto-reinforce related existing memories (zero LLM calls)
  */
 export async function processInput(
   sessionId: string,
@@ -319,33 +394,62 @@ export async function processInput(
 
   logger.info('Processing input', { sessionId, inputLength: inputText.length, source });
 
+  // ── Phase 1: Normalize input ─────────────────────────────────────────────
+  // Fetch the last few conversations to provide sentence context for Phase 1.
+  // We only need raw records — no full WorkingMemory fetch required here.
+  const recentConvs = await conversationStore.getRecent(3);
+  const recentSentences: string[] = recentConvs
+    .reverse() // oldest first
+    .flatMap(c => {
+      const parsed = c.sentencesParsed
+      if (parsed.length > 0) {
+        return parsed.map(s => s.text)
+      }
+      // Fallback: split sanitizedText on sentence boundaries
+      return c.sanitizedText.split(/(?<=[.!?])\s+/).filter(Boolean)
+    })
+    .slice(-5);  // Keep last 5 sentences for context
+
+  const { normalizedText, sentences } = await normalizeInput(inputText, recentSentences);
+
+  // Persist Phase 1 output on the conversation record
+  await conversationStore.updateNormalized(
+    conversationId,
+    normalizedText,
+    JSON.stringify(sentences)
+  );
+
+  // ── Phase 2: Build context + extract ─────────────────────────────────────
   // 1. Build context using unified WorkingMemory (all conversations, no session filter)
   const wmData = await workingMemory.fetch({ size: 'medium' });
   const contextPrompt = workingMemory.formatForLLM(wmData);
 
+  // Use normalizedText for Phase 2 if available (fallback: original inputText)
+  const extractionText = normalizedText || inputText;
+
   // Check if input needs summary (>= 50 words)
-  const wordCount = inputText.split(/\s+/).filter(w => w.length > 0).length;
+  const wordCount = extractionText.split(/\s+/).filter(w => w.length > 0).length;
   const needsSummary = wordCount >= 50;
 
   // 2. Run correction analysis based on source
   let correctionSection = '';
   if (source === 'speech') {
     // Full phonetic analysis for speech - STT makes phonetic errors
-    const phoneticMatches = await findPhoneticMatches(inputText);
+    const phoneticMatches = await findPhoneticMatches(extractionText);
     const phoneticHints = formatMatchesForLLM(phoneticMatches);
     if (phoneticHints) {
       correctionSection = `\n${phoneticHints}\n`;
     }
   } else {
     // Light spelling check for text - just note that typos are possible
-    const spellingMatches = await findSpellingMatches(inputText);
+    const spellingMatches = await findSpellingMatches(extractionText);
     if (spellingMatches.length > 0) {
       const hints = spellingMatches.map(m => `- "${m.inputWord}" might be "${m.matchedEntity}"`);
       correctionSection = `\n## Possible Typos (verify if relevant)\n${hints.join('\n')}\n`;
     }
   }
 
-  // 3. Build prompt
+  // 3. Build prompt using normalizedText
   const summaryInstruction = needsSummary
     ? '\n\nAlso provide a brief summary (1-2 sentences) in a "summary" field. Keep the original first-person voice - just condense, don\'t rephrase as "the user said".'
     : '';
@@ -356,11 +460,11 @@ export async function processInput(
 ${contextPrompt}
 ${correctionSection}
 ## New Input
-${inputText}
+${extractionText}
 
 Extract entities, topics, memories, and goals from the new input. Respond with JSON only.${summaryInstruction}`;
 
-  // 4. Call LLM
+  // 4. Call LLM (Phase 2 extraction)
   let llmResponse: string;
   try {
     const response = await callLLM({
@@ -390,7 +494,7 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
       pluginId: 'core-processor',
       conversationId,
       sessionId,
-      inputText,
+      inputText: extractionText,
       output: {},
       llmPrompt: userPrompt,
       llmResponse,
@@ -416,11 +520,30 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
   });
 
   // 5. Save to DB (extraction is now normalized and validated)
-  const result = await saveExtraction(sessionId, conversationId, extraction, wmData);
+  const origin = sourceToOrigin(source);
+  const result = await saveExtraction(sessionId, conversationId, extraction, wmData, origin);
 
   // 5.1 Save summary if generated
   if (needsSummary && extraction.summary) {
     await conversationStore.updateSummary(conversationId, extraction.summary);
+  }
+
+  // 5.2 Deterministic auto-reinforce: boost existing memories that share entities/topics
+  // with the newly created memories. Zero LLM calls — pure DB operations.
+  if (result.memories.length > 0) {
+    const newMemoryIds = new Set(result.memories.map(m => m.id));
+    const allEntityIds = result.entities.map(e => e.id);
+    const allTopicIds = result.topics.map(t => t.id);
+
+    if (allEntityIds.length > 0 || allTopicIds.length > 0) {
+      const relatedMemories = await memoryStore.getForContext(allEntityIds, allTopicIds, 20);
+      for (const related of relatedMemories) {
+        // Only reinforce memories that were NOT just created in this pass
+        if (!newMemoryIds.has(related.id)) {
+          await memoryStore.reinforce(related.id);
+        }
+      }
+    }
   }
 
   // 6. Log success
@@ -428,7 +551,7 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
     pluginId: 'core-processor',
     conversationId,
     sessionId,
-    inputText,
+    inputText: extractionText,
     output: extraction as unknown as Record<string, unknown>,
     llmPrompt: userPrompt,
     llmResponse,
@@ -484,7 +607,8 @@ async function saveExtraction(
   _sessionId: string,
   conversationId: string,
   extraction: NormalizedExtraction,
-  wmData: WorkingMemoryData
+  wmData: WorkingMemoryData,
+  origin: MemoryOrigin = 'typed'
 ): Promise<Omit<ProcessingResult, 'rawResponse' | 'pluginOutputs'>> {
   const result: Omit<ProcessingResult, 'rawResponse' | 'pluginOutputs'> = {
     entities: [],
@@ -536,7 +660,9 @@ async function saveExtraction(
       topicIds,
       sourceConversationIds: [conversationId],
       importance: m.importance ?? 0.5,
-      confidence: 0.8,
+      // confidence defaults to origin-based prior inside memoryStore.create()
+      origin,
+      extractionVersion: EXTRACTION_VERSION,
     });
 
     result.memories.push({
@@ -544,6 +670,16 @@ async function saveExtraction(
       content: memory.content,
       type: memory.type,
     });
+
+    // Wire contradiction edges — both memories remain alive, winner resolved at read time
+    if (m.contradicts && m.contradicts.length > 0) {
+      for (const shortId of m.contradicts) {
+        const existing = workingMemory.findMemoryByShortId(wmData, shortId);
+        if (existing) {
+          await memoryStore.addContradiction(memory.id, existing.id);
+        }
+      }
+    }
   }
 
   // Handle goals (already normalized)

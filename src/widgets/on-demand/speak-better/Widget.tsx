@@ -1,6 +1,24 @@
 /**
  * Speak Better Widget
  *
+ * PARADIGM: BATCH only (stop-and-process) ────────────────────────────────────
+ * Observes the conversations DB table and triggers after a new record is
+ * committed — i.e. after a recording ends and processInput() has saved it.
+ *
+ * FOCUS CONTEXT: In-app and out-of-app solo mode.
+ * Works for any completed speech or typed input that lands in the conversations
+ * table. Does NOT run during meeting mode.
+ *
+ * GAP — NO STREAMING / MEETING MODE:
+ *   When the native app is in meeting mode, Speak Better stays silent because
+ *   meeting segments don't go through the conversations table — they flow
+ *   through meetingStatus.segments instead.
+ *   Future option A: add a meeting mode that analyzes the [MIC] speaker's
+ *   contributions from the live transcript (what the user actually said).
+ *   Future option B: after a meeting ends, auto-analyze the user's mic segments
+ *   as a batch post-processing step.
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
  * Helps users improve their speech by analyzing what they said
  * and suggesting better ways to express it.
  *
@@ -179,13 +197,14 @@ export function SpeakBetterWidget() {
     if (hasLoadedFromStorageRef.current) return;
     hasLoadedFromStorageRef.current = true;
 
-    const stored = loadFromStorage();
-    if (stored) {
-      setResult(stored);
-      setLoadingState("success");
-      // Restore the last analyzed ID to prevent re-analyzing on reload
-      lastAnalyzedIdRef.current = stored.conversationId;
-    }
+    loadFromStorage().then(stored => {
+      if (stored) {
+        setResult(stored);
+        setLoadingState("success");
+        // Restore the last analyzed ID to prevent re-analyzing on reload
+        lastAnalyzedIdRef.current = stored.conversationId;
+      }
+    }).catch(() => {});
   }, []);
 
   // Format result for TTS narration

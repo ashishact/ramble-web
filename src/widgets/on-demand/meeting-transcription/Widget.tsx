@@ -269,12 +269,8 @@ function ArchivedMeetingRow({ meeting, onSelect }: { meeting: ArchivedMeeting; o
 type View = 'live' | 'archive-list' | 'archive-detail' | 'settings';
 
 export function MeetingTranscriptionWidget() {
-  const [meetingState, setMeetingState] = useState<MeetingState>(() =>
-    loadMeetingState() ?? createInitialMeetingState()
-  );
-  const [archivedMeetings, setArchivedMeetings] = useState<ArchivedMeeting[]>(() =>
-    loadArchivedMeetings()
-  );
+  const [meetingState, setMeetingState] = useState<MeetingState>(() => createInitialMeetingState());
+  const [archivedMeetings, setArchivedMeetings] = useState<ArchivedMeeting[]>([]);
   const [settings, setSettings] = useState<MeetingSettings>(() => loadMeetingSettings());
   const [view, setView] = useState<View>('live');
   const [selectedArchiveMeeting, setSelectedArchiveMeeting] = useState<ArchivedMeeting | null>(null);
@@ -290,6 +286,25 @@ export function MeetingTranscriptionWidget() {
 
   const settingsRef = useRef<MeetingSettings>(settings);
   settingsRef.current = settings;
+
+  // Load persisted state from WatermelonDB on mount
+  useEffect(() => {
+    const loadInitialState = async () => {
+      const [savedState, savedArchive] = await Promise.all([
+        loadMeetingState(),
+        loadArchivedMeetings(),
+      ]);
+      if (savedState) {
+        setMeetingState(savedState);
+        stateRef.current = savedState;
+      }
+      if (savedArchive.length > 0) {
+        setArchivedMeetings(savedArchive);
+      }
+    };
+    loadInitialState().catch(console.error);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const pendingTextRef = useRef('');
   const latestAudioTypeRef = useRef<'mic' | 'system'>('mic');
@@ -427,13 +442,14 @@ export function MeetingTranscriptionWidget() {
   // -------------------------------------------------------------------------
   useEffect(() => {
     const unsubStart = eventBus.on('native:recording-started', () => {
+      void (async () => {
       const state = stateRef.current;
       const now = Date.now();
       const gapSinceLastSegment = now - state.lastUpdatedAt;
       const isNewMeeting = state.segmentCount > 0 && gapSinceLastSegment >= NEW_MEETING_GAP_MS;
 
       if (isNewMeeting) {
-        const updatedArchive = archiveCurrentMeeting(state);
+        const updatedArchive = await archiveCurrentMeeting(state);
         setArchivedMeetings(updatedArchive);
         pendingTextRef.current = '';
         if (staleTimerRef.current) { clearTimeout(staleTimerRef.current); staleTimerRef.current = null; }
@@ -442,6 +458,7 @@ export function MeetingTranscriptionWidget() {
         setMeetingState(fresh);
         stateRef.current = fresh;
       }
+      })();
     });
 
     async function flushPending() {
@@ -473,7 +490,7 @@ export function MeetingTranscriptionWidget() {
 
         // Step 2: archive now — safe even if step 3 fails
         const meetingId = `meeting-${stateRef.current.startedAt}`;
-        const savedArchive = archiveCurrentMeeting(stateRef.current);
+        const savedArchive = await archiveCurrentMeeting(stateRef.current);
         setArchivedMeetings(savedArchive);
 
         // Step 3 + 4: generate title, then patch archive with it
@@ -482,7 +499,7 @@ export function MeetingTranscriptionWidget() {
           if (updatedState.title) {
             stateRef.current = updatedState;
             setMeetingState(updatedState);
-            const patchedArchive = updateArchivedMeetingTitle(meetingId, updatedState.title);
+            const patchedArchive = await updateArchivedMeetingTitle(meetingId, updatedState.title);
             setArchivedMeetings(patchedArchive);
           }
         } catch { /* generateMeetingEndSummary logs internally — archive already safe */ }
@@ -552,7 +569,9 @@ export function MeetingTranscriptionWidget() {
   // -------------------------------------------------------------------------
   const handleNewMeeting = useCallback(() => {
     const state = stateRef.current;
-    if (state.segmentCount > 0) setArchivedMeetings(archiveCurrentMeeting(state));
+    if (state.segmentCount > 0) {
+      archiveCurrentMeeting(state).then(setArchivedMeetings).catch(console.error);
+    }
     pendingTextRef.current = '';
     if (staleTimerRef.current) { clearTimeout(staleTimerRef.current); staleTimerRef.current = null; }
     const fresh = createInitialMeetingState();

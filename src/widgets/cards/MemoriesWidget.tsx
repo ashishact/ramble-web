@@ -27,9 +27,9 @@ export const MemoriesWidget: React.FC<WidgetProps> = () => {
       .query(Q.sortBy('importance', Q.desc));
 
     const subscription = query.observe().subscribe((results) => {
-      // Filter out superseded memories and take top 20
+      // Exclude tombstoned memories; contested memories ARE shown (they are active beliefs)
       const active = results
-        .filter((m) => !m.supersededBy)
+        .filter((m) => !m.supersededBy && m.state !== 'superseded')
         .slice(0, 20);
       setMemories(active);
     });

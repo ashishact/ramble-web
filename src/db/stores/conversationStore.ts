@@ -103,6 +103,20 @@ export const conversationStore = {
     }
   },
 
+  async updateNormalized(id: string, normalizedText: string, sentences: string): Promise<void> {
+    try {
+      const conv = await conversations.find(id)
+      await database.write(async () => {
+        await conv.update((c) => {
+          c.normalizedText = normalizedText
+          c.sentences = sentences
+        })
+      })
+    } catch {
+      // Not found
+    }
+  },
+
   async search(query: string, limit = 20): Promise<Conversation[]> {
     // Simple text search - WatermelonDB doesn't have full-text search
     // For production, consider SQLite FTS or external search

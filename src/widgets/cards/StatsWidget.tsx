@@ -41,8 +41,8 @@ export const StatsWidget: React.FC<WidgetProps> = () => {
       goals$,
       conversations$,
     ]).subscribe(([entityCount, topicCount, memoriesArr, goalCount, conversationCount]) => {
-      // Filter active memories (not superseded)
-      const activeMemories = memoriesArr.filter((m) => !m.supersededBy);
+      // Filter active memories (exclude true tombstones; contested memories are active)
+      const activeMemories = memoriesArr.filter((m) => !m.supersededBy && m.state !== 'superseded');
       setStats({
         entities: entityCount,
         topics: topicCount,

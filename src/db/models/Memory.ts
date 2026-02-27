@@ -27,6 +27,14 @@ export default class Memory extends Model {
   // Metadata
   @field('metadata') metadata!: string  // JSON for emotions, stakes, etc.
   @field('createdAt') createdAt!: number
+  // v4: state, origin, activity tracking
+  @field('state') state!: string           // 'provisional' | 'stable' | 'contested' | 'superseded' | '' (empty = stable)
+  @field('origin') origin?: string         // 'speech' | 'typed' | 'pasted' | 'document' | 'meeting'
+  @field('ownershipScore') ownershipScore!: number   // 0-1
+  @field('activityScore') activityScore!: number     // 0-1, dynamic, decays over time
+  @field('extractionVersion') extractionVersion?: string
+  // v5: contradiction edges (belief competition model)
+  @field('contradicts') contradicts?: string  // JSON array of memory IDs this belief competes with
 
   get entityIdsParsed(): string[] {
     try {
@@ -52,6 +60,14 @@ export default class Memory extends Model {
     }
   }
 
+  get contradictsParsed(): string[] {
+    try {
+      return JSON.parse(this.contradicts || '[]') as string[]
+    } catch {
+      return []
+    }
+  }
+
   get metadataParsed(): Record<string, unknown> {
     try {
       return JSON.parse(this.metadata || '{}')
@@ -61,8 +77,17 @@ export default class Memory extends Model {
   }
 
   get isActive(): boolean {
+    // Tombstones: explicitly killed via supersede() — exclude
     if (this.supersededBy) return false
+    if (this.state === 'superseded') return false
+    // Expired temporal memories
     if (this.validUntil && Date.now() > this.validUntil) return false
+    // 'contested' memories ARE active — they compete, not die
     return true
+  }
+
+  /** True if this memory is in a contradiction cluster */
+  get isContested(): boolean {
+    return this.contradictsParsed.length > 0
   }
 }
