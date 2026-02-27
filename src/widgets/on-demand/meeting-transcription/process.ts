@@ -80,7 +80,7 @@ export const STALE_TEXT_TIMEOUT_MS = 20_000;
 
 const LLM_THROTTLE_MS = 8_000;
 const MAX_HISTORY = 20;
-const MAX_ARCHIVE = 10;
+const MAX_ARCHIVE = 50;
 const LLM_HISTORY_WINDOW = 8;
 const MAX_OVERVIEW_ITEMS_IN_PROMPT = 12;
 const MAX_ACTION_ITEMS = 20;
@@ -325,13 +325,19 @@ export function saveMeetingState(state: MeetingState): void {
  */
 export async function loadMeetingState(): Promise<MeetingState | null> {
   try {
-    const record = await widgetRecordStore.getLatest(MEETING_WIDGET_TYPE, MEETING_SUBTYPE_ACTIVE);
+    // Check how many active records exist (should be 0 or 1)
+    const allActive = await widgetRecordStore.getRecent(MEETING_WIDGET_TYPE, 100, MEETING_SUBTYPE_ACTIVE);
+    console.log('[Load] active records in DB:', allActive.length);
+
+    const record = allActive[0] ?? null;
     if (!record) return null;
+
     const result = MeetingStateSchema.safeParse(record.contentParsed);
     if (!result.success) {
       console.warn('[MeetingTranscription] State schema changed — resetting:', result.error.issues);
       return null;
     }
+    console.log('[Load] loaded active state — segments:', result.data.segmentCount, 'startedAt:', result.data.startedAt);
     return result.data;
   } catch (error) {
     console.warn('[MeetingTranscription] Failed to load state:', error);
@@ -354,10 +360,12 @@ export function clearMeetingState(): void {
 export async function loadArchivedMeetings(): Promise<ArchivedMeeting[]> {
   try {
     const rows = await widgetRecordStore.getRecent(MEETING_WIDGET_TYPE, MAX_ARCHIVE, MEETING_SUBTYPE_ARCHIVE);
+    const seen = new Set<string>();
     const meetings: ArchivedMeeting[] = [];
     for (const row of rows) {
       const result = ArchivedMeetingSchema.safeParse(row.contentParsed);
-      if (result.success) {
+      if (result.success && !seen.has(result.data.id)) {
+        seen.add(result.data.id);
         meetings.push(result.data);
       }
     }
@@ -391,14 +399,23 @@ export async function archiveCurrentMeeting(state: MeetingState): Promise<Archiv
     title: state.title,
   };
 
-  // Transition the existing active row to 'archive', or create a fresh archive row
-  const activeRecord = await widgetRecordStore.getLatest(MEETING_WIDGET_TYPE, MEETING_SUBTYPE_ACTIVE);
-  if (activeRecord) {
-    await widgetRecordStore.update(activeRecord.id, {
+  // Get ALL active records — fire-and-forget saveMeetingState can create duplicates
+  // via the non-atomic upsert race. We must transition/clean ALL of them.
+  const allActive = await widgetRecordStore.getRecent(MEETING_WIDGET_TYPE, 100, MEETING_SUBTYPE_ACTIVE);
+  console.log('[Archive] active records found:', allActive.length);
+
+  if (allActive.length > 0) {
+    // Transition the first (latest) to archive with the meeting data
+    await widgetRecordStore.update(allActive[0].id, {
       content: archived,
       subtype: MEETING_SUBTYPE_ARCHIVE,
       title: archived.title || undefined,
     });
+    // Delete any stale duplicate active records
+    for (let i = 1; i < allActive.length; i++) {
+      console.log('[Archive] deleting stale active record:', allActive[i].id);
+      await widgetRecordStore.delete(allActive[i].id);
+    }
   } else {
     // No active row exists — create a new archive row directly
     await widgetRecordStore.create({
@@ -832,9 +849,10 @@ Reply format: { "title": "..." }`;
 
     if (!title) return state;
 
-    const newState: MeetingState = { ...state, title };
-    saveMeetingState(newState);
-    return newState;
+    // Return state with title — caller handles persistence via updateArchivedMeetingTitle.
+    // Do NOT call saveMeetingState here: the active record was already transitioned to
+    // 'archive' by archiveCurrentMeeting, so upsert would create a phantom active row.
+    return { ...state, title };
   } catch (error) {
     console.error('[MeetingTranscription] End-of-meeting summary failed:', error);
     return state;

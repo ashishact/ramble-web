@@ -38,7 +38,7 @@ export const pluginStore = {
         p.avgProcessingTimeMs = 0
         p.isCore = data.isCore ?? false
         p.createdAt = now
-        p.updatedAt = now
+        p.modifiedAt = now
       })
     })
   },
@@ -90,7 +90,7 @@ export const pluginStore = {
       await database.write(async () => {
         await plugin.update((p) => {
           p.active = active
-          p.updatedAt = Date.now()
+          p.modifiedAt = Date.now()
         })
       })
     } catch {
@@ -140,7 +140,7 @@ export const pluginStore = {
           if (data.llmTier !== undefined) p.llmTier = data.llmTier
           if (data.llmConfig !== undefined) p.llmConfig = JSON.stringify(data.llmConfig)
           p.version += 1
-          p.updatedAt = Date.now()
+          p.modifiedAt = Date.now()
         })
       })
       return plugin

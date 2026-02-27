@@ -69,7 +69,7 @@ export const dataStore = {
         d.dataType = type
         d.value = valueJson
         d.createdAt = originalCreatedAt
-        d.updatedAt = now
+        d.modifiedAt = now
       })
     })
   },

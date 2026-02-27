@@ -28,7 +28,7 @@ export const widgetRecordStore = {
         r.content = JSON.stringify(data.content)
         r.tags = data.tags ? JSON.stringify(data.tags) : undefined
         r.createdAt = data.createdAt ?? now
-        r.updatedAt = now
+        r.modifiedAt = now
       })
     })
   },
@@ -43,20 +43,16 @@ export const widgetRecordStore = {
     subtype?: string
     tags?: string[]
   }): Promise<void> {
-    try {
-      const record = await records.find(id)
-      await database.write(async () => {
-        await record.update((r) => {
-          if (data.content !== undefined) r.content = JSON.stringify(data.content)
-          if (data.title !== undefined) r.title = data.title
-          if (data.subtype !== undefined) r.subtype = data.subtype
-          if (data.tags !== undefined) r.tags = JSON.stringify(data.tags)
-          r.updatedAt = Date.now()
-        })
+    const record = await records.find(id)
+    await database.write(async () => {
+      await record.update((r) => {
+        if (data.content !== undefined) r.content = JSON.stringify(data.content)
+        if (data.title !== undefined) r.title = data.title
+        if (data.subtype !== undefined) r.subtype = data.subtype
+        if (data.tags !== undefined) r.tags = JSON.stringify(data.tags)
+        r.modifiedAt = Date.now()
       })
-    } catch {
-      // Not found — silently ignore
-    }
+    })
   },
 
   /**

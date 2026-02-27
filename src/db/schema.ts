@@ -16,6 +16,11 @@
  *
  * Fresh start - no migrations needed.
  * Includes summary column for conversation summaries.
+ *
+ * ⚠️  NAMING RULE: Never use `updatedAt` as a model PROPERTY name.
+ *     WatermelonDB auto-touches a snake_case `updated_at` column on every update().
+ *     Our schema uses camelCase, so the auto-touch crashes.
+ *     Use `modifiedAt` as the TS property name instead: @field('updatedAt') modifiedAt!: number
  */
 
 import { appSchema, tableSchema } from '@nozbe/watermelondb'

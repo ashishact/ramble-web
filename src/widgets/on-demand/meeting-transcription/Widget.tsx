@@ -457,6 +457,11 @@ export function MeetingTranscriptionWidget() {
         saveMeetingState(fresh);
         setMeetingState(fresh);
         stateRef.current = fresh;
+      } else if (state.segmentCount === 0) {
+        // Fresh session — stamp startedAt so this recording gets a unique meeting ID
+        const stamped = { ...stateRef.current, startedAt: now };
+        stateRef.current = stamped;
+        setMeetingState(stamped);
       }
       })();
     });
@@ -497,12 +502,20 @@ export function MeetingTranscriptionWidget() {
         try {
           const updatedState = await generateMeetingEndSummary(stateRef.current, settingsRef.current);
           if (updatedState.title) {
-            stateRef.current = updatedState;
-            setMeetingState(updatedState);
             const patchedArchive = await updateArchivedMeetingTitle(meetingId, updatedState.title);
             setArchivedMeetings(patchedArchive);
           }
         } catch { /* generateMeetingEndSummary logs internally — archive already safe */ }
+
+        // Step 5: reset to fresh state — meeting is safely archived.
+        // This ensures the next recording gets a new startedAt (no ID collision)
+        // and prevents a phantom 'active' record from lingering in DB.
+        pendingTextRef.current = '';
+        if (staleTimerRef.current) { clearTimeout(staleTimerRef.current); staleTimerRef.current = null; }
+        const fresh = createInitialMeetingState();
+        saveMeetingState(fresh);
+        stateRef.current = fresh;
+        setMeetingState(fresh);
       })();
     });
 

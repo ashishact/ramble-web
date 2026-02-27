@@ -103,7 +103,7 @@ Categories:
 
 Priority: high (critical gaps), medium (helpful), low (nice to have)
 
-ORDERING: Return exactly 4 questions. Last one = most relevant to latest message.
+Return 1 to 4 questions — only as many as there are real gaps worth asking about. If only 1 or 2 gaps are meaningful, return just those. Last one = most relevant to latest message.
 
 IMPORTANT: If previous questions are provided, do NOT repeat them. Find NEW gaps to explore.
 
@@ -133,9 +133,7 @@ Categories:
 
 Priority: high (critical), medium (helpful), low (nice to have)
 
-Return exactly 4 questions. Last one = most relevant to latest message.
-
-IMPORTANT: If previous questions are provided, do NOT repeat them. Find NEW gaps.
+Return 1 to 4 questions — only as many as there are genuine gaps about this topic. Do NOT repeat previous ones. Find NEW gaps.
 
 JSON format:
 {
@@ -262,7 +260,7 @@ Categories:
 
 Priority: high = urgent or important right now, medium = helpful, low = nice to have
 
-Return exactly 4 questions, last = most immediately relevant to the latest exchange.
+Return 1 to 4 questions — only as many as are genuinely worth asking based on what's been said so far. If the transcript is brief or clear, return fewer. Last = most immediately relevant to the latest exchange.
 
 JSON format:
 {
@@ -305,7 +303,7 @@ export async function generateMeetingQuestions(
 ## Live Meeting Transcript (most recent last):
 ${transcript}
 ${previousSection}
-Generate 4 questions to ask the [SYSTEM] participants right now. Respond with JSON only.`;
+Generate 1 to 4 questions to ask the [SYSTEM] participants right now — only what's genuinely worth asking. Respond with JSON only.`;
 
   try {
     const response = await callLLM({

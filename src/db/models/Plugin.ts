@@ -38,7 +38,7 @@ export default class Plugin extends Model {
   // Meta
   @field('isCore') isCore!: boolean
   @field('createdAt') createdAt!: number
-  @field('updatedAt') updatedAt!: number
+  @field('updatedAt') modifiedAt!: number
   @field('lastUsed') lastUsed?: number
 
   get triggersParsed(): PluginTriggers {

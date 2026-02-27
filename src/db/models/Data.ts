@@ -54,7 +54,8 @@ export default class Data extends Model {
 
   @field('createdAt') createdAt!: number
 
-  @field('updatedAt') updatedAt!: number
+  /** Named modifiedAt to avoid WatermelonDB's auto-touch of snake_case 'updated_at' */
+  @field('updatedAt') modifiedAt!: number
 
   // Parsed value getter
   get valueParsed(): unknown {

@@ -33,8 +33,8 @@ export default class WidgetRecord extends Model {
   /** Immutable creation timestamp (set to generatedAt / startedAt of the payload) */
   @field('createdAt') createdAt!: number
 
-  /** Last mutation timestamp */
-  @field('updatedAt') updatedAt!: number
+  /** Last mutation timestamp (named modifiedAt to avoid WatermelonDB's auto-touch of snake_case 'updated_at') */
+  @field('updatedAt') modifiedAt!: number
 
   /** Parsed content — returns null on parse failure */
   get contentParsed(): unknown {

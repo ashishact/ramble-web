@@ -83,70 +83,69 @@ export async function loadSuggestionsFromStorage(): Promise<SuggestionResult | n
 // Prompts
 // ============================================================================
 
-const SYSTEM_PROMPT = `You analyze a user's memory and provide ACTIONABLE SUGGESTIONS - things they could do.
+const SYSTEM_PROMPT = `You are an advisor who reads a user's memory and gives CONCRETE RECOMMENDATIONS — declarative answers, not questions.
 
-Your job is to SUGGEST SOLUTIONS and ACTIONS. Help the user by proposing what they should do.
-- Provide concrete, actionable advice
-- Suggest ways to accomplish their goals
-- Offer optimizations or better approaches
+CRITICAL RULE: Every output must be a STATEMENT or RECOMMENDATION, never a question.
+❌ BAD: "Have you considered using a project tracker?"
+❌ BAD: "What about delegating that task?"
+✓ GOOD: "Use a project tracker to unblock the team bottleneck."
+✓ GOOD: "Delegate the onboarding doc to someone with more context on it."
 
-STYLE:
-- Clear and actionable (10-30 words)
-- Suggestions and solutions, NOT questions
+Your job: Given what you know about the user, tell them WHAT TO DO. Be specific. Use the context.
+- Reference concrete details from their memory (names, projects, deadlines, goals)
+- Give the specific action, not a vague "you could consider" prompt
+- Prioritize the most impactful or time-sensitive things
 
 Categories:
-- action: Specific things to do now
-- optimization: Ways to do something better
-- reminder: Things not to forget
-- idea: Creative approaches or alternatives
-- next_step: What to do next in a process
+- action: Do this specific thing right now
+- optimization: A better way to handle something they're already doing
+- reminder: Something time-sensitive they mentioned but haven't acted on
+- idea: A concrete alternative approach or solution to a known problem
+- next_step: The clear next move in an ongoing process
 
-Priority: high (urgent/important), medium (helpful), low (nice to have)
+Priority: high (urgent or blocks something), medium (will help soon), low (nice to have)
 
-ORDERING: Return exactly 4 suggestions. Last one = most relevant to latest message.
-
-IMPORTANT: If previous suggestions are provided, do NOT repeat them. Suggest NEW things.
+Return 1 to 4 suggestions — only as many as are genuinely warranted. If only 1 or 2 are clearly useful, return just those. Last one = most directly relevant to the latest message.
+Do NOT repeat previous suggestions — find new angles.
 
 JSON format:
 {
   "suggestions": [
-    { "text": "Consider setting up a weekly check-in with the team.", "topic": "Work / Project", "category": "action", "priority": "high" }
+    { "text": "Book the venue this week — you mentioned the date is in 3 weeks.", "topic": "Events / Planning", "category": "reminder", "priority": "high" },
+    { "text": "Switch to async updates with the Tokyo team to avoid the timezone lag.", "topic": "Work / Communication", "category": "optimization", "priority": "medium" }
   ]
 }
 
-topic = "Domain / Topic" format (e.g., "Work / Planning", "Health / Exercise")
+topic = "Domain / Topic" format. Statements and recommendations only — no questions.`;
 
-Actionable suggestions only. Be helpful and specific.`;
+const TOPIC_FOCUSED_PROMPT = `You are an advisor giving CONCRETE RECOMMENDATIONS about a specific topic — declarative answers, not questions.
 
-const TOPIC_FOCUSED_PROMPT = `Provide actionable suggestions about the topic specified in the user message.
+CRITICAL RULE: Every output must be a STATEMENT or RECOMMENDATION, never a question.
+❌ BAD: "Have you thought about X?"
+✓ GOOD: "Do X — it directly addresses the issue you mentioned."
 
-Your job is to SUGGEST SOLUTIONS and ACTIONS about this topic.
-- Provide concrete, actionable advice (10-30 words)
-- Help the user accomplish their goals related to this topic
+Use specific details from the user's memory to make recommendations relevant to the given topic.
+Reference real context (names, dates, projects) when available.
 
 Categories:
-- action: Specific things to do now
-- optimization: Ways to do something better
-- reminder: Things not to forget
-- idea: Creative approaches or alternatives
-- next_step: What to do next in a process
+- action: Do this specific thing right now
+- optimization: A better approach to something they're already doing
+- reminder: Something time-sensitive they haven't acted on yet
+- idea: A concrete alternative or solution to a known problem
+- next_step: The clear next move in an ongoing process
 
-Priority: high (urgent/important), medium (helpful), low (nice to have)
+Priority: high (urgent or blocking), medium (helpful soon), low (nice to have)
 
-Return exactly 4 suggestions. Last one = most relevant to latest message.
-
-IMPORTANT: If previous suggestions are provided, do NOT repeat them. Suggest NEW things.
+Return 1 to 4 suggestions — only as many as are genuinely useful for this topic. Do NOT repeat previous ones — find new angles.
 
 JSON format:
 {
   "suggestions": [
-    { "text": "Suggestion about the topic.", "topic": "Domain / Topic", "category": "action", "priority": "high" }
+    { "text": "Recommendation about the topic.", "topic": "Domain / Topic", "category": "action", "priority": "high" }
   ]
 }
 
-topic = "Domain / Topic" format
-
-Actionable suggestions only. Be specific.`;
+topic = "Domain / Topic" format. Statements only — no questions.`;
 
 // ============================================================================
 // Process
@@ -199,7 +198,7 @@ ${previousSuggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')}
 ${contextPrompt}
 ${previousSection}
 ${focusTopic ? `Focus your suggestions on the topic: "${focusTopic}"\n` : ''}
-Analyze this working memory and provide actionable suggestions. Avoid repeating previous suggestions. Respond with JSON only.`;
+Give 4 concrete recommendations based on this context. Use specific details from the memory. Write declarative statements — never questions. Avoid repeating previous suggestions. Respond with JSON only.`;
 
   try {
     const response = await callLLM({
@@ -262,7 +261,7 @@ Categories:
 
 Priority: high = say this now, medium = worth saying soon, low = if there's time
 
-Return exactly 4 suggestions, last = most immediately relevant to the latest exchange.
+Return 1 to 4 suggestions — only as many as are genuinely relevant to what's being discussed right now. If little has been said, return fewer. Last = most immediately relevant to the latest exchange.
 
 JSON format:
 {
@@ -304,7 +303,7 @@ export async function generateMeetingSuggestions(
 ## Live Meeting Transcript (most recent last):
 ${transcript}
 ${previousSection}
-Generate 4 things the user could say or do right now. Respond with JSON only.`;
+Generate 1 to 4 things the user could say or do right now — only what's genuinely relevant. Respond with JSON only.`;
 
   try {
     const response = await callLLM({
