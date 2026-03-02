@@ -1,26 +1,27 @@
 /**
  * Decay Service
  *
- * Two one-shot maintenance operations that run on page load:
+ * Thin wrapper — decay logic has moved to the Consolidation Engine
+ * (`src/program/kernel/consolidation.ts`), which handles decay as part of
+ * its periodic maintenance pass (entity dedup, near-duplicate detection,
+ * and decay — all in one "sleep" cycle).
+ *
+ * What remains here:
  *
  * 1. runV4PostMigrationIfNeeded() — one-time data fix for memories created
  *    before v4. Sets state, activityScore, ownershipScore on all existing records.
  *    Guarded by 'migration_v4_done' key in the data store — fully idempotent.
  *
- * 2. runDecayIfDue() — runs at most once per 24h, decays:
- *    - confidence on old provisional memories (> 30 days unreinforced)
- *    - importance on old event memories (> 180 days)
- *    - activityScore on all active memories (exponential decay)
- *
- * Both are fire-and-forget — they must not block the UI.
+ * 2. runDecayIfDue() — @deprecated, delegates to consolidation engine.
+ *    Kept for backward compatibility with BentoApp.tsx call site.
+ *    Will be removed once all callers switch to initConsolidation().
  */
 
 import { database } from '../../db/database'
 import { dataStore } from '../../db/stores'
 import Memory from '../../db/models/Memory'
+import { runConsolidationIfDue } from '../kernel/consolidation'
 
-const DECAY_INTERVAL_MS = 24 * 60 * 60 * 1000  // 24 hours
-const LAST_DECAY_KEY = 'last_decay_run'
 const MIGRATION_V4_KEY = 'migration_v4_done'
 
 // ============================================================================
@@ -67,62 +68,19 @@ export async function runV4PostMigrationIfNeeded(): Promise<void> {
 }
 
 // ============================================================================
-// Decay pass
+// Decay pass (delegated to Consolidation Engine)
 // ============================================================================
 
 /**
- * Run activity/confidence/importance decay if 24h have elapsed since last run.
- * Fire-and-forget — never throws.
+ * @deprecated Use `initConsolidation()` from `src/program/kernel/consolidation.ts` instead.
+ * Decay is now part of the consolidation engine's periodic maintenance pass.
+ * This function delegates to `runConsolidationIfDue()` for backward compatibility.
  */
 export async function runDecayIfDue(): Promise<void> {
   try {
-    const lastRun = await dataStore.getValue<number>(LAST_DECAY_KEY)
-    const now = Date.now()
-
-    if (lastRun && now - lastRun < DECAY_INTERVAL_MS) {
-      return  // Not due yet
-    }
-
-    const allMemories = await database.get<Memory>('memories').query().fetch()
-
-    // Only process memories that will actually change
-    const toDecay = allMemories.filter(m => {
-      const daysSince = (now - m.lastReinforced) / 86_400_000
-      return (
-        (m.state === 'provisional' && daysSince > 30) ||
-        (m.type === 'event' && daysSince > 180) ||
-        (m.activityScore > 0.01)
-      )
-    })
-
-    if (toDecay.length > 0) {
-      await database.write(async () => {
-        for (const memory of toDecay) {
-          const daysSince = (now - memory.lastReinforced) / 86_400_000
-          await memory.update((m) => {
-            // Decay confidence for old provisional memories
-            if (m.state === 'provisional' && daysSince > 30) {
-              m.confidence = m.confidence * 0.9
-            }
-            // Decay importance for old event memories
-            if (m.type === 'event' && daysSince > 180) {
-              m.importance = m.importance * 0.95
-            }
-            // Exponential activityScore decay for all active memories
-            if (m.activityScore > 0.01) {
-              const decayed = m.activityScore * Math.exp(-0.15 * daysSince)
-              m.activityScore = decayed < 0.01 ? 0 : decayed
-            }
-          })
-        }
-      })
-    }
-
-    await dataStore.set(LAST_DECAY_KEY, 'system', now)
-    console.log(`[Decay] Decay pass complete: ${toDecay.length}/${allMemories.length} memories updated`)
+    await runConsolidationIfDue()
   } catch (error) {
     console.error('[Decay] Decay pass failed:', error)
-    // Non-blocking — don't rethrow
   }
 }
 

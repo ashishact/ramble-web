@@ -89,6 +89,8 @@ export const collections = {
   get extractionLogs() { return getDatabase().get('extraction_logs') },
   get data() { return getDatabase().get('data') },
   get widgetRecords() { return getDatabase().get('widget_records') },
+  get recordings() { return getDatabase().get('recordings') },
+  get uploadedFiles() { return getDatabase().get('uploaded_files') },
 }
 
 // Type-safe collection getters

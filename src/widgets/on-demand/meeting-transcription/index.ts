@@ -8,6 +8,7 @@ export {
   loadArchivedMeetings,
   archiveCurrentMeeting,
   updateArchivedMeetingTitle,
+  updateArchivedMeetingSummary,
   createInitialMeetingState,
   loadMeetingSettings,
   saveMeetingSettings,

@@ -154,13 +154,23 @@ export const memoryStore = {
       )
       .fetch()
 
-    // Score each memory, exclude true tombstones
+    const now = Date.now()
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+
+    // Score each memory, exclude true tombstones.
+    // Scoring: activity + importance + confidence + recency.
+    // Recency uses a 7-day half-life exponential decay so recent memories
+    // surface above old ones that were reinforced many times in the past.
     const scored = candidates
       .filter(m => m.state !== 'superseded')
-      .map(m => ({
-        memory: m,
-        score: 0.5 * m.activityScore + 0.3 * m.importance + 0.2 * m.confidence,
-      }))
+      .map(m => {
+        const ageMs = Math.max(0, now - m.lastReinforced)
+        const recency = Math.exp(-ageMs / SEVEN_DAYS_MS)
+        return {
+          memory: m,
+          score: 0.3 * m.activityScore + 0.2 * m.importance + 0.15 * m.confidence + 0.35 * recency,
+        }
+      })
       .sort((a, b) => b.score - a.score)  // highest score first
 
     // Cluster deduplication: iterate highest-score first.
@@ -307,6 +317,131 @@ export const memoryStore = {
     return all
       .filter(m => m.content.toLowerCase().includes(lowerQuery))
       .slice(0, limit)
+  },
+
+  /**
+   * Content-based search with relevance scoring.
+   * Matches against memory content and subject fields.
+   */
+  async searchWithRelevance(query: string, limit = 20): Promise<Array<{ memory: Memory; relevance: number }>> {
+    if (!query.trim()) return []
+
+    const all = await memories
+      .query(Q.where('supersededBy', null))
+      .fetch()
+
+    const lq = query.toLowerCase()
+    const results: Array<{ memory: Memory; relevance: number }> = []
+
+    for (const memory of all) {
+      const contentLower = memory.content.toLowerCase()
+      const subjectLower = (memory.subject ?? '').toLowerCase()
+      let relevance = 0
+
+      // Subject exact match
+      if (subjectLower === lq) {
+        relevance = 1.0
+      }
+      // Subject contains query
+      else if (subjectLower.includes(lq)) {
+        relevance = 0.8
+      }
+      // Content exact match (unlikely but handled)
+      else if (contentLower === lq) {
+        relevance = 0.9
+      }
+      // Content contains query
+      else if (contentLower.includes(lq)) {
+        relevance = 0.6
+      }
+
+      if (relevance > 0) {
+        results.push({ memory, relevance })
+      }
+    }
+
+    return results
+      .sort((a, b) => b.relevance - a.relevance)
+      .slice(0, limit)
+  },
+
+  /**
+   * Retrieve memories scored by relevance to the current conversation context.
+   *
+   * PHILOSOPHY: Context determines memory retrieval. When the user is talking
+   * about health/exercise, health-related memories should dominate the LLM
+   * context. Memories are scored by how many of their entity/topic IDs overlap
+   * with the current conversation's entity/topic IDs.
+   *
+   * Score formula:
+   *   0.50 * contextRelevance (entity/topic overlap — topic switching signal)
+   * + 0.25 * recency          (7-day half-life exponential decay)
+   * + 0.15 * importance
+   * + 0.10 * activityScore
+   *
+   * When context IDs are empty, falls back to getByRetrievalScore() so cold
+   * start and UI consumers still get reasonable results.
+   */
+  async getByContextRelevance(
+    contextEntityIds: string[],
+    contextTopicIds: string[],
+    limit = 20
+  ): Promise<Array<{ memory: Memory; contextScore: number }>> {
+    if (contextEntityIds.length === 0 && contextTopicIds.length === 0) {
+      const mems = await this.getByRetrievalScore(limit)
+      return mems.map(m => ({ memory: m, contextScore: 0 }))
+    }
+
+    const candidates = await memories
+      .query(
+        Q.where('supersededBy', null),
+        Q.take(Math.max(limit * 4, 200))
+      )
+      .fetch()
+
+    const now = Date.now()
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+    const entityIdSet = new Set(contextEntityIds)
+    const topicIdSet = new Set(contextTopicIds)
+
+    const scored = candidates
+      .filter(m => m.state !== 'superseded')
+      .map(m => {
+        const memEntityIds = m.entityIdsParsed
+        const memTopicIds = m.topicIdsParsed
+        const entityOverlap = memEntityIds.filter(id => entityIdSet.has(id)).length
+        const topicOverlap = memTopicIds.filter(id => topicIdSet.has(id)).length
+
+        // Entity overlap weighted higher — entities are more specific than topics
+        const contextRelevance = Math.min(1, entityOverlap * 0.4 + topicOverlap * 0.3)
+
+        const ageMs = Math.max(0, now - m.lastReinforced)
+        const recency = Math.exp(-ageMs / SEVEN_DAYS_MS)
+
+        const contextScore =
+          0.50 * contextRelevance +
+          0.25 * recency +
+          0.15 * m.importance +
+          0.10 * m.activityScore
+
+        return { memory: m, contextScore }
+      })
+      .sort((a, b) => b.contextScore - a.contextScore)
+
+    // Cluster deduplication (same logic as getByRetrievalScore)
+    const excluded = new Set<string>()
+    const result: Array<{ memory: Memory; contextScore: number }> = []
+
+    for (const item of scored) {
+      if (excluded.has(item.memory.id)) continue
+      result.push(item)
+      for (const contradictedId of item.memory.contradictsParsed) {
+        excluded.add(contradictedId)
+      }
+      if (result.length >= limit) break
+    }
+
+    return result
   },
 
   async getForContext(entityIds: string[], topicIds: string[], limit = 10): Promise<Memory[]> {

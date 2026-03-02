@@ -1,33 +1,45 @@
 /**
- * Input Processor
+ * Input Processor — Unified Pipeline (System I + System II)
  *
- * PARADIGM: BATCH (stop-and-process) ─────────────────────────────────────────
- * This processor runs AFTER a recording ends or text is submitted. It never
- * sees intermediate/streaming text. Called from:
- *   - GlobalSTTController: after native:transcription-final (out-of-app speech)
- *   - ConversationWidget or input handlers: after user types/pastes (in-app)
+ * ARCHITECTURE: Both System I (fast/shallow) and System II (slow/deep) run
+ * the SAME extraction pipeline. The difference is context depth, not logic.
+ * ═══════════════════════════════════════════════════════════════════════════
  *
- * FOCUS CONTEXT: Both in-app and out-of-app — the source param distinguishes:
- *   source: 'speech'   → native app sent a completed utterance
- *   source: 'text'     → user typed directly in Ramble
- *   source: 'pasted'   → user pasted content
- *   source: 'meeting'  → meeting widget committed a segment (batch post-process)
+ * System I (fast thinking):
+ *   - Fires on each intermediate chunk during live recording
+ *   - Small WorkingMemory context
+ *   - Saves to DB for time travel, but no durability guarantee
+ *   - Fire-and-forget — if fails, ok
+ *   - Emits processing:system-i event
  *
- * NOT used by the Meeting Transcription widget during live streaming —
- * that widget runs its own independent LLM loop (see meeting-transcription/process.ts).
- * ─────────────────────────────────────────────────────────────────────────────
+ * System II (slow thinking):
+ *   - Fires after recording ends with complete text
+ *   - Medium WorkingMemory context with hint-based retrieval
+ *   - Durable via task queue — retries on failure
+ *   - Large text splitting (> ~12000 chars) into sentence-boundary chunks
+ *   - Emits processing:system-ii event
  *
- * Core processing logic:
- * 1. Build context
- * 2. Call LLM with structured prompt
- * 3. Parse response and update DB
+ * Both modes use the SAME:
+ *   - SYSTEM_PROMPT for extraction
+ *   - saveExtraction() for DB persistence
+ *   - normalizeInput() for correction + hint extraction
+ *
+ * Core flow:
+ * 1. Normalize input (corrections + hint extraction)
+ * 2. Retrieve context using hints (two-pass architecture)
+ * 3. Build working memory with hint-matched context
+ * 4. Call LLM with structured prompt
+ * 5. Parse response and save to DB
+ * 6. Auto-reinforce related memories
+ * 7. Emit processing event
  */
 
 import { callLLM } from '../llmClient';
 import { workingMemory, type WorkingMemoryData } from '../WorkingMemory';
-import { findPhoneticMatches, findSpellingMatches, formatMatchesForLLM } from '../services/phoneticMatcher';
-import { normalizeInput } from '../services/normalizeInput';
+import { normalizeInput, type NormalizeResult } from '../services/normalizeInput';
+import { retrieveContext } from './contextRetrieval';
 import { parseLLMJSON } from '../utils/jsonUtils';
+import { eventBus } from '../../lib/eventBus';
 import {
   entityStore,
   topicStore,
@@ -39,6 +51,7 @@ import {
 } from '../../db/stores';
 import type { MemoryOrigin } from '../../db/stores/memoryStore';
 import type { ConversationSource } from '../../db/models/Conversation';
+import type { ProcessingMode, NormalizationHints } from '../types/recording';
 import { runPlugins, type PluginOutput } from '../plugins';
 import { createLogger } from '../utils/logger';
 
@@ -102,7 +115,7 @@ export interface ProcessingResult {
   // Goal updates
   goalUpdates: Array<{
     id: string;
-    type: 'new' | 'progress' | 'achieved' | 'referenced';
+    type: 'new' | 'progress' | 'achieved' | 'referenced' | 'edited' | 'abandoned';
   }>;
 
   // Plugin outputs
@@ -314,63 +327,64 @@ function normalizeExtraction(raw: unknown): NormalizedExtraction {
 // ============================================================================
 
 const SYSTEM_PROMPT = `You are analyzing a conversation to extract structured knowledge.
+The input is from speech-to-text and may contain residual transcription errors. Use the Known Entities and Working Memory context to interpret what was likely meant — if a word sounds like a known entity, use the known entity name in your extractions. Do not output corrections; just use the correct form directly in entities, memories, and goals.
 
 Given the user's latest input and the context, extract:
 
 1. **entities**: People, places, organizations, projects, or named concepts.
    Do NOT include: dates, times, numbers, or temporal expressions.
-2. **topics**: Detect topic switches - what is the user talking about now? Format: "Domain / Topic" (e.g., "Work / Planning", "Health / Exercise"). Reuse existing domains.
-3. **memories**: Facts, beliefs, preferences, concerns, or intentions to remember.
-4. **goals**: Goals mentioned - can be new goals, progress updates, or completions.
-5. **corrections**: STT errors you can identify.
+   Prefer matching against existing Known Entities rather than creating duplicates.
 
-IMPORTANT:
-- Check if names in the input might be mishearings of Known Entities listed in the context.
-- Speech-to-text often mishears names. If a name sounds similar to a known entity, use the known entity.
-- Prefer matching against existing entities rather than creating duplicates.
+2. **topics**: What is the user talking about now? Format: "Domain / Topic" (e.g., "Work / Planning", "Health / Exercise"). Reuse existing domains from Working Memory when possible.
 
-MEMORIES - Belief competition model:
+3. **memories**: Knowledge worth preserving — facts, beliefs, preferences, concerns, decisions, or intentions.
+
+4. **goals**: Goals mentioned — new goals, progress updates, edits, or completions.
+
+MEMORIES
+========
+Each memory is a self-contained knowledge unit that must be interpretable on its own, without any surrounding context, even months later.
+
+Content principles:
+- Resolve all pronouns and references to their concrete names (people, projects, tools, places).
+- Include relevant specifics: amounts, dates, entity names, roles, conditions.
+- When multiple related facts emerge about the same subject in one input, consolidate them into a single richer memory rather than several thin fragments.
+- If the fact is inherently simple (a relationship, a single attribute), keep it concise — do not pad artificially.
+- The test: would a stranger reading only this one sentence understand what it means?
+
+Belief competition:
 Working Memory lists existing memories with short IDs like [m1], [m2], etc.
-If a new memory CONTRADICTS an existing one (e.g. different person assigned to same task, conflicting facts), include a "contradicts" field with the short IDs of the competing memories.
+If a new memory CONTRADICTS an existing one (different assignment, conflicting facts, updated information), include a "contradicts" field with the short IDs of the competing memories.
 Do NOT omit or replace the old memory — both beliefs coexist. The system resolves the winner at read time based on confidence.
 
-Example: if [m3] says "Gopi will send the draft" and the user now says Ashish is sending it:
-{"content": "Ashish will send the draft", "type": "belief", "contradicts": ["m3"]}
+Fields: content (string), type (fact|belief|preference|concern|intention|decision), importance (0-1), contradicts (array of short IDs, optional), subject (who/what this is about, optional).
 
-GOALS - Hierarchical namespace. Active goals listed with short IDs (g1, g2, etc.).
+GOALS
+=====
+Hierarchical namespace. Active goals listed with short IDs (g1, g2, etc.).
 
 Statement format:
-- "Namespace / Goal" - Goal must be descriptive sentence
-- "Namespace / Goal / Sub-goal" - Sub-goal must be descriptive sentence
+- "Namespace / Goal" — focused, descriptive sentence
+- "Namespace / Goal / Sub-goal" — for truly distinct sub-objectives
 
-The last segment is always the descriptive part (NOT just keywords).
+Goal quality over quantity. A good goal captures the core intent in one clear sentence. When the user talks about variations or examples of the same concept, compress them into one goal that captures the essence — do not split into many granular goals. Only create multiple goals when the objectives are genuinely distinct and independently trackable. Fewer well-formed goals are more useful than many fragmented ones.
 
 Rules:
-- Reuse existing categories - do NOT create many new categories
+- Reuse existing categories — do NOT create many new categories
 - Prefer adding depth to existing goals over creating new top-level goals
 - Maximum 3 levels
 
-Format:
-- {"statement": "Category / Goal sentence", "type": "work|personal|health"} - new goal
-- {"shortId": "g1", "status": "achieved"} - mark existing goal complete
-- {"shortId": "g1", "status": "progress", "progress": 0-100} - progress update
+Actions:
+- {"statement": "Category / Goal sentence", "type": "work|personal|health"} — new goal
+- {"shortId": "g1", "status": "achieved"} — mark existing goal complete
+- {"shortId": "g1", "status": "progress", "progress": 0-100} — progress update
+- {"shortId": "g1", "status": "edit", "statement": "Category / Corrected goal sentence"} — fix or refine goal text (spelling, scope, clarification). The statement replaces the old one entirely.
+- {"shortId": "g1", "status": "abandoned"} — user explicitly gave up or said it's no longer relevant.
 
 type = domain/why (work, personal, health)
 statement = Category / What you want to achieve
 
-Respond with a JSON object. Only include fields with actual content.
-
-Example response:
-{
-  "entities": [
-    {"name": "Alice", "type": "person"}
-  ],
-  "memories": [
-    {"content": "Alice is the project lead", "type": "fact", "importance": 0.8}
-  ]
-}
-
-Be concise. Only extract what's clearly stated or strongly implied.`;
+Respond with a JSON object containing only the fields that have content. Only extract what is clearly stated or strongly implied.`;
 
 // ============================================================================
 // Processor
@@ -388,40 +402,64 @@ export async function processInput(
   sessionId: string,
   conversationId: string,
   inputText: string,
-  source: 'speech' | 'text' = 'text'
+  source: 'speech' | 'text' = 'text',
+  options?: {
+    mode?: ProcessingMode           // 'system-i' | 'system-ii' (default: 'system-ii')
+    recordingId?: string
+    chunkIndex?: number
+    hints?: NormalizationHints      // Pre-computed hints (skips normalization if provided)
+  }
 ): Promise<ProcessingResult> {
+  const mode = options?.mode ?? 'system-ii';
   const startTime = Date.now();
 
-  logger.info('Processing input', { sessionId, inputLength: inputText.length, source });
+  logger.info('Processing input', { sessionId, inputLength: inputText.length, source, mode });
 
   // ── Phase 1: Normalize input ─────────────────────────────────────────────
-  // Fetch the last few conversations to provide sentence context for Phase 1.
-  // We only need raw records — no full WorkingMemory fetch required here.
-  const recentConvs = await conversationStore.getRecent(3);
-  const recentSentences: string[] = recentConvs
-    .reverse() // oldest first
-    .flatMap(c => {
-      const parsed = c.sentencesParsed
-      if (parsed.length > 0) {
-        return parsed.map(s => s.text)
-      }
-      // Fallback: split sanitizedText on sentence boundaries
-      return c.sanitizedText.split(/(?<=[.!?])\s+/).filter(Boolean)
-    })
-    .slice(-5);  // Keep last 5 sentences for context
+  // If hints are pre-computed (e.g. submitChunk already ran normalization),
+  // skip normalization to avoid duplicate LLM calls.
+  let normalizedText: string
+  let sentences: NormalizeResult['sentences']
+  let hints: NormalizationHints
 
-  const { normalizedText, sentences } = await normalizeInput(inputText, recentSentences);
+  if (options?.hints) {
+    // Pre-computed hints from caller (System I submitChunk path)
+    normalizedText = inputText
+    sentences = []
+    hints = options.hints
+  } else {
+    // Full normalization with correction pipeline
+    const recentConvs = await conversationStore.getRecent(3);
+    const recentSentences: string[] = recentConvs
+      .reverse() // oldest first
+      .flatMap(c => {
+        const parsed = c.sentencesParsed
+        if (parsed.length > 0) {
+          return parsed.map(s => s.text)
+        }
+        return c.sanitizedText.split(/(?<=[.!?])\s+/).filter(Boolean)
+      })
+      .slice(-5);
 
-  // Persist Phase 1 output on the conversation record
-  await conversationStore.updateNormalized(
-    conversationId,
-    normalizedText,
-    JSON.stringify(sentences)
-  );
+    const normalizeResult = await normalizeInput(inputText, recentSentences, source);
+    normalizedText = normalizeResult.normalizedText;
+    sentences = normalizeResult.sentences;
+    hints = normalizeResult.hints;
+
+    // Persist Phase 1 output on the conversation record
+    await conversationStore.updateNormalized(
+      conversationId,
+      normalizedText,
+      JSON.stringify(sentences)
+    );
+  }
 
   // ── Phase 2: Build context + extract ─────────────────────────────────────
-  // 1. Build context using unified WorkingMemory (all conversations, no session filter)
-  const wmData = await workingMemory.fetch({ size: 'medium' });
+  // Two-pass context retrieval: use hints to find relevant DB records,
+  // then merge them into WorkingMemory for the extraction LLM call.
+  const wmSize = mode === 'system-i' ? 'small' : 'medium';
+  const retrieved = await retrieveContext(hints, wmSize);
+  const wmData = await workingMemory.fetchWithHints({ size: wmSize }, retrieved);
   const contextPrompt = workingMemory.formatForLLM(wmData);
 
   // Use normalizedText for Phase 2 if available (fallback: original inputText)
@@ -431,22 +469,11 @@ export async function processInput(
   const wordCount = extractionText.split(/\s+/).filter(w => w.length > 0).length;
   const needsSummary = wordCount >= 50;
 
-  // 2. Run correction analysis based on source
+  // 2. Build correction hints from normalization (phonetic/spelling already handled by normalizeInput)
   let correctionSection = '';
-  if (source === 'speech') {
-    // Full phonetic analysis for speech - STT makes phonetic errors
-    const phoneticMatches = await findPhoneticMatches(extractionText);
-    const phoneticHints = formatMatchesForLLM(phoneticMatches);
-    if (phoneticHints) {
-      correctionSection = `\n${phoneticHints}\n`;
-    }
-  } else {
-    // Light spelling check for text - just note that typos are possible
-    const spellingMatches = await findSpellingMatches(extractionText);
-    if (spellingMatches.length > 0) {
-      const hints = spellingMatches.map(m => `- "${m.inputWord}" might be "${m.matchedEntity}"`);
-      correctionSection = `\n## Possible Typos (verify if relevant)\n${hints.join('\n')}\n`;
-    }
+  if (hints.correctionsApplied.length > 0) {
+    const lines = hints.correctionsApplied.map(c => `- "${c.from}" → "${c.to}"`);
+    correctionSection = `\n## Applied Corrections\n${lines.join('\n')}\n`;
   }
 
   // 3. Build prompt using normalizedText
@@ -454,11 +481,11 @@ export async function processInput(
     ? '\n\nAlso provide a brief summary (1-2 sentences) in a "summary" field. Keep the original first-person voice - just condense, don\'t rephrase as "the user said".'
     : '';
 
-  const userPrompt = `Current time: ${wmData.userContext.currentTime}
-
-## Context
+  const userPrompt = `## Context
 ${contextPrompt}
 ${correctionSection}
+Current time: ${wmData.userContext.currentTime}
+
 ## New Input
 ${extractionText}
 
@@ -574,11 +601,31 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
     timeMs: Date.now() - startTime,
   });
 
-  return {
+  const processingResult: ProcessingResult = {
     ...result,
     pluginOutputs,
     rawResponse: llmResponse,
   };
+
+  // 9. Emit processing event — widgets subscribe to these
+  // Every input now has a recordingId (kernel.submitInput creates one if not
+  // provided). System I fires for chunk-level, System II for full-recording.
+  if (mode === 'system-i' && options?.recordingId) {
+    eventBus.emit('processing:system-i', {
+      recordingId: options.recordingId,
+      chunkIndex: options.chunkIndex ?? 0,
+      result: processingResult,
+      hints,
+    });
+  } else {
+    eventBus.emit('processing:system-ii', {
+      recordingId: options?.recordingId,
+      result: processingResult,
+      context: wmData,
+    });
+  }
+
+  return processingResult;
 }
 
 /**
@@ -721,6 +768,13 @@ async function saveExtraction(
         } else if (g.status === 'progress' && g.progress !== undefined) {
           await goalStore.updateProgress(existingGoalId, g.progress);
           result.goalUpdates.push({ id: existingGoalId, type: 'progress' });
+        } else if (g.status === 'edit' && g.statement) {
+          await goalStore.update(existingGoalId, { statement: g.statement });
+          await goalStore.recordReference(existingGoalId);
+          result.goalUpdates.push({ id: existingGoalId, type: 'edited' });
+        } else if (g.status === 'abandoned') {
+          await goalStore.updateStatus(existingGoalId, 'abandoned');
+          result.goalUpdates.push({ id: existingGoalId, type: 'abandoned' });
         } else {
           await goalStore.recordReference(existingGoalId);
           result.goalUpdates.push({ id: existingGoalId, type: 'referenced' });

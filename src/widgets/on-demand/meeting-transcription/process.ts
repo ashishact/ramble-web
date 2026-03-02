@@ -183,6 +183,8 @@ export interface MeetingState {
   startedAt: number;
   /** Auto-generated meeting title (produced by end-of-meeting LLM call) */
   title: string;
+  /** Detailed end-of-meeting summary — decisions, outcomes, key discussion points */
+  summary: string;
 }
 
 export interface ArchivedMeeting {
@@ -201,6 +203,8 @@ export interface ArchivedMeeting {
   segmentCount: number;
   /** Auto-generated meeting title (produced by end-of-meeting LLM call) */
   title: string;
+  /** Detailed end-of-meeting summary — decisions, outcomes, key discussion points */
+  summary: string;
 }
 
 export interface MeetingUpdateResult {
@@ -281,6 +285,7 @@ const MeetingStateSchema = z.object({
   startedAt: z.number(),
   // default('') so existing stored data without this field migrates instead of being wiped
   title: z.string().default(''),
+  summary: z.string().default(''),
 });
 
 const ArchivedMeetingSchema = z.object({
@@ -298,6 +303,7 @@ const ArchivedMeetingSchema = z.object({
   segmentCount: z.number(),
   // default('') so existing archived meetings without this field migrate instead of being wiped
   title: z.string().default(''),
+  summary: z.string().default(''),
 });
 
 const MeetingSettingsSchema = z.object({
@@ -397,6 +403,7 @@ export async function archiveCurrentMeeting(state: MeetingState): Promise<Archiv
     history: state.history,
     segmentCount: state.segmentCount,
     title: state.title,
+    summary: state.summary,
   };
 
   // Get ALL active records — fire-and-forget saveMeetingState can create duplicates
@@ -494,6 +501,7 @@ export function createInitialMeetingState(): MeetingState {
     segmentCount: 0,
     startedAt: Date.now(),
     title: '',
+    summary: '',
   };
 }
 
@@ -809,9 +817,13 @@ export async function processMeetingUpdate(
 // ============================================================================
 
 /**
- * Generates a concise meeting title from the accumulated overview + topic.
- * Uses the `small` tier for speed — fires once after recording ends.
- * Returns the updated state (with title set) and persists it.
+ * Generate end-of-meeting title + detailed summary.
+ *
+ * This is the ONE post-meeting LLM call. Uses medium tier — meeting is over,
+ * latency doesn't matter, quality does. Receives full transcript + live
+ * overview + action items and produces a thorough meeting record.
+ *
+ * The caller (Widget.tsx) handles persisting title + summary to the archive.
  */
 export async function generateMeetingEndSummary(
   state: MeetingState,
@@ -819,26 +831,86 @@ export async function generateMeetingEndSummary(
 ): Promise<MeetingState> {
   if (state.segmentCount === 0) return state;
 
-  const overviewText = state.overviewItems.map((item, i) => `${i + 1}. ${item.text}`).join('\n');
-  const topicText = state.summaryTree.topic.text || '';
-  const contextLine = settings.meetingContext ? `\nMeeting context: ${settings.meetingContext}` : '';
+  // ── Assemble meeting context ──────────────────────────────────────────
+  const meetingDate = new Date(state.startedAt);
+  const dateStr = meetingDate.toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
+  const timeStr = meetingDate.toLocaleTimeString('en-US', {
+    hour: '2-digit', minute: '2-digit',
+  });
+  const durationMin = Math.round((Date.now() - state.startedAt) / 60000);
 
-  const systemPrompt = `You generate concise meeting titles from summaries. Reply with strict JSON only, no markdown.`;
-  const userPrompt = `Generate a short meeting title (5–9 words max) that captures the main purpose or outcome.${contextLine}
+  const overviewText = state.overviewItems.map((item, i) => {
+    const itemTime = new Date(item.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    return `${i + 1}. [${itemTime}] ${item.text}`;
+  }).join('\n');
 
-Overview log:
-${overviewText || '(no overview)'}
+  const actionText = state.actionItems
+    .map(a => `- ${a.done ? '[DONE] ' : ''}${a.text}${a.owner ? ` [${a.owner}]` : ''}${a.deadline ? ` — due: ${a.deadline}` : ''}`)
+    .join('\n');
 
-Final topic: ${topicText || '(none)'}
+  const contextLine = settings.meetingContext ? `Meeting context: ${settings.meetingContext}\n` : '';
+  const participantNames = state.participants.map(p => `${p.name} (${p.audioType})`).join(', ');
 
-Reply format: { "title": "..." }`;
+  // Build transcript with timestamps
+  const transcript = state.fullFeed.length > 0 ? state.fullFeed : state.displayFeed;
+  const transcriptText = transcript
+    .map(e => {
+      const t = new Date(e.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      return `[${t}] [${e.audioType.toUpperCase()}] ${e.text}`;
+    })
+    .join('\n');
 
+  // Cap transcript to ~8000 chars to stay within token limits
+  const cappedTranscript = transcriptText.length > 8000
+    ? transcriptText.slice(0, 4000) + '\n\n[...middle of meeting omitted...]\n\n' + transcriptText.slice(-4000)
+    : transcriptText;
+
+  // ── LLM prompt ────────────────────────────────────────────────────────
+  const systemPrompt = `You are a meticulous meeting analyst. You produce thorough, well-structured meeting summaries that serve as the definitive record of what happened. Reply with strict JSON only, no markdown fences.`;
+
+  const userPrompt = `Analyze this meeting and produce a comprehensive summary.
+
+Meeting date: ${dateStr}
+Meeting time: ${timeStr}
+Duration: ${durationMin} minutes (${state.segmentCount} speech segments)
+Participants: ${participantNames || '(unknown)'}
+${contextLine}
+Live overview log (timestamped):
+${overviewText || '(no overview captured)'}
+
+Action items captured during meeting:
+${actionText || '(none)'}
+
+Final topic: ${state.summaryTree.topic.text || '(none)'}
+
+Full transcript (timestamped):
+${cappedTranscript}
+
+Produce JSON with these fields:
+{
+  "title": "5-9 word title capturing the meeting's main purpose or outcome",
+  "summary": "A thorough meeting summary as plain text. Structure it as follows:
+
+WHAT HAPPENED: Walk through the meeting chronologically. What was discussed, in what order? Reference specific topics by name.
+
+DECISIONS MADE: List every decision that was made, no matter how small. Who decided what? Include any deadlines, dates, or commitments mentioned. If someone said 'let's do X by Friday' or 'we agreed on Y', capture it here.
+
+KEY POINTS: Important information shared, concerns raised, or insights offered. Include specific names of people, projects, numbers, or dates mentioned.
+
+OPEN ITEMS: Anything left unresolved — questions that weren't answered, topics that need follow-up, disagreements that weren't settled.
+
+Be specific and detailed. Use actual names, dates, and facts from the transcript. Never say 'various topics were discussed' — say exactly what was discussed. This summary should allow someone who missed the meeting to know exactly what happened."
+}`;
+
+  // ── Call LLM ──────────────────────────────────────────────────────────
   try {
     const response = await callLLM({
-      tier: 'small',
+      tier: 'medium',
       prompt: userPrompt,
       systemPrompt,
-      options: { max_tokens: 80 },
+      options: { max_tokens: 1200 },
     });
 
     const { data } = parseLLMJSON(response.content);
@@ -846,15 +918,46 @@ Reply format: { "title": "..." }`;
       data && typeof data === 'object' && typeof (data as Record<string, unknown>).title === 'string'
         ? ((data as Record<string, unknown>).title as string).trim()
         : '';
+    const summary =
+      data && typeof data === 'object' && typeof (data as Record<string, unknown>).summary === 'string'
+        ? ((data as Record<string, unknown>).summary as string).trim()
+        : '';
 
-    if (!title) return state;
+    if (!title && !summary) return state;
 
-    // Return state with title — caller handles persistence via updateArchivedMeetingTitle.
+    // Return state with title + summary — caller handles persistence.
     // Do NOT call saveMeetingState here: the active record was already transitioned to
     // 'archive' by archiveCurrentMeeting, so upsert would create a phantom active row.
-    return { ...state, title };
+    return {
+      ...state,
+      title: title || state.title,
+      summary: summary || state.summary,
+    };
   } catch (error) {
     console.error('[MeetingTranscription] End-of-meeting summary failed:', error);
     return state;
   }
+}
+
+/**
+ * Patch the summary of an already-archived meeting by id.
+ * Called after the end-of-meeting LLM — archive was already saved.
+ */
+export async function updateArchivedMeetingSummary(
+  meetingId: string,
+  title: string,
+  summary: string
+): Promise<ArchivedMeeting[]> {
+  const rows = await widgetRecordStore.getRecent(MEETING_WIDGET_TYPE, MAX_ARCHIVE, MEETING_SUBTYPE_ARCHIVE);
+  for (const row of rows) {
+    const parsed = ArchivedMeetingSchema.safeParse(row.contentParsed);
+    if (parsed.success && parsed.data.id === meetingId) {
+      await widgetRecordStore.update(row.id, {
+        content: { ...parsed.data, title, summary },
+        title,
+      });
+      break;
+    }
+  }
+  return loadArchivedMeetings();
 }

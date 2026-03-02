@@ -1,6 +1,15 @@
 /**
  * PipelineStatus - Lightweight pipeline execution tracker
  *
+ * @deprecated Widgets should subscribe to eventBus events instead:
+ *   - `processing:system-i`  → System I (per-chunk) processing complete
+ *   - `processing:system-ii` → System II (full recording) processing complete
+ *   - `processing:consolidation` → Consolidation pass complete
+ *
+ * This module is still functional and used by PipelineBreadcrumb and
+ * ConversationList for backward compatibility. It will be removed once
+ * those components migrate to eventBus subscriptions.
+ *
  * Tracks high-level steps only. Keeps last run visible until next starts.
  */
 

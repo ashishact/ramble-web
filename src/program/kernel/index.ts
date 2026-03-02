@@ -4,4 +4,6 @@
 
 export { getKernel, type KernelState, type InputResult } from './kernel';
 export { processInput, type ProcessingResult } from './processor';
-export { buildContext, formatContextForLLM, type Context } from './contextBuilder';
+export { recordingManager } from './recordingManager';
+export { retrieveContext, type RetrievedContext } from './contextRetrieval';
+export { runConsolidation, runConsolidationIfDue, initConsolidation } from './consolidation';

@@ -29,3 +29,7 @@ export { dataStore } from './dataStore'
 
 // Widget records (generic on-demand widget storage)
 export { widgetRecordStore } from './widgetRecordStore'
+
+// Recordings + uploaded files (unified pipeline v7)
+export { recordingStore } from './recordingStore'
+export { uploadedFileStore } from './uploadedFileStore'

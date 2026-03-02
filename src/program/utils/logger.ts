@@ -25,6 +25,7 @@ export type LogModule =
   | 'NarrativeObserver'
   | 'RelationshipObserver'
   | 'ConsolidationObserver'
+  | 'Consolidation'
   | 'CorrectionParser'
   | 'CorrectionApplier'
   | 'CorrectionService'
@@ -49,7 +50,10 @@ export type LogModule =
   | 'LLMObserversHandler'
   // Queue-based pipeline
   | 'PipelineQueue'
-  | 'UnitPipeline';
+  | 'UnitPipeline'
+  // Unified pipeline (v7)
+  | 'RecordingManager'
+  | 'FileUpload';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -82,6 +86,7 @@ const MODULE_COLORS: Record<LogModule, string> = {
   NarrativeObserver: '#9C27B0',
   RelationshipObserver: '#00BCD4',
   ConsolidationObserver: '#607D8B',
+  Consolidation: '#546E7A',
   CorrectionParser: '#FF9800',
   CorrectionApplier: '#FF9800',
   CorrectionService: '#FF9800',
@@ -107,6 +112,9 @@ const MODULE_COLORS: Record<LogModule, string> = {
   // Queue-based pipeline
   PipelineQueue: '#00BCD4',
   UnitPipeline: '#9C27B0',
+  // Unified pipeline (v7)
+  RecordingManager: '#009688',
+  FileUpload: '#795548',
 };
 
 interface LogConfig {
@@ -233,6 +241,7 @@ export function enableDebugLogging(): void {
     'NarrativeObserver',
     'RelationshipObserver',
     'ConsolidationObserver',
+    'Consolidation',
   ];
   for (const module of modules) {
     config[module] = 'debug';

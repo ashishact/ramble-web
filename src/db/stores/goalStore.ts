@@ -142,6 +142,7 @@ export const goalStore = {
           if (data.statement !== undefined) g.statement = data.statement
           if (data.type !== undefined) g.type = data.type
           if (data.metadata !== undefined) g.metadata = JSON.stringify(data.metadata)
+          g.lastReferenced = Date.now()
         })
       })
       return goal

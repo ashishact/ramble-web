@@ -10,8 +10,6 @@ import { callLLM } from '../../../program/llmClient';
 import { workingMemory } from '../../../program/WorkingMemory';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
 import { widgetRecordStore } from '../../../db/stores';
-import type { MeetingSegment } from '../../../program/kernel/meetingStatus';
-
 // (no localStorage key needed — storage is WatermelonDB via widgetRecordStore)
 
 // ============================================================================
@@ -225,110 +223,6 @@ Analyze this working memory and identify gaps. Avoid repeating previous question
   } catch (error) {
     console.error('Questions process failed:', error);
     return { questions: [], availableTopics, generatedAt: Date.now() };
-  }
-}
-
-// ============================================================================
-// Meeting mode prompts
-// ============================================================================
-
-const MEETING_SYSTEM_PROMPT = `You are a real-time meeting assistant. Help the user identify the best questions to ask other participants during a live meeting.
-
-AUDIO SOURCES:
-- [MIC] = the user (person you are helping)
-- [SYSTEM] = remote participants (Zoom / Meet / Teams audio)
-
-TASK: Based on the live transcript, generate 4 targeted questions the user could ASK THE OTHER PARTICIPANTS right now.
-
-Focus on:
-- Gaps or ambiguities in what [SYSTEM] participants said
-- Claims or decisions that need more detail
-- Next steps or ownership that are unclear
-- Things raised by [SYSTEM] the user should probe deeper
-
-AVOID:
-- Questions about what [MIC] already said (they know what they said)
-- Generic filler questions
-- Repeating questions already shown
-
-Categories:
-- clarification: Something vague or ambiguous a [SYSTEM] participant said
-- missing_info: Important information that wasn't covered
-- follow_up: Dig deeper into a point [SYSTEM] made
-- action: Clarify ownership, next steps, or deadlines
-- explore: Open up a related angle worth investigating
-
-Priority: high = urgent or important right now, medium = helpful, low = nice to have
-
-Return 1 to 4 questions — only as many as are genuinely worth asking based on what's been said so far. If the transcript is brief or clear, return fewer. Last = most immediately relevant to the latest exchange.
-
-JSON format:
-{
-  "questions": [
-    { "text": "...", "topic": "Meeting / SubTopic", "category": "clarification", "priority": "high" }
-  ]
-}
-
-topic = "Meeting / SubTopic" format. Keep questions concise (10–25 words).`;
-
-// ============================================================================
-// Meeting mode process
-// ============================================================================
-
-/**
- * Generate questions to ask other meeting participants based on the live transcript.
- * Called during an active meeting when mode === 'meeting'.
- * Uses the last 40 segments for context, prefixed with [MIC] / [SYSTEM] labels.
- */
-export async function generateMeetingQuestions(
-  segments: MeetingSegment[],
-  previousQuestions?: string[]
-): Promise<QuestionResult> {
-  if (segments.length === 0) {
-    return { questions: [], availableTopics: [], generatedAt: Date.now() };
-  }
-
-  // Use last 40 segments for focused context
-  const recentSegments = segments.slice(-40);
-  const transcript = recentSegments
-    .map(s => `[${s.audioType === 'mic' ? 'MIC' : 'SYSTEM'}] ${s.text}`)
-    .join('\n');
-
-  const previousSection = previousQuestions && previousQuestions.length > 0
-    ? `\n## Questions already shown — do NOT repeat:\n${previousQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n`
-    : '';
-
-  const userPrompt = `Current time: ${new Date().toLocaleTimeString()}
-
-## Live Meeting Transcript (most recent last):
-${transcript}
-${previousSection}
-Generate 1 to 4 questions to ask the [SYSTEM] participants right now — only what's genuinely worth asking. Respond with JSON only.`;
-
-  try {
-    const response = await callLLM({
-      tier: 'small',
-      prompt: userPrompt,
-      systemPrompt: MEETING_SYSTEM_PROMPT,
-      options: { temperature: 0.7, max_tokens: 800 },
-    });
-
-    const { data, error } = parseLLMJSON(response.content);
-    if (error || !data) {
-      console.error('[Meeting Questions] Failed to parse response:', error);
-      return { questions: [], availableTopics: [], generatedAt: Date.now() };
-    }
-
-    const questions = normalizeQuestions(data);
-    // Derive available topics from the questions' topic fields
-    const availableTopics = [...new Set(
-      questions.map(q => q.topic).filter(t => t !== 'General' && t !== 'Meeting')
-    )];
-
-    return { questions, availableTopics, generatedAt: Date.now() };
-  } catch (error) {
-    console.error('[Meeting Questions] Generation failed:', error);
-    return { questions: [], availableTopics: [], generatedAt: Date.now() };
   }
 }
 

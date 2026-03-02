@@ -30,9 +30,14 @@ export { default as Data } from './Data'
 // Widget records (generic on-demand widget storage)
 export { default as WidgetRecord } from './WidgetRecord'
 
+// Recordings + uploaded files (unified pipeline v7)
+export { default as Recording } from './Recording'
+export { default as UploadedFile } from './UploadedFile'
+
 // Re-export types
 export type { ConversationSource, Speaker } from './Conversation'
 export type { TaskStatus } from './Task'
 export type { GoalStatus } from './Goal'
 export type { PluginType, PluginTriggers, PluginLLMConfig } from './Plugin'
 export type { DataType, OnboardingData, UserProfileData } from './Data'
+export type { UploadedFileStatus } from './UploadedFile'

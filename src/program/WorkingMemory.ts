@@ -46,6 +46,7 @@ import type Entity from '../db/models/Entity';
 import type Topic from '../db/models/Topic';
 import type Memory from '../db/models/Memory';
 import type Goal from '../db/models/Goal';
+import type { RetrievedContext } from './kernel/contextRetrieval';
 
 // ============================================================================
 // Types
@@ -111,7 +112,10 @@ export interface MemoryRef {
   content: string;
   type: string;
   importance: number;
+  confidence: number;
   lastReinforced: number;
+  reinforcementCount: number;
+  subject?: string;     // Who/what this memory is about
 }
 
 export interface GoalRef {
@@ -185,7 +189,10 @@ function toMemoryRef(m: Memory, index: number): MemoryRef {
     content: m.content,
     type: m.type,
     importance: m.importance,
+    confidence: m.confidence,
     lastReinforced: m.lastReinforced,
+    reinforcementCount: m.reinforcementCount,
+    subject: m.subject || undefined,
   };
 }
 
@@ -335,6 +342,170 @@ class WorkingMemory {
       },
     };
 
+    data.meta.estimatedTokens = this.estimateTokens(data);
+
+    return data;
+  }
+
+  /**
+   * Fetch working memory with context-aware memory retrieval.
+   *
+   * KEY DIFFERENCE from fetch(): Memories are selected based on relevance
+   * to the CURRENT conversation context (entity/topic overlap), not just
+   * global importance/recency scores. This means switching topics immediately
+   * switches which memories the LLM sees.
+   *
+   * DIVERSITY GUARANTEE: Memory slots are allocated with minimum reservations
+   * so no single category can dominate the entire list:
+   *
+   *   Context-relevant (~60%): entity/topic overlap with current conversation
+   *   Recency (~20%):          most recently reinforced, regardless of topic
+   *   Serendipity (~20%):      highest global importance/activity, any topic
+   *
+   * For medium (10 slots): 6 context + 2 recency + 2 serendipity
+   * For small (5 slots):   3 context + 1 recency + 1 serendipity
+   *
+   * If any bucket can't fill its minimum (not enough candidates), overflow
+   * slots redistribute to context-relevant first, then base memories.
+   */
+  async fetchWithHints(
+    options: WorkingMemoryOptions,
+    retrieved: RetrievedContext
+  ): Promise<WorkingMemoryData> {
+    const data = await this.fetch(options);
+    const limits = SIZE_LIMITS[options.size ?? 'medium'];
+    const asOfTime = options.asOfTime ?? Date.now();
+
+    // ── Merge matched entities (deduplicate by ID) ────────────────────
+    const existingEntityIds = new Set(data.entities.map(e => e.id));
+    for (const match of retrieved.matchedEntities) {
+      if (!existingEntityIds.has(match.id)) {
+        data.entities.push({
+          id: match.id,
+          name: match.name,
+          type: match.type,
+          mentionCount: 0,
+          lastMentioned: 0,
+        });
+        existingEntityIds.add(match.id);
+      }
+    }
+
+    // ── Merge matched topics (deduplicate by ID) ──────────────────────
+    const existingTopicIds = new Set(data.topics.map(t => t.id));
+    for (const match of retrieved.matchedTopics) {
+      if (!existingTopicIds.has(match.id)) {
+        data.topics.push({
+          id: match.id,
+          name: match.name,
+          category: match.category,
+          mentionCount: 0,
+          lastMentioned: 0,
+        });
+        existingTopicIds.add(match.id);
+      }
+    }
+
+    // ── Budget allocation with minimum guarantees ─────────────────────
+    const total = limits.memories;
+    const minRecency = Math.min(3, Math.max(1, Math.floor(total * 0.2)));
+    const minSerendipity = Math.min(3, Math.max(1, Math.floor(total * 0.2)));
+    const contextBudget = total - minRecency - minSerendipity;
+
+    // Collect ALL entity/topic IDs from the merged context
+    const contextEntityIds = [...existingEntityIds];
+    const contextTopicIds = [...existingTopicIds];
+
+    // Fetch memories scored by entity/topic overlap with current context
+    const contextMemories = await memoryStore.getByContextRelevance(
+      contextEntityIds, contextTopicIds, contextBudget * 3
+    );
+
+    // Build conversation ID set for memory deduplication
+    const conversationIdsInContext = new Set(data.conversations.map(c => c.id));
+
+    // Helper: check if a raw Memory should be excluded
+    const shouldExclude = (m: { lastReinforced: number; sourceConversationIdsParsed: string[] }) =>
+      m.lastReinforced > asOfTime ||
+      m.sourceConversationIdsParsed.some(id => conversationIdsInContext.has(id));
+
+    const usedIds = new Set<string>();
+    const newMemories: MemoryRef[] = [];
+
+    // ── Bucket 1: Context-relevant (entity/topic overlap) ─────────
+    for (const { memory } of contextMemories) {
+      if (newMemories.length >= contextBudget) break;
+      if (usedIds.has(memory.id)) continue;
+      if (shouldExclude(memory)) continue;
+      usedIds.add(memory.id);
+      newMemories.push(toMemoryRef(memory, newMemories.length));
+    }
+    // Also include hint-text-matched memories (catches ones without ID links)
+    for (const match of retrieved.relatedMemories) {
+      if (newMemories.length >= contextBudget) break;
+      if (usedIds.has(match.id)) continue;
+      usedIds.add(match.id);
+      newMemories.push({
+        id: match.id,
+        shortId: `m${newMemories.length + 1}`,
+        content: match.content,
+        type: match.type,
+        importance: 0,
+        confidence: 0,
+        lastReinforced: 0,
+        reinforcementCount: 0,
+      });
+    }
+
+    // ── Bucket 2: Recency (most recently reinforced, any topic) ───
+    // Guarantees freshness — even if talking about health, you still see
+    // the most recent memory from yesterday's work conversation.
+    const recencyCandidates = [...data.memories]
+      .sort((a, b) => b.lastReinforced - a.lastReinforced);
+    let recencyAdded = 0;
+    for (const m of recencyCandidates) {
+      if (recencyAdded >= minRecency) break;
+      if (usedIds.has(m.id)) continue;
+      usedIds.add(m.id);
+      newMemories.push({ ...m, shortId: `m${newMemories.length + 1}` });
+      recencyAdded++;
+    }
+
+    // ── Bucket 3: Serendipity (highest global score, any topic) ───
+    // Guarantees cross-topic continuity — globally important memories
+    // surface regardless of current conversation topic.
+    // data.memories is sorted by retrieval score (activity + importance + confidence + recency)
+    let serendipityAdded = 0;
+    for (const m of data.memories) {
+      if (serendipityAdded >= minSerendipity) break;
+      if (usedIds.has(m.id)) continue;
+      usedIds.add(m.id);
+      newMemories.push({ ...m, shortId: `m${newMemories.length + 1}` });
+      serendipityAdded++;
+    }
+
+    // ── Overflow: redistribute unused slots ───────────────────────
+    // If any bucket couldn't fill its minimum, give overflow to context first
+    if (newMemories.length < total) {
+      for (const { memory } of contextMemories) {
+        if (newMemories.length >= total) break;
+        if (usedIds.has(memory.id)) continue;
+        if (shouldExclude(memory)) continue;
+        usedIds.add(memory.id);
+        newMemories.push(toMemoryRef(memory, newMemories.length));
+      }
+    }
+    // Then fill from base memories
+    if (newMemories.length < total) {
+      for (const m of data.memories) {
+        if (newMemories.length >= total) break;
+        if (usedIds.has(m.id)) continue;
+        usedIds.add(m.id);
+        newMemories.push({ ...m, shortId: `m${newMemories.length + 1}` });
+      }
+    }
+
+    data.memories = newMemories;
     data.meta.estimatedTokens = this.estimateTokens(data);
 
     return data;

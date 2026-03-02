@@ -40,8 +40,12 @@ export function useKernel() {
 
   // Submit input
   const submitInput = useCallback(
-    async (text: string, source: 'speech' | 'text' = 'text'): Promise<InputResult> => {
-      return kernel.submitInput(text, source);
+    async (
+      text: string,
+      source: 'speech' | 'text' = 'text',
+      recordingId?: string
+    ): Promise<InputResult> => {
+      return kernel.submitInput(text, source, recordingId);
     },
     [kernel]
   );

@@ -22,6 +22,12 @@ function buildExportText(meeting: ArchivedMeeting): string {
   }
   lines.push('');
 
+  if (meeting.summary) {
+    lines.push('SUMMARY');
+    lines.push(meeting.summary);
+    lines.push('');
+  }
+
   if (meeting.overviewItems.length > 0) {
     lines.push('OVERVIEW');
     meeting.overviewItems.forEach((item, i) => lines.push(`${i + 1}. ${item.text}`));
@@ -220,6 +226,24 @@ export function MeetingDetailView({ meeting, onBack }: Props) {
                 {p.name}
               </span>
             ))}
+          </div>
+        )}
+
+        {/* Summary */}
+        {meeting.summary && (
+          <div className="bg-amber-400/[0.06] rounded-xl px-3 py-2 space-y-1">
+            <div className="flex items-center gap-1.5">
+              <Icon
+                icon="mdi:text-box-outline"
+                width={12} height={12} className="text-amber-500/70"
+              />
+              <span className="text-[8px] font-bold uppercase tracking-widest text-base-content/35">
+                Summary
+              </span>
+            </div>
+            <p className="text-[10px] text-base-content/70 leading-relaxed whitespace-pre-line">
+              {meeting.summary}
+            </p>
           </div>
         )}
 

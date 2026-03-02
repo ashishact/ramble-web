@@ -1,16 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   generateSuggestions,
-  generateMeetingSuggestions,
   saveSuggestionsToStorage,
   loadSuggestionsFromStorage,
   type Suggestion,
   type SuggestionResult,
 } from './process';
-import { pipelineStatus, type PipelineState } from '../../../program/kernel/pipelineStatus';
-import { meetingStatus, type MeetingSegment } from '../../../program/kernel/meetingStatus';
+import { eventBus } from '../../../lib/eventBus';
 import { useWidgetPause } from '../useWidgetPause';
-import { Icon } from '@iconify/react';
 import {
   Lightbulb,
   RefreshCw,
@@ -53,29 +50,23 @@ const categoryLabels: Record<Suggestion['category'], string> = {
   next_step: 'next',
 };
 
-// Meeting mode accumulation thresholds
-const MEETING_MIN_CHARS = 200;
-const MEETING_THROTTLE_MS = 30_000;
+/** Throttle for System I events — don't regenerate faster than every 30s */
+const SYSTEM_I_THROTTLE_MS = 30_000;
 
 export function SuggestionWidget() {
   const [result, setResult] = useState<SuggestionResult | null>(null);
   const [loadingState, setLoadingState] = useState<LoadingState>('idle');
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isMeetingMode, setIsMeetingMode] = useState(() => meetingStatus.getState().isActive);
 
   // Pause functionality
   const { isPaused, PauseButton, PauseOverlay } = useWidgetPause('suggestions', 'Suggestions');
 
-  const wasRunningRef = useRef(false);
   const hasLoadedFromStorageRef = useRef(false);
+  const lastSystemIGenRef = useRef(0);
 
-  // Meeting mode accumulation refs
-  const pendingMeetingCharsRef = useRef(0);
-  const lastMeetingGenRef = useRef(0);
-
-  // ── BATCH mode: generate from working memory (solo / in-app) ─────────────
-  // Triggered after pipelineStatus completes (new speech or typed input committed).
+  // ── Generate suggestions from working memory ──────────────────────────────
+  // Unified path: triggered by both System I and System II processing events.
   // Uses WorkingMemory (DB conversations, entities, topics, memories).
   const fetchSuggestions = useCallback(async (focusTopic?: string) => {
     setLoadingState('loading');
@@ -92,28 +83,9 @@ export function SuggestionWidget() {
     }
   }, [result]);
 
-  // ── STREAMING mode: generate from live meeting transcript (meeting / out-of-app) ──
-  // Triggered by meetingStatus accumulation (200 chars, 30s throttle).
-  // Uses the raw live segments — NOT WorkingMemory — so suggestions are about
-  // what to say right now in response to other participants.
-  const fetchMeetingSuggestions = useCallback(async (segments: MeetingSegment[]) => {
-    setLoadingState('loading');
-    setError(null);
-    const previousSuggestions = result?.suggestions.map(s => s.text) ?? [];
-    try {
-      const suggestions = await generateMeetingSuggestions(segments, previousSuggestions);
-      setResult(suggestions);
-      setLoadingState('success');
-      saveSuggestionsToStorage(suggestions);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate meeting suggestions');
-      setLoadingState('error');
-    }
-  }, [result]);
-
-  // Keep a stable ref so the meetingStatus effect never needs fetchMeetingSuggestions in its deps
-  const fetchMeetingSuggestionsRef = useRef(fetchMeetingSuggestions);
-  fetchMeetingSuggestionsRef.current = fetchMeetingSuggestions;
+  // Stable ref for use in event subscriptions
+  const fetchSuggestionsRef = useRef(fetchSuggestions);
+  fetchSuggestionsRef.current = fetchSuggestions;
 
   // ── Load persisted result on mount ─────────────────────────────────────────
   useEffect(() => {
@@ -124,57 +96,26 @@ export function SuggestionWidget() {
     }).catch(() => {});
   }, []);
 
-  // ── Track meeting mode ─────────────────────────────────────────────────────
+  // ── Unified event subscription ─────────────────────────────────────────────
+  // System I → regenerate with 30s throttle (intermediate chunks during recording)
+  // System II → regenerate immediately (complete recording processed)
   useEffect(() => {
-    return meetingStatus.subscribe((state) => {
-      setIsMeetingMode(state.isActive);
-    });
-  }, []);
+    if (isPaused) return;
 
-  // ── Normal pipeline trigger (disabled in meeting mode) ────────────────────
-  useEffect(() => {
-    if (isPaused || isMeetingMode) return;
-
-    const unsubscribe = pipelineStatus.subscribe((state: PipelineState) => {
-      const wasRunning = wasRunningRef.current;
-      const isNowComplete = !state.isRunning;
-      const doneStep = state.steps.find(s => s.id === 'done');
-      const isSuccess = doneStep?.status === 'success';
-      if (wasRunning && isNowComplete && isSuccess) {
-        fetchSuggestions();
-      }
-      wasRunningRef.current = state.isRunning;
-    });
-
-    return unsubscribe;
-  }, [fetchSuggestions, isPaused, isMeetingMode]);
-
-  // ── Meeting mode accumulation trigger ─────────────────────────────────────
-  useEffect(() => {
-    if (!isMeetingMode || isPaused) return;
-
-    let lastSegCount = meetingStatus.getState().segments.length;
-    pendingMeetingCharsRef.current = 0;
-
-    return meetingStatus.subscribe((state) => {
-      if (!state.isActive) return;
-
-      const newSegs = state.segments.slice(lastSegCount);
-      if (newSegs.length === 0) return;
-      lastSegCount = state.segments.length;
-
-      pendingMeetingCharsRef.current += newSegs.reduce((acc, s) => acc + s.text.length, 0);
-
+    const unsubSystemI = eventBus.on('processing:system-i', () => {
       const now = Date.now();
-      const throttleOk = now - lastMeetingGenRef.current >= MEETING_THROTTLE_MS;
-
-      if (pendingMeetingCharsRef.current >= MEETING_MIN_CHARS && throttleOk) {
-        pendingMeetingCharsRef.current = 0;
-        lastMeetingGenRef.current = now;
-        fetchMeetingSuggestionsRef.current(state.segments);
+      if (now - lastSystemIGenRef.current >= SYSTEM_I_THROTTLE_MS) {
+        lastSystemIGenRef.current = now;
+        fetchSuggestionsRef.current();
       }
     });
-  }, [isMeetingMode, isPaused]);
+
+    const unsubSystemII = eventBus.on('processing:system-ii', () => {
+      fetchSuggestionsRef.current();
+    });
+
+    return () => { unsubSystemI(); unsubSystemII(); };
+  }, [isPaused]);
 
   const handleTopicClick = useCallback((topic: string) => {
     if (selectedTopic === topic) {
@@ -188,15 +129,8 @@ export function SuggestionWidget() {
 
   const handleRefresh = useCallback(() => {
     setSelectedTopic(null);
-    if (isMeetingMode) {
-      const segments = meetingStatus.getState().segments;
-      if (segments.length > 0) {
-        fetchMeetingSuggestionsRef.current(segments);
-      }
-    } else {
-      fetchSuggestions();
-    }
-  }, [fetchSuggestions, isMeetingMode]);
+    fetchSuggestions();
+  }, [fetchSuggestions]);
 
   // Error state
   if (loadingState === 'error') {
@@ -224,23 +158,12 @@ export function SuggestionWidget() {
       >
         <PauseOverlay />
         <Lightbulb className="w-5 h-5 mb-1 opacity-40" />
-        {isMeetingMode ? (
-          <>
-            <span className="text-[10px]">Listening to meeting...</span>
-            <span className="text-[9px] opacity-50">Response ideas will appear as conversation accumulates</span>
-          </>
-        ) : (
-          <>
-            <span className="text-[10px]">No suggestions</span>
-            <span className="text-[9px] opacity-50">Start talking first</span>
-          </>
-        )}
-        {!isMeetingMode && (
-          <button onClick={handleRefresh} className="btn btn-xs btn-ghost mt-2 gap-1">
-            <RefreshCw size={10} />
-            Refresh
-          </button>
-        )}
+        <span className="text-[10px]">No suggestions</span>
+        <span className="text-[9px] opacity-50">Start talking first</span>
+        <button onClick={handleRefresh} className="btn btn-xs btn-ghost mt-2 gap-1">
+          <RefreshCw size={10} />
+          Refresh
+        </button>
       </div>
     );
   }
@@ -265,12 +188,6 @@ export function SuggestionWidget() {
               <span className="text-[11px] font-medium text-base-content/70">
                 {selectedTopic ? selectedTopic : 'Suggestions'}
               </span>
-              {isMeetingMode && (
-                <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-violet-400/15 border border-violet-400/25">
-                  <Icon icon="mdi:account-group" width={9} height={9} className="text-violet-500/80" />
-                  <span className="text-[8px] font-semibold text-violet-500/80 tracking-wide">Group</span>
-                </span>
-              )}
             </>
           )}
         </div>

@@ -4,6 +4,23 @@ import Entity from '../models/Entity'
 
 const entities = database.get<Entity>('entities')
 
+/** Levenshtein similarity (0-1). Shared utility for fuzzy matching. */
+function levenshteinSimilarity(a: string, b: string): number {
+  if (a === b) return 1
+  const maxLen = Math.max(a.length, b.length)
+  if (maxLen === 0) return 1
+  const matrix: number[][] = []
+  for (let i = 0; i <= a.length; i++) matrix[i] = [i]
+  for (let j = 0; j <= b.length; j++) matrix[0][j] = j
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost)
+    }
+  }
+  return 1 - matrix[a.length][b.length] / maxLen
+}
+
 export const entityStore = {
   async create(data: {
     name: string
@@ -112,6 +129,81 @@ export const entityStore = {
         e.name.toLowerCase().includes(lowerQuery) ||
         e.aliasesParsed.some(a => a.toLowerCase().includes(lowerQuery))
       )
+      .slice(0, limit)
+  },
+
+  /**
+   * Partial-match search with relevance scoring.
+   *
+   * PHILOSOPHY: Recurrence reveals truth. A user says "Charanthandi" — it
+   * partially matches "Charan Tandi" (entity). Direct match = high relevance,
+   * partial = lower but still included. Limited context window means we must
+   * rank what goes in.
+   *
+   * Scoring:
+   *   Exact name match        → 1.0
+   *   Name starts with query  → 0.9
+   *   Name contains query     → 0.7
+   *   Alias exact match       → 0.8
+   *   Alias contains query    → 0.5
+   *   Levenshtein similarity  → similarity * 0.6 (if > 0.6)
+   */
+  async searchWithRelevance(query: string, limit = 20): Promise<Array<{ entity: Entity; relevance: number }>> {
+    if (!query.trim()) return []
+
+    const all = await entities.query().fetch()
+    const lq = query.toLowerCase()
+    const results: Array<{ entity: Entity; relevance: number }> = []
+
+    for (const entity of all) {
+      const nameLower = entity.name.toLowerCase()
+      let relevance = 0
+
+      // Name exact match
+      if (nameLower === lq) {
+        relevance = 1.0
+      }
+      // Name starts with query
+      else if (nameLower.startsWith(lq)) {
+        relevance = 0.9
+      }
+      // Name contains query
+      else if (nameLower.includes(lq)) {
+        relevance = 0.7
+      }
+      // Query starts with name (user typed more than entity name)
+      else if (lq.startsWith(nameLower)) {
+        relevance = 0.65
+      }
+      else {
+        // Check aliases
+        const aliases = entity.aliasesParsed
+        for (const alias of aliases) {
+          const aliasLower = alias.toLowerCase()
+          if (aliasLower === lq) {
+            relevance = Math.max(relevance, 0.8)
+          } else if (aliasLower.includes(lq)) {
+            relevance = Math.max(relevance, 0.5)
+          }
+        }
+
+        // Levenshtein fuzzy match on first word of entity name
+        if (relevance === 0) {
+          const firstName = nameLower.split(/\s+/)[0]
+          const sim = levenshteinSimilarity(lq, firstName)
+          if (sim > 0.6) {
+            relevance = sim * 0.6
+          }
+        }
+      }
+
+      if (relevance > 0) {
+        results.push({ entity, relevance })
+      }
+    }
+
+    return results
+      .sort((a, b) => b.relevance - a.relevance)
       .slice(0, limit)
   },
 

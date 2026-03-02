@@ -10,8 +10,6 @@ import { callLLM } from '../../../program/llmClient';
 import { workingMemory } from '../../../program/WorkingMemory';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
 import { widgetRecordStore } from '../../../db/stores';
-import type { MeetingSegment } from '../../../program/kernel/meetingStatus';
-
 // (no localStorage key needed — storage is WatermelonDB via widgetRecordStore)
 
 // ============================================================================
@@ -226,108 +224,6 @@ Give 4 concrete recommendations based on this context. Use specific details from
   } catch (error) {
     console.error('Suggestions process failed:', error);
     return { suggestions: [], availableTopics, generatedAt: Date.now() };
-  }
-}
-
-// ============================================================================
-// Meeting mode prompts
-// ============================================================================
-
-const MEETING_SYSTEM_PROMPT = `You are a real-time meeting assistant. Help the user know what to SAY during a live meeting.
-
-AUDIO SOURCES:
-- [MIC] = the user (person you are helping)
-- [SYSTEM] = remote participants (Zoom / Meet / Teams audio)
-
-TASK: Based on the live transcript, generate 4 concrete things the user could SAY OR DO right now in response to what's being discussed.
-
-Focus on:
-- Direct responses to what [SYSTEM] participants just said
-- Points the user could raise based on the current discussion
-- Ideas or alternatives the user could contribute
-- Action items the user could propose or commit to
-
-AVOID:
-- Restating what [MIC] already said
-- Passive observations — make them actionable things to say
-- Repeating suggestions already shown
-
-Categories:
-- action: Something to do or commit to right now
-- next_step: A next step to propose to the group
-- idea: A contribution or alternative angle to suggest
-- optimization: A better approach or improvement to offer
-- reminder: Something from earlier in the meeting worth bringing back up
-
-Priority: high = say this now, medium = worth saying soon, low = if there's time
-
-Return 1 to 4 suggestions — only as many as are genuinely relevant to what's being discussed right now. If little has been said, return fewer. Last = most immediately relevant to the latest exchange.
-
-JSON format:
-{
-  "suggestions": [
-    { "text": "...", "topic": "Meeting / SubTopic", "category": "action", "priority": "high" }
-  ]
-}
-
-topic = "Meeting / SubTopic" format. Phrase suggestions as things the user would actually say or do (10–30 words).`;
-
-// ============================================================================
-// Meeting mode process
-// ============================================================================
-
-/**
- * Generate response suggestions for the user based on the live meeting transcript.
- * Called during an active meeting when mode === 'meeting'.
- * Uses the last 40 segments for context, prefixed with [MIC] / [SYSTEM] labels.
- */
-export async function generateMeetingSuggestions(
-  segments: MeetingSegment[],
-  previousSuggestions?: string[]
-): Promise<SuggestionResult> {
-  if (segments.length === 0) {
-    return { suggestions: [], availableTopics: [], generatedAt: Date.now() };
-  }
-
-  const recentSegments = segments.slice(-40);
-  const transcript = recentSegments
-    .map(s => `[${s.audioType === 'mic' ? 'MIC' : 'SYSTEM'}] ${s.text}`)
-    .join('\n');
-
-  const previousSection = previousSuggestions && previousSuggestions.length > 0
-    ? `\n## Suggestions already shown — do NOT repeat:\n${previousSuggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n`
-    : '';
-
-  const userPrompt = `Current time: ${new Date().toLocaleTimeString()}
-
-## Live Meeting Transcript (most recent last):
-${transcript}
-${previousSection}
-Generate 1 to 4 things the user could say or do right now — only what's genuinely relevant. Respond with JSON only.`;
-
-  try {
-    const response = await callLLM({
-      tier: 'small',
-      prompt: userPrompt,
-      systemPrompt: MEETING_SYSTEM_PROMPT,
-      options: { temperature: 0.7, max_tokens: 800 },
-    });
-
-    const { data, error } = parseLLMJSON(response.content);
-    if (error || !data) {
-      console.error('[Meeting Suggestions] Failed to parse response:', error);
-      return { suggestions: [], availableTopics: [], generatedAt: Date.now() };
-    }
-
-    const suggestions = normalizeSuggestions(data);
-    const availableTopics = [...new Set(
-      suggestions.map(s => s.topic).filter(t => t !== 'General' && t !== 'Meeting')
-    )];
-
-    return { suggestions, availableTopics, generatedAt: Date.now() };
-  } catch (error) {
-    console.error('[Meeting Suggestions] Generation failed:', error);
-    return { suggestions: [], availableTopics: [], generatedAt: Date.now() };
   }
 }
 

@@ -10,11 +10,13 @@
  * [userinput] → [search/surface] → LLM → [update] → save → wait
  */
 
-import { sessionStore, conversationStore, taskStore, correctionStore } from '../../db/stores';
+import { sessionStore, conversationStore, taskStore, recordingStore } from '../../db/stores';
 import { processInput, type ProcessingResult } from './processor';
 import { seedCorePlugins } from '../plugins';
 import { createLogger } from '../utils/logger';
 import { pipelineStatus } from './pipelineStatus';
+import { recordingManager } from './recordingManager';
+import { eventBus } from '../../lib/eventBus';
 import type Session from '../../db/models/Session';
 
 const logger = createLogger('Kernel');
@@ -49,11 +51,13 @@ class Kernel {
   private inputQueue: Array<{
     text: string;
     source: 'speech' | 'text';
+    recordingId?: string;
     resolve: (result: InputResult) => void;
     reject: (error: Error) => void;
   }> = [];
 
   private listeners: Set<(state: KernelState) => void> = new Set();
+  private recordingUnsubscribers: Array<() => void> = [];
 
   private constructor() {}
 
@@ -92,6 +96,9 @@ class Kernel {
     // Resume any pending tasks (for durability)
     await this.resumePendingTasks();
 
+    // Wire recording lifecycle to native events
+    this.wireRecordingLifecycle();
+
     this.initialized = true;
     this.notifyListeners();
 
@@ -102,6 +109,10 @@ class Kernel {
     if (!this.initialized) return;
 
     logger.info('Shutting down kernel...');
+
+    // Unsubscribe recording lifecycle listeners
+    this.recordingUnsubscribers.forEach(unsub => unsub());
+    this.recordingUnsubscribers = [];
 
     // End current session
     if (this.currentSession) {
@@ -138,20 +149,164 @@ class Kernel {
   }
 
   // ==========================================================================
+  // Recording Lifecycle Wiring
+  // ==========================================================================
+
+  /**
+   * Wire RecordingManager to native events so the unified pipeline processes
+   * all audio input through System I (per-chunk) and System II (full recording).
+   *
+   * Flow:
+   *   native:recording-started  → recordingManager.start('voice')
+   *   native:transcription-intermediate → recordingManager.addChunk() → submitChunk() (System I)
+   *   native:recording-ended    → recordingManager.end() → submitInput() (System II)
+   *
+   * Text/paste input: called directly via submitInput() — no recording lifecycle needed.
+   */
+  private wireRecordingLifecycle(): void {
+    // Clean up any previous subscriptions (shouldn't happen, but defensive)
+    this.recordingUnsubscribers.forEach(unsub => unsub());
+    this.recordingUnsubscribers = [];
+
+    // ── Recording start ──
+    this.recordingUnsubscribers.push(
+      eventBus.on('native:recording-started', () => {
+        const recording = recordingManager.start('voice', { origin: 'in-app' });
+        logger.info('Recording started via native event', { id: recording.id });
+      })
+    );
+
+    // ── Intermediate chunk → System I processing ──
+    this.recordingUnsubscribers.push(
+      eventBus.on('native:transcription-intermediate', (payload) => {
+        if (!recordingManager.isRecording) return;
+
+        const chunk = recordingManager.addChunk(
+          payload.text,
+          payload.audioType,
+          { speechStartMs: payload.speechStartMs, speechEndMs: payload.speechEndMs }
+        );
+
+        // Fire-and-forget System I processing
+        this.submitChunk(chunk.text, chunk.chunkIndex, chunk.recordingId)
+          .catch(err => logger.error('System I chunk failed (non-fatal)', { error: err }));
+      })
+    );
+
+    // ── Recording end → System II processing ──
+    this.recordingUnsubscribers.push(
+      eventBus.on('native:recording-ended', () => {
+        if (!recordingManager.isRecording) return;
+
+        const { recording, fullText, chunks } = recordingManager.end();
+        logger.info('Recording ended', { id: recording.id, chars: fullText.length });
+
+        if (fullText.trim()) {
+          // Save recording to DB for time travel
+          recordingStore.create({
+            type: recording.type,
+            startedAt: recording.startedAt,
+            endedAt: recording.endedAt,
+            fullText,
+            source: 'in-app',
+            audioType: recording.audioType,
+            throughputRate: recording.throughputRate,
+            chunkCount: chunks.length,
+            processingMode: 'system-ii',
+            sessionId: this.currentSession?.id,
+          }).catch(err => logger.error('Failed to save recording', { error: err }));
+
+          // Submit for System II (durable) processing — pass recordingId
+          // so the event chain stays connected: recording → processing → widgets
+          this.submitInput(fullText.trim(), 'speech', recording.id)
+            .catch(err => logger.error('System II processing failed', { error: err }));
+        }
+      })
+    );
+
+    // ── Transcription final (cloud STT) → same as recording end ──
+    this.recordingUnsubscribers.push(
+      eventBus.on('native:transcription-final', (payload) => {
+        if (!recordingManager.isRecording) return;
+
+        // Add final text as last chunk
+        recordingManager.addChunk(payload.text, 'mic');
+        const { recording, fullText, chunks } = recordingManager.end();
+        logger.info('Transcription final', { id: recording.id, chars: fullText.length });
+
+        if (fullText.trim()) {
+          recordingStore.create({
+            type: recording.type,
+            startedAt: recording.startedAt,
+            endedAt: recording.endedAt,
+            fullText,
+            source: 'in-app',
+            throughputRate: recording.throughputRate,
+            chunkCount: chunks.length,
+            processingMode: 'system-ii',
+            sessionId: this.currentSession?.id,
+          }).catch(err => logger.error('Failed to save recording', { error: err }));
+
+          this.submitInput(fullText.trim(), 'speech', recording.id)
+            .catch(err => logger.error('System II processing failed', { error: err }));
+        }
+      })
+    );
+
+    logger.info('Recording lifecycle wired to native events');
+  }
+
+  // ==========================================================================
   // Input Processing (The Core Loop)
   // ==========================================================================
 
   /**
-   * Submit user input for processing
-   * Returns a promise that resolves when processing is complete
+   * Submit user input for processing.
+   *
+   * Every input should have a recordingId — the Recording abstraction tracks
+   * ALL inputs (voice, text, paste, keyboard) for time travel and event routing.
+   * If no recordingId is provided, one is created automatically so that
+   * downstream processing (processor.ts) can always emit typed events.
+   *
+   * @param text - The input text
+   * @param source - How the text arrived ('speech' | 'text')
+   * @param recordingId - Optional recording ID (auto-created if not provided)
    */
-  async submitInput(text: string, source: 'speech' | 'text' = 'text'): Promise<InputResult> {
+  async submitInput(
+    text: string,
+    source: 'speech' | 'text' = 'text',
+    recordingId?: string
+  ): Promise<InputResult> {
     if (!this.initialized || !this.currentSession) {
       throw new Error('Kernel not initialized');
     }
 
+    // Ensure every input has a recording — if the caller didn't create one
+    // (e.g. TextInputWidget, legacy code paths), we create one here.
+    let finalRecordingId = recordingId;
+    if (!finalRecordingId) {
+      const recType = source === 'speech' ? 'voice' : 'text';
+      recordingManager.start(recType, { origin: 'in-app' });
+      recordingManager.addChunk(text);
+      const { recording: ended } = recordingManager.end();
+      finalRecordingId = ended.id;
+
+      // Persist the auto-created recording
+      recordingStore.create({
+        type: ended.type,
+        startedAt: ended.startedAt,
+        endedAt: ended.endedAt,
+        fullText: text,
+        source: 'in-app',
+        throughputRate: ended.throughputRate,
+        chunkCount: 1,
+        processingMode: 'system-ii',
+        sessionId: this.currentSession?.id,
+      }).catch(err => logger.error('Failed to save auto-recording', { error: err }));
+    }
+
     return new Promise((resolve, reject) => {
-      this.inputQueue.push({ text, source, resolve, reject });
+      this.inputQueue.push({ text, source, recordingId: finalRecordingId, resolve, reject });
       this.notifyListeners();
       this.processQueue();
     });
@@ -168,7 +323,7 @@ class Kernel {
       this.notifyListeners();
 
       try {
-        const result = await this.processInputItem(item.text, item.source);
+        const result = await this.processInputItem(item.text, item.source, item.recordingId);
         item.resolve(result);
       } catch (error) {
         logger.error('Failed to process input', { error });
@@ -182,7 +337,8 @@ class Kernel {
 
   private async processInputItem(
     text: string,
-    source: 'speech' | 'text'
+    source: 'speech' | 'text',
+    recordingId?: string
   ): Promise<InputResult> {
     if (!this.currentSession?.id) {
       throw new Error('No active session');
@@ -193,12 +349,10 @@ class Kernel {
     pipelineStatus.start();
     pipelineStatus.step('input', 'running');
 
-    // 1. Apply corrections (for STT)
-    let sanitizedText = text;
-    if (source === 'speech') {
-      const { corrected } = await correctionStore.applyCorrections(text);
-      sanitizedText = corrected;
-    }
+    // Corrections are now handled inside normalizeInput (Phase 1 of processor)
+    // The raw text goes through as-is — normalizeInput applies dictionary,
+    // phonetic, and learned corrections before the LLM call.
+    const sanitizedText = text;
     pipelineStatus.step('input', 'success');
 
     // 2. Save conversation unit
@@ -236,7 +390,8 @@ class Kernel {
         sessionId,
         conversation.id,
         sanitizedText,
-        source
+        source,
+        { mode: 'system-ii', recordingId }
       );
 
       await conversationStore.markProcessed(conversation.id);
@@ -265,6 +420,69 @@ class Kernel {
         conversationId: conversation.id,
         error: errorMessage,
       };
+    }
+  }
+
+  // ==========================================================================
+  // System I — Fast Processing (per-chunk)
+  // ==========================================================================
+
+  /**
+   * Submit a single recording chunk for System I (fast/shallow) processing.
+   *
+   * System I processes each intermediate chunk with small context.
+   * Results are saved to DB for time travel but without durability guarantees.
+   * Fire-and-forget — if it fails, the chunk is skipped silently.
+   *
+   * @param chunkText - The text of the chunk to process
+   * @param chunkIndex - Sequential index within the recording
+   * @param recordingId - ID of the active recording
+   * @returns ProcessingResult if successful, null if failed
+   */
+  async submitChunk(
+    chunkText: string,
+    chunkIndex: number,
+    recordingId: string
+  ): Promise<ProcessingResult | null> {
+    if (!this.initialized || !this.currentSession) {
+      return null;
+    }
+
+    const sessionId = this.currentSession.id;
+
+    try {
+      // Save as conversation record (for time travel)
+      const conversation = await conversationStore.create({
+        sessionId,
+        rawText: chunkText,
+        sanitizedText: chunkText,
+        source: 'speech',
+        speaker: 'user',
+      });
+
+      // Run System I processing — fire-and-forget, no durable task
+      const result = await processInput(
+        sessionId,
+        conversation.id,
+        chunkText,
+        'speech',
+        {
+          mode: 'system-i',
+          recordingId,
+          chunkIndex,
+        }
+      );
+
+      await conversationStore.markProcessed(conversation.id);
+
+      return result;
+    } catch (error) {
+      logger.error('System I chunk processing failed (non-fatal)', {
+        chunkIndex,
+        recordingId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 

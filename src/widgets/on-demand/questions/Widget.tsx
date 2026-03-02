@@ -1,16 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   generateQuestions,
-  generateMeetingQuestions,
   saveQuestionsToStorage,
   loadQuestionsFromStorage,
   type Question,
   type QuestionResult,
 } from './process';
-import { pipelineStatus, type PipelineState } from '../../../program/kernel/pipelineStatus';
-import { meetingStatus, type MeetingSegment } from '../../../program/kernel/meetingStatus';
+import { eventBus } from '../../../lib/eventBus';
 import { useWidgetPause } from '../useWidgetPause';
-import { Icon } from '@iconify/react';
 import {
   HelpCircle,
   RefreshCw,
@@ -52,29 +49,23 @@ const categoryLabels: Record<Question['category'], string> = {
   explore: 'explore',
 };
 
-// Meeting mode accumulation thresholds
-const MEETING_MIN_CHARS = 200;
-const MEETING_THROTTLE_MS = 30_000;
+/** Throttle for System I events — don't regenerate faster than every 30s */
+const SYSTEM_I_THROTTLE_MS = 30_000;
 
 export function QuestionWidget() {
   const [result, setResult] = useState<QuestionResult | null>(null);
   const [loadingState, setLoadingState] = useState<LoadingState>('idle');
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isMeetingMode, setIsMeetingMode] = useState(() => meetingStatus.getState().isActive);
 
   // Pause functionality
   const { isPaused, PauseButton, PauseOverlay } = useWidgetPause('questions', 'Questions');
 
-  const wasRunningRef = useRef(false);
   const hasLoadedFromStorageRef = useRef(false);
+  const lastSystemIGenRef = useRef(0);
 
-  // Meeting mode accumulation refs
-  const pendingMeetingCharsRef = useRef(0);
-  const lastMeetingGenRef = useRef(0);
-
-  // ── BATCH mode: generate from working memory (solo / in-app) ─────────────
-  // Triggered after pipelineStatus completes (new speech or typed input committed).
+  // ── Generate questions from working memory ────────────────────────────────
+  // Unified path: triggered by both System I and System II processing events.
   // Uses WorkingMemory (DB conversations, entities, topics, memories).
   const fetchQuestions = useCallback(async (focusTopic?: string) => {
     setLoadingState('loading');
@@ -91,28 +82,9 @@ export function QuestionWidget() {
     }
   }, [result]);
 
-  // ── STREAMING mode: generate from live meeting transcript (meeting / out-of-app) ──
-  // Triggered by meetingStatus accumulation (200 chars, 30s throttle).
-  // Uses the raw live segments — NOT WorkingMemory — so questions are about
-  // what's being said right now, not the user's past conversation history.
-  const fetchMeetingQuestions = useCallback(async (segments: MeetingSegment[]) => {
-    setLoadingState('loading');
-    setError(null);
-    const previousQuestions = result?.questions.map(q => q.text) ?? [];
-    try {
-      const questions = await generateMeetingQuestions(segments, previousQuestions);
-      setResult(questions);
-      setLoadingState('success');
-      saveQuestionsToStorage(questions);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate meeting questions');
-      setLoadingState('error');
-    }
-  }, [result]);
-
-  // Keep a stable ref so the meetingStatus effect never needs fetchMeetingQuestions in its deps
-  const fetchMeetingQuestionsRef = useRef(fetchMeetingQuestions);
-  fetchMeetingQuestionsRef.current = fetchMeetingQuestions;
+  // Stable ref for use in event subscriptions
+  const fetchQuestionsRef = useRef(fetchQuestions);
+  fetchQuestionsRef.current = fetchQuestions;
 
   // ── Load persisted result on mount ─────────────────────────────────────────
   useEffect(() => {
@@ -123,57 +95,26 @@ export function QuestionWidget() {
     }).catch(() => {});
   }, []);
 
-  // ── Track meeting mode ─────────────────────────────────────────────────────
+  // ── Unified event subscription ─────────────────────────────────────────────
+  // System I → regenerate with 30s throttle (intermediate chunks during recording)
+  // System II → regenerate immediately (complete recording processed)
   useEffect(() => {
-    return meetingStatus.subscribe((state) => {
-      setIsMeetingMode(state.isActive);
-    });
-  }, []);
+    if (isPaused) return;
 
-  // ── Normal pipeline trigger (disabled in meeting mode) ────────────────────
-  useEffect(() => {
-    if (isPaused || isMeetingMode) return;
-
-    const unsubscribe = pipelineStatus.subscribe((state: PipelineState) => {
-      const wasRunning = wasRunningRef.current;
-      const isNowComplete = !state.isRunning;
-      const doneStep = state.steps.find(s => s.id === 'done');
-      const isSuccess = doneStep?.status === 'success';
-      if (wasRunning && isNowComplete && isSuccess) {
-        fetchQuestions();
-      }
-      wasRunningRef.current = state.isRunning;
-    });
-
-    return unsubscribe;
-  }, [fetchQuestions, isPaused, isMeetingMode]);
-
-  // ── Meeting mode accumulation trigger ─────────────────────────────────────
-  useEffect(() => {
-    if (!isMeetingMode || isPaused) return;
-
-    let lastSegCount = meetingStatus.getState().segments.length;
-    pendingMeetingCharsRef.current = 0;
-
-    return meetingStatus.subscribe((state) => {
-      if (!state.isActive) return;
-
-      const newSegs = state.segments.slice(lastSegCount);
-      if (newSegs.length === 0) return;
-      lastSegCount = state.segments.length;
-
-      pendingMeetingCharsRef.current += newSegs.reduce((acc, s) => acc + s.text.length, 0);
-
+    const unsubSystemI = eventBus.on('processing:system-i', () => {
       const now = Date.now();
-      const throttleOk = now - lastMeetingGenRef.current >= MEETING_THROTTLE_MS;
-
-      if (pendingMeetingCharsRef.current >= MEETING_MIN_CHARS && throttleOk) {
-        pendingMeetingCharsRef.current = 0;
-        lastMeetingGenRef.current = now;
-        fetchMeetingQuestionsRef.current(state.segments);
+      if (now - lastSystemIGenRef.current >= SYSTEM_I_THROTTLE_MS) {
+        lastSystemIGenRef.current = now;
+        fetchQuestionsRef.current();
       }
     });
-  }, [isMeetingMode, isPaused]);
+
+    const unsubSystemII = eventBus.on('processing:system-ii', () => {
+      fetchQuestionsRef.current();
+    });
+
+    return () => { unsubSystemI(); unsubSystemII(); };
+  }, [isPaused]);
 
   const handleTopicClick = useCallback((topic: string) => {
     if (selectedTopic === topic) {
@@ -187,15 +128,8 @@ export function QuestionWidget() {
 
   const handleRefresh = useCallback(() => {
     setSelectedTopic(null);
-    if (isMeetingMode) {
-      const segments = meetingStatus.getState().segments;
-      if (segments.length > 0) {
-        fetchMeetingQuestionsRef.current(segments);
-      }
-    } else {
-      fetchQuestions();
-    }
-  }, [fetchQuestions, isMeetingMode]);
+    fetchQuestions();
+  }, [fetchQuestions]);
 
   // Error state
   if (loadingState === 'error') {
@@ -223,23 +157,12 @@ export function QuestionWidget() {
       >
         <PauseOverlay />
         <HelpCircle className="w-5 h-5 mb-1 opacity-40" />
-        {isMeetingMode ? (
-          <>
-            <span className="text-[10px]">Listening to meeting...</span>
-            <span className="text-[9px] opacity-50">Questions will appear as conversation accumulates</span>
-          </>
-        ) : (
-          <>
-            <span className="text-[10px]">No questions</span>
-            <span className="text-[9px] opacity-50">Start talking first</span>
-          </>
-        )}
-        {!isMeetingMode && (
-          <button onClick={handleRefresh} className="btn btn-xs btn-ghost mt-2 gap-1">
-            <RefreshCw size={10} />
-            Refresh
-          </button>
-        )}
+        <span className="text-[10px]">No questions</span>
+        <span className="text-[9px] opacity-50">Start talking first</span>
+        <button onClick={handleRefresh} className="btn btn-xs btn-ghost mt-2 gap-1">
+          <RefreshCw size={10} />
+          Refresh
+        </button>
       </div>
     );
   }
@@ -264,12 +187,6 @@ export function QuestionWidget() {
               <span className="text-[11px] font-medium text-base-content/70">
                 {selectedTopic ? selectedTopic : 'Questions'}
               </span>
-              {isMeetingMode && (
-                <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-violet-400/15 border border-violet-400/25">
-                  <Icon icon="mdi:account-group" width={9} height={9} className="text-violet-500/80" />
-                  <span className="text-[8px] font-semibold text-violet-500/80 tracking-wide">Group</span>
-                </span>
-              )}
             </>
           )}
         </div>

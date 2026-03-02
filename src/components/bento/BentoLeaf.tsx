@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { LeafNode, WidgetType } from './types';
 import { BentoLeafMenu } from './BentoLeafMenu';
 import {
-  GripHorizontal, AlertTriangle, X, Check,
+  GripHorizontal, AlertTriangle, X, Check, Upload,
   Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio
 } from 'lucide-react';
+import { uploadFiles, isSupportedFileType } from '../../services/fileUpload';
 
 interface BentoLeafProps {
   node: LeafNode;
@@ -49,6 +50,7 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
   const badgeTextRef = useRef<HTMLDivElement>(null);
 
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -149,18 +151,39 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
   };
 
   const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault(); 
-    e.dataTransfer.dropEffect = 'move';
-    if (!isDragOver) setIsDragOver(true);
+    e.preventDefault();
+    // Differentiate file drops from widget swap drags
+    if (e.dataTransfer.types.includes('Files')) {
+      e.dataTransfer.dropEffect = 'copy';
+      if (!isFileDragOver) setIsFileDragOver(true);
+      setIsDragOver(false);
+    } else {
+      e.dataTransfer.dropEffect = 'move';
+      if (!isDragOver) setIsDragOver(true);
+      setIsFileDragOver(false);
+    }
   };
 
   const handleDragLeave = () => {
     setIsDragOver(false);
+    setIsFileDragOver(false);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
+    setIsFileDragOver(false);
+
+    // File drop — route to file upload service
+    if (e.dataTransfer.files.length > 0) {
+      const supported = Array.from(e.dataTransfer.files).filter(f => isSupportedFileType(f.name));
+      if (supported.length > 0) {
+        uploadFiles(supported).catch(console.error);
+      }
+      return;
+    }
+
+    // Widget swap drag (edit mode only)
     const draggedId = e.dataTransfer.getData('application/bento-node-id');
     if (draggedId && draggedId !== node.id) {
         onSwap(draggedId, node.id);
@@ -182,13 +205,23 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
       `}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onDragOver={editMode ? handleDragOver : undefined}
-      onDragLeave={editMode ? handleDragLeave : undefined}
-      onDrop={editMode ? handleDrop : undefined}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
-      {/* Drop Zone Visual Overlay (edit mode only) */}
+      {/* Widget Swap Drop Overlay (edit mode only) */}
       {editMode && isDragOver && (
           <div className="absolute inset-1.5 z-40 border-2 border-dashed border-blue-500 bg-blue-500/5 rounded-lg pointer-events-none animate-in fade-in duration-150" />
+      )}
+
+      {/* File Drop Overlay (always available — files can be dropped anytime) */}
+      {isFileDragOver && (
+          <div className="absolute inset-1.5 z-40 border-2 border-dashed border-emerald-500 bg-emerald-500/10 rounded-lg pointer-events-none animate-in fade-in duration-150 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-1.5 text-emerald-700">
+              <Upload size={24} />
+              <span className="text-xs font-bold">Drop to upload</span>
+            </div>
+          </div>
       )}
 
       {/* Delete Confirmation Overlay */}

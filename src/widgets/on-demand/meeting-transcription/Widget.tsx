@@ -22,7 +22,7 @@ import {
   loadArchivedMeetings,
   loadMeetingSettings,
   archiveCurrentMeeting,
-  updateArchivedMeetingTitle,
+  updateArchivedMeetingSummary,
   createInitialMeetingState,
   saveMeetingState,
   NEW_MEETING_GAP_MS,
@@ -310,6 +310,12 @@ export function MeetingTranscriptionWidget() {
   const latestAudioTypeRef = useRef<'mic' | 'system'>('mic');
   const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLLMRunningRef = useRef(false);
+  // Gate: only accept transcription events when in meeting mode.
+  // Set to true when native:mode-changed fires with 'meeting', reset on recording end.
+  // Without this, every regular speech input would be treated as a meeting segment.
+  // The ref is the source of truth (used in event handlers). The state drives UI re-renders.
+  const isMeetingRecordingRef = useRef(false);
+  const [isMeetingMode, setIsMeetingMode] = useState(false);
 
   const { isPaused, PauseButton } = useWidgetPause('meeting-transcription', 'Meeting');
   const isPausedRef = useRef(isPaused);
@@ -330,6 +336,10 @@ export function MeetingTranscriptionWidget() {
   // Core LLM trigger
   // -------------------------------------------------------------------------
   const triggerLLM = useCallback(async (forceImmediate = false) => {
+    // Only run the meeting LLM once we know this is a meeting recording.
+    // Text accumulates in pendingTextRef regardless — once meeting mode is
+    // confirmed, the next triggerLLM call picks up all accumulated text.
+    if (!isMeetingRecordingRef.current) return;
     if (isLLMRunningRef.current) return;
     const pendingText = pendingTextRef.current;
     if (pendingText.length === 0) return;
@@ -486,6 +496,18 @@ export function MeetingTranscriptionWidget() {
     //   3. Generate meeting title (best-effort, small LLM call)
     //   4. If title succeeds, patch the already-saved archive entry + update state
     const unsubEnd = eventBus.on('native:recording-ended', () => {
+      const wasMeeting = isMeetingRecordingRef.current;
+      isMeetingRecordingRef.current = false;
+      setIsMeetingMode(false);
+      if (!wasMeeting) {
+        // Solo recording — discard accumulated text/feed that was never processed
+        pendingTextRef.current = '';
+        if (staleTimerRef.current) { clearTimeout(staleTimerRef.current); staleTimerRef.current = null; }
+        const fresh = createInitialMeetingState();
+        stateRef.current = fresh;
+        setMeetingState(fresh);
+        return;
+      }
       void (async () => {
         if (isPausedRef.current) return;
         if (stateRef.current.segmentCount === 0) return;
@@ -498,11 +520,15 @@ export function MeetingTranscriptionWidget() {
         const savedArchive = await archiveCurrentMeeting(stateRef.current);
         setArchivedMeetings(savedArchive);
 
-        // Step 3 + 4: generate title, then patch archive with it
+        // Step 3 + 4: generate title + summary, then patch archive
         try {
           const updatedState = await generateMeetingEndSummary(stateRef.current, settingsRef.current);
-          if (updatedState.title) {
-            const patchedArchive = await updateArchivedMeetingTitle(meetingId, updatedState.title);
+          if (updatedState.title || updatedState.summary) {
+            const patchedArchive = await updateArchivedMeetingSummary(
+              meetingId,
+              updatedState.title,
+              updatedState.summary
+            );
             setArchivedMeetings(patchedArchive);
           }
         } catch { /* generateMeetingEndSummary logs internally — archive already safe */ }
@@ -521,6 +547,17 @@ export function MeetingTranscriptionWidget() {
 
     // recording-cancelled: just flush — no end-of-meeting call
     const unsubCancelled = eventBus.on('native:recording-cancelled', () => {
+      const wasMeeting = isMeetingRecordingRef.current;
+      isMeetingRecordingRef.current = false;
+      setIsMeetingMode(false);
+      if (!wasMeeting) {
+        pendingTextRef.current = '';
+        if (staleTimerRef.current) { clearTimeout(staleTimerRef.current); staleTimerRef.current = null; }
+        const fresh = createInitialMeetingState();
+        stateRef.current = fresh;
+        setMeetingState(fresh);
+        return;
+      }
       if (isPausedRef.current) return;
       if (stateRef.current.segmentCount === 0) return;
       void flushPending();
@@ -530,7 +567,7 @@ export function MeetingTranscriptionWidget() {
   }, [triggerLLM]);
 
   // -------------------------------------------------------------------------
-  // Subscribe to transcription events (intermediate only — final is a duplicate)
+  // Subscribe to transcription events for display feed (intermediate only)
   // -------------------------------------------------------------------------
   useEffect(() => {
     if (isPaused) return;
@@ -552,10 +589,38 @@ export function MeetingTranscriptionWidget() {
   }, [isPaused, handleTranscription]);
 
   // -------------------------------------------------------------------------
+  // Subscribe to System I processing events for LLM trigger
+  // When the unified pipeline processes a chunk, trigger the meeting LLM.
+  // This replaces the old text-accumulation-based trigger.
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (isPaused) return;
+
+    const unsubSystemI = eventBus.on('processing:system-i', () => {
+      // System I processed a chunk — trigger meeting LLM if we have pending text
+      triggerLLM();
+    });
+
+    return () => { unsubSystemI(); };
+  }, [isPaused, triggerLLM]);
+
+  // -------------------------------------------------------------------------
   // Native mode
   // -------------------------------------------------------------------------
   useEffect(() => {
-    const unsub = eventBus.on('native:mode-changed', (payload) => setNativeMode(payload.mode));
+    const unsub = eventBus.on('native:mode-changed', (payload) => {
+      setNativeMode(payload.mode);
+      // Once the native side reports 'meeting' mode, flip the ref.
+      // handleTranscription always accumulates text + calls triggerLLM on each
+      // intermediate event. triggerLLM checks isMeetingRecordingRef — while false
+      // it's a no-op. The moment mode-changed flips it to true, the very next
+      // intermediate transcription event will trigger the LLM with ALL accumulated
+      // pending text (nothing is lost).
+      if (payload.mode === 'meeting') {
+        isMeetingRecordingRef.current = true;
+        setIsMeetingMode(true);
+      }
+    });
     return unsub;
   }, []);
 
@@ -580,6 +645,27 @@ export function MeetingTranscriptionWidget() {
   // -------------------------------------------------------------------------
   // Actions
   // -------------------------------------------------------------------------
+  // Toggle meeting mode — for in-person meetings with no system audio.
+  // Flips the same ref that native:mode-changed would set.
+  const handleToggleMeetingMode = useCallback(() => {
+    if (isMeetingRecordingRef.current) {
+      // Switch OFF meeting mode → back to solo
+      isMeetingRecordingRef.current = false;
+      setIsMeetingMode(false);
+    } else {
+      // Switch ON meeting mode
+      isMeetingRecordingRef.current = true;
+      setIsMeetingMode(true);
+      // Stamp startedAt if fresh
+      if (stateRef.current.segmentCount === 0) {
+        const now = Date.now();
+        const stamped = { ...stateRef.current, startedAt: now };
+        stateRef.current = stamped;
+        setMeetingState(stamped);
+      }
+    }
+  }, []);
+
   const handleNewMeeting = useCallback(() => {
     const state = stateRef.current;
     if (state.segmentCount > 0) {
@@ -694,6 +780,27 @@ export function MeetingTranscriptionWidget() {
         <span className="text-[12px] font-semibold text-base-content/70">Waiting for audio...</span>
         <span className="text-[9px] text-base-content/35">Speak or play audio to begin</span>
 
+        {/* Meeting mode toggle — for in-person meetings without system audio */}
+        <button
+          onClick={handleToggleMeetingMode}
+          className={`flex items-center gap-1.5 px-3 py-1.5 mt-1 rounded-full border transition-colors ${
+            isMeetingMode
+              ? 'bg-violet-400/15 border-violet-400/30 hover:bg-violet-400/25'
+              : 'bg-primary/10 border-primary/20 hover:bg-primary/20 hover:border-primary/40'
+          }`}
+        >
+          <Icon
+            icon={isMeetingMode ? 'mdi:account-group' : 'mdi:account'}
+            width={12} height={12}
+            className={isMeetingMode ? 'text-violet-500/80' : 'text-primary/70'}
+          />
+          <span className={`text-[10px] font-medium ${
+            isMeetingMode ? 'text-violet-500/80' : 'text-primary/80'
+          }`}>
+            {isMeetingMode ? 'Meeting Mode' : 'Solo Mode'}
+          </span>
+        </button>
+
         {/* Context card */}
         <button
           onClick={() => setView('settings')}
@@ -805,11 +912,27 @@ export function MeetingTranscriptionWidget() {
               <span className="text-[8px] font-semibold text-violet-500/80 tracking-wide">Group</span>
             </span>
           )}
-          {nativeMode === 'solo' && (
-            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-400/15 border border-blue-400/25 flex-shrink-0">
-              <Icon icon="mdi:account" width={10} height={10} className="text-blue-500/80" />
-              <span className="text-[8px] font-semibold text-blue-500/80 tracking-wide">Solo</span>
-            </span>
+          {nativeMode !== 'meeting' && (
+            <button
+              onClick={handleToggleMeetingMode}
+              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border transition-colors flex-shrink-0 ${
+                isMeetingMode
+                  ? 'bg-violet-400/15 border-violet-400/25 hover:bg-violet-400/25'
+                  : 'bg-blue-400/15 border-blue-400/25 hover:bg-primary/15 hover:border-primary/30'
+              }`}
+              title={isMeetingMode ? 'Switch to solo mode' : 'Switch to meeting mode'}
+            >
+              <Icon
+                icon={isMeetingMode ? 'mdi:account-group' : 'mdi:account'}
+                width={10} height={10}
+                className={isMeetingMode ? 'text-violet-500/80' : 'text-blue-500/60'}
+              />
+              <span className={`text-[8px] font-semibold tracking-wide ${
+                isMeetingMode ? 'text-violet-500/80' : 'text-blue-500/70'
+              }`}>
+                {isMeetingMode ? 'Meeting' : 'Solo'}
+              </span>
+            </button>
           )}
           {/* Sentiment indicator — only show non-neutral */}
           {meetingState.sentiment !== 'neutral' && (

@@ -30,7 +30,7 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 export const DATABASE_NAME = 'ramble_v3'
 
 export const schema = appSchema({
-  version: 6,
+  version: 7,
   tables: [
     // ========================================================================
     // CORE - Foundation (Keep from v4)
@@ -319,12 +319,109 @@ export const schema = appSchema({
         { name: 'updatedAt', type: 'number' },                               // last mutation timestamp
       ]
     }),
+
+    // ========================================================================
+    // RECORDINGS - Universal recording sessions for time travel (v7)
+    // ========================================================================
+
+    // Recordings - Every input session (voice, text, paste, document, image)
+    // Saved for time travel: user can scrub through timeline and see
+    // working memory at any point. System I saves intermediate chunks,
+    // System II saves the full recording.
+    tableSchema({
+      name: 'recordings',
+      columns: [
+        { name: 'type',            type: 'string', isIndexed: true },   // 'voice' | 'text' | 'paste' | 'document' | 'image'
+        { name: 'startedAt',       type: 'number', isIndexed: true },   // When recording began
+        { name: 'endedAt',         type: 'number', isOptional: true },  // When recording ended (null while active)
+        { name: 'fullText',        type: 'string' },                    // Complete accumulated text
+        { name: 'source',          type: 'string' },                    // 'in-app' | 'out-of-app'
+        { name: 'audioType',       type: 'string', isOptional: true },  // 'mic' | 'system' for voice recordings
+        { name: 'throughputRate',   type: 'number', isOptional: true },  // chars/sec — physical bottleneck signal
+        { name: 'chunkCount',      type: 'number' },                    // Number of intermediate chunks
+        { name: 'processingMode',  type: 'string', isOptional: true },  // 'system-i' | 'system-ii'
+        { name: 'sessionId',       type: 'string', isOptional: true, isIndexed: true },  // Link to sessions table
+        { name: 'metadata',        type: 'string' },                    // JSON for extensibility
+        { name: 'createdAt',       type: 'number', isIndexed: true },
+      ]
+    }),
+
+    // ========================================================================
+    // UPLOADED FILES - File upload metadata (v7)
+    // ========================================================================
+
+    // Uploaded Files - Robust metadata for dropped/uploaded files.
+    // Files are stored in a user-selected folder via File System Access API.
+    // This table tracks what was uploaded, where it lives, and its processing status.
+    // Topics are extracted from uploads but NOT entities (uploaded content could
+    // be third-party noise — we don't know if it's the user's own content).
+    tableSchema({
+      name: 'uploaded_files',
+      columns: [
+        { name: 'fileName',        type: 'string' },                    // Original file name
+        { name: 'fileType',        type: 'string', isIndexed: true },   // MIME type (e.g. 'application/pdf', 'image/png')
+        { name: 'fileSize',        type: 'number' },                    // Size in bytes
+        { name: 'fileExtension',   type: 'string' },                    // e.g. 'pdf', 'png', 'md'
+        { name: 'storagePath',     type: 'string' },                    // Path in user-selected folder
+        { name: 'status',          type: 'string', isIndexed: true },   // 'pending' | 'processing' | 'ready' | 'error'
+        { name: 'previewText',     type: 'string', isOptional: true },  // First paragraph or extracted text snippet
+        { name: 'recordingId',     type: 'string', isOptional: true, isIndexed: true },  // Link to recordings table
+        { name: 'conversationId',  type: 'string', isOptional: true, isIndexed: true },  // Link after System II processes it
+        { name: 'tags',            type: 'string', isOptional: true },  // JSON array
+        { name: 'metadata',        type: 'string' },                    // JSON (dimensions for images, page count for PDFs, etc.)
+        { name: 'createdAt',       type: 'number', isIndexed: true },
+        { name: 'updatedAt',       type: 'number' },
+      ]
+    }),
   ]
 })
 
 // Migrations - IMPORTANT: Only additive changes to preserve data
 export const migrations = schemaMigrations({
   migrations: [
+    {
+      // v6 → v7: Add recordings + uploaded_files tables for unified pipeline
+      // recordings: time-travel through all input sessions (voice, text, paste, document, image)
+      // uploaded_files: robust file upload metadata with processing status
+      toVersion: 7,
+      steps: [
+        createTable({
+          name: 'recordings',
+          columns: [
+            { name: 'type',            type: 'string', isIndexed: true },
+            { name: 'startedAt',       type: 'number', isIndexed: true },
+            { name: 'endedAt',         type: 'number', isOptional: true },
+            { name: 'fullText',        type: 'string' },
+            { name: 'source',          type: 'string' },
+            { name: 'audioType',       type: 'string', isOptional: true },
+            { name: 'throughputRate',   type: 'number', isOptional: true },
+            { name: 'chunkCount',      type: 'number' },
+            { name: 'processingMode',  type: 'string', isOptional: true },
+            { name: 'sessionId',       type: 'string', isOptional: true, isIndexed: true },
+            { name: 'metadata',        type: 'string' },
+            { name: 'createdAt',       type: 'number', isIndexed: true },
+          ],
+        }),
+        createTable({
+          name: 'uploaded_files',
+          columns: [
+            { name: 'fileName',        type: 'string' },
+            { name: 'fileType',        type: 'string', isIndexed: true },
+            { name: 'fileSize',        type: 'number' },
+            { name: 'fileExtension',   type: 'string' },
+            { name: 'storagePath',     type: 'string' },
+            { name: 'status',          type: 'string', isIndexed: true },
+            { name: 'previewText',     type: 'string', isOptional: true },
+            { name: 'recordingId',     type: 'string', isOptional: true, isIndexed: true },
+            { name: 'conversationId',  type: 'string', isOptional: true, isIndexed: true },
+            { name: 'tags',            type: 'string', isOptional: true },
+            { name: 'metadata',        type: 'string' },
+            { name: 'createdAt',       type: 'number', isIndexed: true },
+            { name: 'updatedAt',       type: 'number' },
+          ],
+        }),
+      ],
+    },
     {
       // v5 → v6: Add widget_records table for generic on-demand widget storage
       toVersion: 6,

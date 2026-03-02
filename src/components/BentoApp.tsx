@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
-import { runV4PostMigrationIfNeeded, runDecayIfDue } from '../program/services/decayService';
+import { runV4PostMigrationIfNeeded } from '../program/services/decayService';
+import { initConsolidation } from '../program/kernel/consolidation';
 import {
   BentoNodeComponent,
   createInitialTree,
@@ -31,6 +32,7 @@ import {
 import { QuestionWidget, SuggestionWidget, SpeakBetterWidget, MeetingTranscriptionWidget } from '../widgets/on-demand';
 import { MetaQueryLensWidget } from '../widgets/lens';
 import { RotateCcw, PencilRuler, Loader2, Settings } from 'lucide-react';
+import { uploadFiles, isSupportedFileType } from '../services/fileUpload';
 import { useNavigate, useParams } from 'react-router-dom';
 import { GlobalSTTController } from './GlobalSTTController';
 import { RambleNativeStatus } from './RambleNativeStatus';
@@ -74,11 +76,13 @@ export const BentoApp: React.FC = () => {
 
   // Run data maintenance on mount (non-blocking fire-and-forget)
   // Widget migration runs first (so WatermelonDB has data before widgets query),
-  // then the v4 post-migration fix, then decay — all idempotent.
+  // then the v4 post-migration fix, then consolidation engine init.
+  // Consolidation handles decay + entity dedup + near-duplicate detection,
+  // runs on idle (5 min) or after 24h since last run.
   useEffect(() => {
     const runMaintenance = async () => {
       await runV4PostMigrationIfNeeded();
-      await runDecayIfDue();
+      initConsolidation();
     };
     runMaintenance().catch(console.error);
   }, []);
@@ -109,6 +113,25 @@ export const BentoApp: React.FC = () => {
 
   const handleWidgetChange = useCallback((id: string, widgetType: WidgetType) => {
     setTree((prev) => updateNodeWidgetType(prev, id, widgetType));
+  }, []);
+
+  // Fallback file drop handler on the bento container.
+  // Files that miss a BentoLeaf still get captured here.
+  const handleContainerDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('Files')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  }, []);
+
+  const handleContainerDrop = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.files.length > 0) {
+      e.preventDefault();
+      const supported = Array.from(e.dataTransfer.files).filter(f => isSupportedFileType(f.name));
+      if (supported.length > 0) {
+        uploadFiles(supported).catch(console.error);
+      }
+    }
   }, []);
 
   const handleReset = useCallback(() => {
@@ -236,7 +259,10 @@ export const BentoApp: React.FC = () => {
 
         {/* Bento Grid */}
         {/* ID used by lensController for lens mode visual feedback (dimming other widgets) */}
-        <main id="bento-container" className="flex-1 overflow-hidden p-1">
+        <main id="bento-container" className="flex-1 overflow-hidden p-1"
+          onDragOver={handleContainerDragOver}
+          onDrop={handleContainerDrop}
+        >
           <BentoNodeComponent
             tree={tree}
             nodeId={tree.rootId}

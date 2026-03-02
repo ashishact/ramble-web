@@ -11,9 +11,12 @@ export {
   type InputResult,
   processInput,
   type ProcessingResult,
-  buildContext,
-  formatContextForLLM,
-  type Context,
+  recordingManager,
+  retrieveContext,
+  type RetrievedContext,
+  runConsolidation,
+  runConsolidationIfDue,
+  initConsolidation,
 } from './kernel';
 
 // LLM Client

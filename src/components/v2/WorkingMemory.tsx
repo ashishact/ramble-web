@@ -14,7 +14,7 @@ import {
   type WorkingMemoryData,
   type ContextSize,
 } from '../../program/WorkingMemory';
-import { pipelineStatus, type PipelineState } from '../../program/kernel/pipelineStatus';
+import { eventBus } from '../../lib/eventBus';
 
 interface WorkingMemoryProps {
   // Optional refresh trigger - increment to force refresh
@@ -112,41 +112,33 @@ export function WorkingMemory({
   const [expandedSection, setExpandedSection] = useState<SectionType | null>(null);
   const [activeTab, setActiveTab] = useState<ViewTab>('data');
 
-  // Single source of truth: WorkingMemoryData from workingMemory.fetch()
+  // Single source of truth: WorkingMemoryData — either from the last System II
+  // processing event (exact LLM context) or a cold-start fetch.
   const [data, setData] = useState<WorkingMemoryData | null>(null);
 
-  // Fetch data using the unified WorkingMemory class
-  // No session filtering - fetches all conversations chronologically
+  // Cold-start fetch — used on mount and when user changes context size.
+  // Once a processing:system-ii event arrives with context, that takes over.
   const fetchData = useCallback(async () => {
-    const result = await workingMemory.fetch({
-      size: contextSize,
-    });
+    const result = await workingMemory.fetch({ size: contextSize });
     setData(result);
   }, [contextSize]);
 
-  // Fetch on mount, when size changes, or when session changes
   useEffect(() => {
     fetchData();
   }, [fetchData, refreshTrigger]);
 
-  // Subscribe to pipeline status - refresh when pipeline completes
+  // Subscribe to System II events — when the pipeline completes, display the
+  // exact WorkingMemoryData the LLM saw. If context is not on the event
+  // (recovery paths), fall back to a fresh fetch.
   useEffect(() => {
-    let wasRunning = false;
-
-    const unsubscribe = pipelineStatus.subscribe((state: PipelineState) => {
-      const isNowComplete = !state.isRunning;
-      const doneStep = state.steps.find(s => s.id === 'done');
-      const isSuccess = doneStep?.status === 'success';
-
-      // Refresh when pipeline transitions from running to complete (success)
-      if (wasRunning && isNowComplete && isSuccess) {
+    const unsub = eventBus.on('processing:system-ii', (payload) => {
+      if (payload.context) {
+        setData(payload.context);
+      } else {
         fetchData();
       }
-
-      wasRunning = state.isRunning;
     });
-
-    return unsubscribe;
+    return unsub;
   }, [fetchData]);
 
   // Get limits for display
@@ -376,12 +368,23 @@ export function WorkingMemory({
             {memories.length === 0 ? (
               <p className="text-[9px] opacity-40 italic px-1">No memories yet</p>
             ) : (
-              memories.map((m, i) => (
-                <div key={m.id} className={`flex gap-1.5 px-1.5 py-1 rounded text-[10px] ${i % 2 === 1 ? 'bg-base-200/40' : ''}`}>
-                  <span className="font-mono shrink-0 text-accent/60 text-[9px]">{formatCompactDateTime(m.lastReinforced)}</span>
-                  <span className="flex-1 text-base-content/70 truncate">{m.content}</span>
-                  <span className="text-accent/50 shrink-0 text-[9px]">[{m.type}]</span>
-                  <span className="opacity-40 shrink-0">{Math.round(m.importance * 100)}%</span>
+              [...memories].sort((a, b) => b.lastReinforced - a.lastReinforced).map((m, i) => (
+                <div key={m.id} className={`px-1.5 py-1.5 rounded text-[10px] ${i % 2 === 1 ? 'bg-base-200/40' : ''}`}>
+                  <div className="text-base-content/70 leading-relaxed">{m.content}</div>
+                  <div className="flex items-center gap-1.5 mt-0.5 text-[8px] text-base-content/35">
+                    <span className="text-accent/50">{m.type}</span>
+                    <span>·</span>
+                    <span>{Math.round(m.confidence * 100)}%</span>
+                    <span>·</span>
+                    <span className="font-mono">{formatCompactDateTime(m.lastReinforced)}</span>
+                    {m.reinforcementCount > 1 && (
+                      <><span>·</span><span>×{m.reinforcementCount}</span></>
+                    )}
+                    {m.subject && (
+                      <><span>·</span><span className="text-accent/50">{m.subject}</span></>
+                    )}
+                    <span className="ml-auto text-base-content/20">[{m.shortId}]</span>
+                  </div>
                 </div>
               ))
             )}

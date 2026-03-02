@@ -32,10 +32,12 @@
  * Note: All events are dispatched with 'ramble:' prefix on window to avoid conflicts.
  *
  * EVENT NAMESPACES:
- * - lens:*   - Lens widget activation, deactivation, input routing
- * - stt:*    - Speech-to-text events (recording, transcription)
- * - tts:*    - Text-to-speech events (speak, started, ended)
- * - custom:* - Future extensibility
+ * - lens:*        - Lens widget activation, deactivation, input routing
+ * - stt:*         - Speech-to-text events (recording, transcription)
+ * - tts:*         - Text-to-speech events (speak, started, ended)
+ * - recording:*   - Universal recording lifecycle (voice, text, paste, document, image)
+ * - processing:*  - Unified pipeline output (System I, System II, Consolidation)
+ * - custom:*      - Future extensibility
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * ARCHITECTURAL OVERVIEW: TWO PARADIGMS × TWO FOCUS CONTEXTS
@@ -80,6 +82,10 @@
  *   (e.g. louder TTS when out-of-app, silent when Ramble is in foreground).
  * ═══════════════════════════════════════════════════════════════════════════
  */
+
+import type { Recording, RecordingChunk, NormalizationHints, ConsolidationResult } from '../program/types/recording';
+import type { ProcessingResult } from '../program/kernel/processor';
+import type { WorkingMemoryData } from '../program/WorkingMemory';
 
 type EventHandler<T = unknown> = (payload: T) => void;
 
@@ -139,6 +145,34 @@ export interface EventPayloads {
 	'tts:cancelled': { reason: 'user-stopped' };
 	// Command to stop playback (received by TTSService)
 	'tts:stop': Record<string, never>;
+
+	// ── Recording lifecycle events ──────────────────────────────────────────
+	// Universal recording concept: voice, text, paste, document, image all
+	// flow through the same lifecycle. RecordingManager emits these.
+	'recording:started': { recording: Recording };
+	'recording:chunk': { chunk: RecordingChunk; recording: Recording };
+	'recording:ended': { recording: Recording; fullText: string };
+
+	// ── Processing result events ────────────────────────────────────────────
+	// Unified pipeline output — System I (fast/shallow) and System II (slow/deep)
+	// use the SAME pipeline, different context depth. All widgets subscribe to
+	// these instead of checking pipelineStatus directly.
+	'processing:system-i': {
+		recordingId: string;
+		chunkIndex: number;
+		result: ProcessingResult;
+		hints: NormalizationHints;
+	};
+	'processing:system-ii': {
+		recordingId?: string;  // Optional for recovery paths (resumePendingTasks, reprocessFailed)
+		result: ProcessingResult;
+		/** The exact WorkingMemoryData that was sent to the LLM for this step.
+		 *  Widgets can display this to show what the LLM actually saw. */
+		context?: WorkingMemoryData;
+	};
+	'processing:consolidation': {
+		result: ConsolidationResult;
+	};
 
 	// Generic fallback for custom events
 	[key: string]: unknown;
