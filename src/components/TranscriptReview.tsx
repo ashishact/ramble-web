@@ -26,7 +26,7 @@ import {
   computeWordDiff,
   type WordCorrection,
 } from '../services/phoneticMatcher';
-import { ArrowRight, Check, Brain, Sparkles, Pencil, Mic, Focus } from 'lucide-react';
+import { ArrowRight, Check, Brain, Sparkles, Pencil, Mic, Focus, X } from 'lucide-react';
 
 /**
  * Ramble metadata from clipboard (compact format)
@@ -88,6 +88,9 @@ export function TranscriptReview({ initialText, onSubmit, onCancel, rambleMetada
   const [focusedWordIndex, setFocusedWordIndex] = useState<number | null>(null);
   const [cursorPosition, setCursorPosition] = useState<number>(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Whether the user just disabled the review via the toggle
+  const [reviewDisabled, setReviewDisabled] = useState(false);
 
   // Live edits - computed from diff between original and current text
   const [liveEdits, setLiveEdits] = useState<LiveEdit[]>([]);
@@ -509,6 +512,24 @@ export function TranscriptReview({ initialText, onSubmit, onCancel, rambleMetada
                 </span>
               )}
             </div>
+            <div className="ml-auto">
+              {reviewDisabled ? (
+                <span className="text-[10px] text-purple-400">
+                  Skipping next time — re-enable in <span className="font-medium">Settings → Advanced</span>
+                </span>
+              ) : (
+                <button
+                  onClick={() => {
+                    settingsHelpers.setReviewEnabled(false);
+                    setReviewDisabled(true);
+                  }}
+                  className="flex items-center gap-1 text-[10px] text-purple-400 hover:text-purple-600 transition-colors"
+                >
+                  <X size={10} />
+                  <span>Skip review for Ramble input</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -718,29 +739,4 @@ export function TranscriptReview({ initialText, onSubmit, onCancel, rambleMetada
       </div>
     </div>
   );
-}
-
-// Global state for showing the transcript review
-type TranscriptCallback = (text: string) => void;
-
-let showReviewFn: ((text: string, onSubmit: TranscriptCallback, metadata?: RambleMetadata | null) => void) | null = null;
-
-export function registerTranscriptReview(fn: (text: string, onSubmit: TranscriptCallback, metadata?: RambleMetadata | null) => void) {
-  showReviewFn = fn;
-}
-
-export function showTranscriptReview(text: string, onSubmit: TranscriptCallback, metadata?: RambleMetadata | null) {
-  // When review is disabled in settings, submit directly — skip the review popup
-  if (!settingsHelpers.isReviewEnabled()) {
-    onSubmit(text);
-    return;
-  }
-
-  if (showReviewFn) {
-    showReviewFn(text, onSubmit, metadata);
-  } else {
-    // Fallback: directly submit if review not registered
-    console.warn('[TranscriptReview] Not registered, submitting directly');
-    onSubmit(text);
-  }
 }

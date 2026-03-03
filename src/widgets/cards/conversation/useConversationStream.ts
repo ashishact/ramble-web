@@ -57,6 +57,8 @@ const FINAL_HIGHLIGHT_DELAY_MS = 600;
 
 export function useConversationStream(): ConversationStreamData {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  // ⚠️ OPTIMIZATION: This Map grows unbounded as new conversations are processed.
+  // Consider evicting entries for conversations no longer in the visible list.
   const [extractionsByConvId, setExtractionsByConvId] = useState<Map<string, ProcessingResult>>(
     () => new Map()
   );
@@ -65,7 +67,9 @@ export function useConversationStream(): ConversationStreamData {
 
   // ── Recording lifecycle state ──────────────────────────────────────────
   const [activeRecordingId, setActiveRecordingId] = useState<string | null>(null);
-  // Conv IDs created during recording/transition — accumulated across recordings, never cleared
+  // Conv IDs created during recording/transition — accumulated across recordings, never cleared.
+  // ⚠️ OPTIMIZATION: This Set grows unbounded across recordings. Consider periodic cleanup
+  // (e.g., clear IDs older than N recordings) if memory becomes a concern in long sessions.
   const [intermediateConvIds, setIntermediateConvIds] = useState<Set<string>>(() => new Set());
   // Between recording:ended and processing:system-ii — keep tracking intermediates
   const [isTransitioning, setIsTransitioning] = useState(false);

@@ -43,6 +43,7 @@ import {
   type AnalysisResult,
   type Suggestion,
 } from "./process";
+import { simpleHash } from "../../../program/utils/id";
 import {
   Sparkles,
   RefreshCw,
@@ -54,15 +55,6 @@ import {
 } from "lucide-react";
 
 type LoadingState = "idle" | "loading" | "success" | "error";
-
-/** djb2 string hash — fast, good distribution, returns hex string */
-function simpleHash(str: string): string {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
-  }
-  return (hash >>> 0).toString(16);
-}
 
 // Category icons
 const categoryIcons: Record<Suggestion["category"], LucideIcon> = {

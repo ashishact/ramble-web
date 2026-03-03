@@ -31,8 +31,6 @@ function getSTTApiKey(tier: 'small' | 'medium' | 'large' | 'live'): string {
   const settingsKey = STT_PROVIDER_TO_SETTINGS_KEY[resolved.provider];
   return settingsHelpers.getApiKey(settingsKey) || '';
 }
-import { showTranscriptReview } from '../TranscriptReview';
-
 export interface VoiceRecorderProps {
   /** Called when recording completes with the final transcript */
   onTranscript: (text: string) => Promise<void>;
@@ -118,10 +116,7 @@ export function VoiceRecorder({
         console.log('[VoiceRecorder] Got final transcript:', finalTranscript);
 
         if (finalTranscript.trim()) {
-          // Show transcript review instead of direct submit
-          showTranscriptReview(finalTranscript.trim(), (reviewedText) => {
-            onTranscript(reviewedText);
-          });
+          onTranscript(finalTranscript.trim());
         } else {
           console.warn('[VoiceRecorder] Empty transcript received');
         }

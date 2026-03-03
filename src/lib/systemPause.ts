@@ -1,45 +1,41 @@
 /**
  * System Pause — Global reactive toggle for pausing all kernel input processing.
  *
- * Stored in raw localStorage (not profileStorage) because this is a system-level
- * control, not per-profile. Provides a subscribe() for React components to
- * re-render when the state changes.
+ * In-memory only — auto-resets on reload so the system always starts running.
+ * Provides a subscribe() compatible with React's useSyncExternalStore.
  */
 
-const STORAGE_KEY = 'ramble:system-paused';
-
-type Listener = (paused: boolean) => void;
+type Listener = () => void;
 const listeners = new Set<Listener>();
 
-function read(): boolean {
-  return localStorage.getItem(STORAGE_KEY) === 'true';
-}
+let paused = false;
 
-function write(paused: boolean): void {
-  localStorage.setItem(STORAGE_KEY, String(paused));
-  listeners.forEach(fn => fn(paused));
+function notify(): void {
+  listeners.forEach(fn => fn());
 }
 
 export const systemPause = {
   get isPaused(): boolean {
-    return read();
+    return paused;
   },
 
   toggle(): boolean {
-    const next = !read();
-    write(next);
-    return next;
+    paused = !paused;
+    notify();
+    return paused;
   },
 
   pause(): void {
-    write(true);
+    paused = true;
+    notify();
   },
 
   resume(): void {
-    write(false);
+    paused = false;
+    notify();
   },
 
-  /** Subscribe to changes. Returns unsubscribe function. */
+  /** Subscribe to changes. Returns unsubscribe function. Compatible with useSyncExternalStore. */
   subscribe(fn: Listener): () => void {
     listeners.add(fn);
     return () => listeners.delete(fn);

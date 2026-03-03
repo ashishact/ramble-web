@@ -134,6 +134,7 @@ export interface GoalRef {
 
 function formatRelativeTime(timestamp: number, now: number): string {
   const diffMs = now - timestamp;
+  if (diffMs < 0) return 'just now';
   const mins = Math.floor(diffMs / 60_000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins} min ago`;

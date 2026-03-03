@@ -219,6 +219,12 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
     source: 'speech' | 'paste' | 'keyboard' = 'speech',
     metadata?: RambleMetadata | null
   ) => {
+    // Skip review only for Ramble Native paste when review is disabled in settings.
+    // All other paths (regular paste, speech, keyboard) always show review.
+    if (source === 'paste' && metadata && !settingsHelpers.isReviewEnabled()) {
+      onSubmit(text, source);
+      return;
+    }
     setReviewText(text);
     setReviewMetadata(metadata || null);
     setReviewSource(source);

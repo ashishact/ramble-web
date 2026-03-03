@@ -15,7 +15,7 @@
 
 import { useEffect, useRef } from 'react';
 import { rambleNative } from '../services/stt/rambleNative';
-import { showTranscriptReview, type RambleMetadata } from '../components/TranscriptReview';
+import type { RambleMetadata } from '../components/TranscriptReview';
 
 /**
  * Parse Ramble metadata from HTML clipboard content (compact format)
@@ -81,10 +81,7 @@ export function useRamblePaste(onTranscript: (text: string) => void): void {
         console.log('[useRamblePaste] Captured paste (no Ramble metadata):', text.slice(0, 50) + '...');
       }
 
-      // Show transcript review overlay with metadata if available
-      showTranscriptReview(text.trim(), (reviewedText) => {
-        callbackRef.current(reviewedText);
-      }, rambleMetadata);
+      callbackRef.current(text.trim());
     };
 
     // Register ONCE on mount

@@ -19,6 +19,18 @@ export function generatePrefixedId(prefix: string): string {
 }
 
 /**
+ * Fast djb2 string hash — returns a short hex string.
+ * Used for dedup keys, cache keys, etc. NOT cryptographic.
+ */
+export function simpleHash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(16);
+}
+
+/**
  * ID prefixes for different entity types
  */
 export const ID_PREFIX = {

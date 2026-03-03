@@ -429,7 +429,7 @@ export function SettingsPageNew({ onBack }: { onBack: () => void }) {
                     Input Review
                   </h2>
                   <p className="text-sm text-base-content/60 mb-4">
-                    Show a review popup after recording or pasting text, allowing you to correct transcription before submitting.
+                    When disabled, Ramble Native transcriptions are submitted directly without a review step. Other input methods (regular paste, voice, keyboard) always show review.
                   </p>
                   <label className="flex items-center gap-3 cursor-pointer">
                     <input
@@ -438,7 +438,7 @@ export function SettingsPageNew({ onBack }: { onBack: () => void }) {
                       checked={settings.reviewEnabled}
                       onChange={(e) => settingsHelpers.setReviewEnabled(e.target.checked)}
                     />
-                    <span className="text-sm">Enable transcript review popup</span>
+                    <span className="text-sm">Review Ramble Native transcriptions before submitting</span>
                   </label>
                 </div>
               </div>

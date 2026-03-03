@@ -18,6 +18,7 @@ import { pipelineStatus } from './pipelineStatus';
 import { recordingManager } from './recordingManager';
 import { eventBus } from '../../lib/eventBus';
 import { systemPause } from '../../lib/systemPause';
+import { simpleHash } from '../utils/id';
 import type Session from '../../db/models/Session';
 
 const logger = createLogger('Kernel');
@@ -63,7 +64,8 @@ class Kernel {
   /**
    * In-memory dedup caches — prevent duplicate conversation records.
    *
-   * recentRawTexts: rawText → conversationId for the last N texts.
+   * recentRawTexts: hash(rawText) → conversationId for the last N texts.
+   * Uses simpleHash to avoid storing full text strings as Map keys.
    * Catches exact duplicates regardless of source (WebSocket dupe, paste dupe,
    * dual submission path, etc.). Entries auto-expire after 2 minutes.
    */
@@ -365,7 +367,8 @@ class Kernel {
     // The same text can arrive via multiple paths (WebSocket + paste, native
     // recording + cloud STT, etc.) — only the first one should create a record.
     // Check against in-memory cache of recently created texts — no DB query.
-    const existingConvId = this.recentRawTexts.get(text);
+    const textHash = simpleHash(text);
+    const existingConvId = this.recentRawTexts.get(textHash);
     if (existingConvId) {
       console.log(
         '%c[Kernel] Duplicate rawText — skipping',
@@ -397,8 +400,8 @@ class Kernel {
     });
 
     // Cache rawText → conversationId for dedup (auto-expires)
-    this.recentRawTexts.set(text, conversation.id);
-    setTimeout(() => this.recentRawTexts.delete(text), this.DEDUP_TTL_MS);
+    this.recentRawTexts.set(textHash, conversation.id);
+    setTimeout(() => this.recentRawTexts.delete(textHash), this.DEDUP_TTL_MS);
 
     // 3. Increment session unit count
     await sessionStore.incrementUnitCount(sessionId);
