@@ -319,6 +319,7 @@ export const swapNodes = (tree: BentoTree, id1: string, id2: string): BentoTree 
 
 export const STORAGE_KEY = 'bento-grid-layout';
 
+/** @deprecated Use workspaceStore.saveTree() instead. Kept for debugging. */
 export const saveTreeToStorage = (tree: BentoTree): boolean => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tree));
@@ -329,6 +330,7 @@ export const saveTreeToStorage = (tree: BentoTree): boolean => {
   }
 };
 
+/** @deprecated Use workspaceStore.getActiveTree() instead. Kept for debugging. */
 export const loadTreeFromStorage = (): BentoTree | null => {
   try {
     const data = localStorage.getItem(STORAGE_KEY);

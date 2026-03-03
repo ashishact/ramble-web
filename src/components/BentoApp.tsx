@@ -11,10 +11,9 @@ import {
   updateNodeColor,
   updateNodeContent,
   updateNodeWidgetType,
-  saveTreeToStorage,
-  loadTreeFromStorage,
 } from './bento';
 import type { BentoTree, LeafNode, WidgetType } from './bento/types';
+import { workspaceStore } from '../stores/workspaceStore';
 import {
   VoiceRecorderWidget,
   ConversationWidget,
@@ -40,6 +39,7 @@ import { RambleNativeStatus } from './RambleNativeStatus';
 import { CloudSTTStatus } from './CloudSTTStatus';
 import { HelpStrip } from './HelpStrip';
 import { ActiveGoalTimer } from './ActiveGoalTimer';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { OnboardingFlow, useOnboarding } from '../modules/onboarding';
 
 // Lazy-loaded TTS Widget
@@ -62,11 +62,15 @@ export const BentoApp: React.FC = () => {
     () => systemPause.isPaused,
   );
 
-  const [tree, setTree] = useState<BentoTree>(() => {
-    const savedTree = loadTreeFromStorage();
-    return savedTree ?? createInitialTree();
-  });
+  // Workspace-aware tree state
+  const wsState = useSyncExternalStore(workspaceStore.subscribe, workspaceStore.getState);
+  const [tree, setTree] = useState<BentoTree>(() => workspaceStore.getActiveTree());
   const [editMode, setEditMode] = useState(false);
+
+  // Sync tree when active workspace changes (e.g. from WorkspaceSwitcher)
+  useEffect(() => {
+    setTree(workspaceStore.getActiveTree());
+  }, [wsState.activeId]);
 
   // Update showOnboarding when onboarding status changes
   useEffect(() => {
@@ -75,10 +79,9 @@ export const BentoApp: React.FC = () => {
     }
   }, [isOnboardingComplete, isOnboardingLoading]);
 
-
-  // Persist tree to localStorage on changes
+  // Persist tree changes to the active workspace
   useEffect(() => {
-    saveTreeToStorage(tree);
+    workspaceStore.saveTree(tree);
   }, [tree]);
 
   // Run data maintenance on mount (non-blocking fire-and-forget)
@@ -142,10 +145,10 @@ export const BentoApp: React.FC = () => {
   }, []);
 
   const handleReset = useCallback(() => {
-    const newTree = createInitialTree();
-    setTree(newTree);
-    saveTreeToStorage(newTree);
-  }, []);
+    // Try workspace template reset first, fall back to generic initial tree
+    const resetTree = workspaceStore.resetToDefault(wsState.activeId);
+    setTree(resetTree ?? createInitialTree());
+  }, [wsState.activeId]);
 
   const renderWidget = useCallback((node: LeafNode): React.ReactNode => {
     const props = { nodeId: node.id, config: node.widgetConfig };
@@ -224,7 +227,7 @@ export const BentoApp: React.FC = () => {
     <GlobalSTTController>
       <div className="w-screen h-screen flex flex-col bg-slate-100">
         {/* Header */}
-        <header className="h-9 bg-white border-b border-slate-200 flex items-center gap-3 px-3 flex-shrink-0">
+        <header className="h-8 bg-white border-b border-slate-200 flex items-center gap-2 px-3 flex-shrink-0">
           <button
             onClick={() => systemPause.toggle()}
             className={`w-5 h-5 flex-shrink-0 flex items-center justify-center rounded transition-all ${
@@ -241,11 +244,12 @@ export const BentoApp: React.FC = () => {
           </button>
           <RambleNativeStatus />
           <CloudSTTStatus />
+          <WorkspaceSwitcher onTreeChange={setTree} />
           <ActiveGoalTimer />
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={() => setEditMode((prev) => !prev)}
-              className={`flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded transition-colors ${
+              className={`flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded transition-colors ${
                 editMode
                   ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -259,7 +263,7 @@ export const BentoApp: React.FC = () => {
             {editMode && (
               <button
                 onClick={handleReset}
-                className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
+                className="flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
                 title="Reset layout to default"
                 data-doc='{"icon":"mdi:restore","title":"Reset","desc":"Reset the layout to default configuration"}'
               >
@@ -269,7 +273,7 @@ export const BentoApp: React.FC = () => {
             )}
             <button
               onClick={() => navigate(profileName ? `/u/${profileName}/settings` : '/settings')}
-              className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
+              className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
               title="Settings"
             >
               <Settings size={14} />

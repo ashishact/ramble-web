@@ -1,3 +1,5 @@
+import { z } from 'zod/v4';
+
 export type Direction = 'horizontal' | 'vertical';
 
 export type NodeType = 'leaf' | 'split';
@@ -55,3 +57,34 @@ export interface BentoTree {
   rootId: string;
   nodes: NodeMap;
 }
+
+// ---------------------------------------------------------------------------
+// Zod schemas — kept next to types so they stay in sync
+// ---------------------------------------------------------------------------
+
+const SplitNodeSchema = z.object({
+  id: z.string(),
+  type: z.literal('split'),
+  parent: z.string().nullable(),
+  direction: z.enum(['horizontal', 'vertical']),
+  ratio: z.number(),
+  first: z.string(),
+  second: z.string(),
+});
+
+const LeafNodeSchema = z.object({
+  id: z.string(),
+  type: z.literal('leaf'),
+  parent: z.string().nullable(),
+  content: z.string(),
+  color: z.string(),
+  widgetType: z.string(),
+  widgetConfig: z.record(z.string(), z.unknown()).optional(),
+});
+
+const BentoNodeSchema = z.union([SplitNodeSchema, LeafNodeSchema]);
+
+export const BentoTreeSchema = z.object({
+  rootId: z.string(),
+  nodes: z.record(z.string(), BentoNodeSchema),
+});

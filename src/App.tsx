@@ -1,18 +1,10 @@
-import { useRef, useCallback } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { SettingsPageNew } from "./components/v2/SettingsPageNew";
 import { BentoApp } from "./components/BentoApp";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
-import { ProfileSwitcher, type ProfileSwitcherRef } from "./components/ProfileSwitcher";
-import { KeyboardShortcuts } from "./components/KeyboardShortcuts";
+import { ProfileSwitcher } from "./components/ProfileSwitcher";
 
 function App() {
-  const profileSwitcherRef = useRef<ProfileSwitcherRef>(null);
-
-  const handleProfileSwitcherToggle = useCallback(() => {
-    profileSwitcherRef.current?.toggle();
-  }, []);
-
   return (
     <BrowserRouter>
       <Routes>
@@ -26,8 +18,7 @@ function App() {
       </Routes>
       {/* Global components */}
       <RestoreConfirmDialog />
-      <ProfileSwitcher ref={profileSwitcherRef} />
-      <KeyboardShortcuts onProfileSwitcher={handleProfileSwitcherToggle} />
+      <ProfileSwitcher />
     </BrowserRouter>
   );
 }

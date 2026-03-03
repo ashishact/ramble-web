@@ -6,15 +6,10 @@
  * Lists all existing profiles by scanning IndexedDB databases.
  */
 
-import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { User, X, Check } from 'lucide-react';
 import { getCurrentProfile, navigateToProfile } from '../lib/profile';
-
-export interface ProfileSwitcherRef {
-	open: () => void;
-	close: () => void;
-	toggle: () => void;
-}
+import { useShortcut } from '../hooks/useShortcut';
 
 interface ProfileInfo {
 	name: string;
@@ -67,7 +62,7 @@ async function getAllProfiles(): Promise<ProfileInfo[]> {
 	});
 }
 
-export const ProfileSwitcher = forwardRef<ProfileSwitcherRef>(function ProfileSwitcher(_, ref) {
+export const ProfileSwitcher: React.FC = () => {
 	const [isOpen, setIsOpen] = useState(false);
 	const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
 	const [loading, setLoading] = useState(false);
@@ -100,12 +95,8 @@ export const ProfileSwitcher = forwardRef<ProfileSwitcherRef>(function ProfileSw
 		}
 	}, [isOpen, open, close]);
 
-	// Expose methods via ref
-	useImperativeHandle(ref, () => ({
-		open,
-		close,
-		toggle,
-	}), [open, close, toggle]);
+	// Alt+U to toggle profile switcher (uses code for macOS dead-key compat)
+	useShortcut('profile-switcher', { code: 'KeyU', alt: true }, toggle, 'Toggle profile switcher');
 
 	// Handle profile selection
 	const selectProfile = useCallback((profile: ProfileInfo) => {
@@ -205,4 +196,4 @@ export const ProfileSwitcher = forwardRef<ProfileSwitcherRef>(function ProfileSw
 			</div>
 		</div>
 	);
-});
+};
