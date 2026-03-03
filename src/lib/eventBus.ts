@@ -111,8 +111,8 @@ export interface EventPayloads {
 	'stt:vad-activity': { speechDuration: number; speaking: boolean };
 
 	// Native recording lifecycle events (from Ramble native app via rambleNative.ts)
-	'native:recording-started': { ts: number };
-	'native:recording-ended': { ts: number };
+	'native:recording-started': { ts: number; recordingId?: string };
+	'native:recording-ended': { ts: number; recordingId?: string };
 	// Emitted when recording is aborted (e.g. owner disconnected, app error)
 	'native:recording-cancelled': { reason: string; ts: number };
 	// Emitted when the native app switches between meeting mode and solo mode
@@ -128,8 +128,10 @@ export interface EventPayloads {
 		speechStartMs?: number;
 		/** VAD segment end time (Unix ms), present when native app provides timing */
 		speechEndMs?: number;
+		/** Same for all chunks in this recording (optional — older native versions omit) */
+		recordingId?: string;
 	};
-	'native:transcription-final': { text: string; audioType: 'mic' | 'system'; ts: number; duration?: number };
+	'native:transcription-final': { text: string; audioType: 'mic' | 'system'; ts: number; duration?: number; recordingId?: string };
 
 	// Text-to-Speech / Narrator events
 	// mode: 'replace' = stop current speech and speak immediately (default)
@@ -165,6 +167,7 @@ export interface EventPayloads {
 	};
 	'processing:system-ii': {
 		recordingId?: string;  // Optional for recovery paths (resumePendingTasks, reprocessFailed)
+		conversationId?: string;  // The conversation record created for this final text
 		result: ProcessingResult;
 		/** The exact WorkingMemoryData that was sent to the LLM for this step.
 		 *  Widgets can display this to show what the LLM actually saw. */
@@ -173,6 +176,9 @@ export interface EventPayloads {
 	'processing:consolidation': {
 		result: ConsolidationResult;
 	};
+
+	// Widget data events
+	'questions:updated': { questions: Array<{ id: string; text: string; topic: string; category: string; priority: string }> };
 
 	// Generic fallback for custom events
 	[key: string]: unknown;

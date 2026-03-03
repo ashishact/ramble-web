@@ -58,6 +58,8 @@ interface RambleStateChangedEvent {
     state: RambleNativeState;
     audioType?: string;
     ts?: number;
+    /** Same for all events in this recording session (optional — older native versions omit) */
+    recordingId?: string;
     /** Present when state === 'error' */
     error?: string;
   };
@@ -74,6 +76,8 @@ interface RambleIntermediateTextEvent {
     speechStartMs?: number;
     /** VAD segment end time (Unix ms) */
     speechEndMs?: number;
+    /** Same for all chunks in this recording (optional — older native versions omit) */
+    recordingId?: string;
   };
 }
 
@@ -85,6 +89,8 @@ interface RambleTranscriptionCompleteEvent {
     duration?: number;
     ts?: number;
     audioType?: string;
+    /** Matches the intermediate_text chunks (optional — older native versions omit) */
+    recordingId?: string;
   };
 }
 
@@ -316,7 +322,7 @@ class RambleNative {
 
       switch (event.type) {
         case 'state_changed':
-          this.handleStateChanged(event.payload.state);
+          this.handleStateChanged(event.payload.state, event.payload.recordingId);
           break;
 
         case 'intermediate_text': {
@@ -329,6 +335,7 @@ class RambleNative {
             ts: event.payload.ts ?? Date.now(),
             speechStartMs: event.payload.speechStartMs,
             speechEndMs: event.payload.speechEndMs,
+            recordingId: event.payload.recordingId,
           });
           break;
         }
@@ -346,6 +353,7 @@ class RambleNative {
             audioType,
             ts: event.payload.ts ?? Date.now(),
             duration: event.payload.duration,
+            recordingId: event.payload.recordingId,
           });
           break;
         }
@@ -374,7 +382,7 @@ class RambleNative {
     }
   }
 
-  private handleStateChanged(state: RambleNativeState): void {
+  private handleStateChanged(state: RambleNativeState, recordingId?: string): void {
     const previousState = this.currentState;
     this.currentState = state;
 
@@ -388,9 +396,9 @@ class RambleNative {
 
     // Emit recording lifecycle events so widgets can track meeting boundaries
     if (state === 'recording') {
-      eventBus.emit('native:recording-started', { ts: Date.now() });
+      eventBus.emit('native:recording-started', { ts: Date.now(), recordingId });
     } else if (state === 'done') {
-      eventBus.emit('native:recording-ended', { ts: Date.now() });
+      eventBus.emit('native:recording-ended', { ts: Date.now(), recordingId });
     } else if (state === 'error') {
       // Treat an error state as a cancelled recording so widgets can flush/clean up
       eventBus.emit('native:recording-cancelled', {

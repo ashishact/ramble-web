@@ -3,3 +3,31 @@
 @plugin "daisyui" {
   themes: all;
 }
+
+/* Conversation expanded view animations */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeSlideIn {
+  animation: fadeSlideIn 300ms ease-out forwards;
+}
+
+/* Custom 2px caret blink */
+@keyframes caretBlink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.animate-caretBlink {
+  animation: caretBlink 1s step-end infinite;
+}
+
+/* Cross-fade animation for final conversation entry replacing live block */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fadeIn {
+  animation: fadeIn 300ms ease-out forwards;
+}
+

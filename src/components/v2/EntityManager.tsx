@@ -6,20 +6,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import { entityStore } from '../../db/stores';
 import { SortIcon } from './SortIcon';
+import { formatRelativeTime } from '../../program/utils/time';
 import type Entity from '../../db/models/Entity';
-
-// Helper to format relative time
-function timeAgo(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(timestamp).toLocaleDateString();
-}
 
 interface EntityStats {
   total: number;
@@ -476,8 +464,8 @@ export function EntityManager({ onClose }: EntityManagerProps) {
                       {entity.aliasesParsed.join(', ') || '-'}
                     </td>
                     <td className="font-mono">{entity.mentionCount}</td>
-                    <td className="text-xs opacity-60">{timeAgo(entity.firstMentioned)}</td>
-                    <td className="text-xs opacity-60">{timeAgo(entity.lastMentioned)}</td>
+                    <td className="text-xs opacity-60">{formatRelativeTime(entity.firstMentioned)}</td>
+                    <td className="text-xs opacity-60">{formatRelativeTime(entity.lastMentioned)}</td>
                     <td>
                       <div className="flex gap-1">
                         <button

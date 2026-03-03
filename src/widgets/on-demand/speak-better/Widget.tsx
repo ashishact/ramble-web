@@ -31,6 +31,7 @@ import { Q } from "@nozbe/watermelondb";
 import { database } from "../../../db/database";
 import type Conversation from "../../../db/models/Conversation";
 import { eventBus } from "../../../lib/eventBus";
+import { profileStorage } from "../../../lib/profileStorage";
 import { useWidgetPause } from "../useWidgetPause";
 import {
   analyzeText,
@@ -53,6 +54,15 @@ import {
 } from "lucide-react";
 
 type LoadingState = "idle" | "loading" | "success" | "error";
+
+/** djb2 string hash — fast, good distribution, returns hex string */
+function simpleHash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(16);
+}
 
 // Category icons
 const categoryIcons: Record<Suggestion["category"], LucideIcon> = {
@@ -184,7 +194,10 @@ export function SpeakBetterWidget() {
   // Track the last analyzed conversation ID to avoid re-analyzing
   // This is initialized from storage to prevent duplicate analysis on reload
   const lastAnalyzedIdRef = useRef<string | null>(null);
-  const hasLoadedFromStorageRef = useRef(false);
+  // Track the original text hash of the last analysis — prevents re-analyzing
+  // the same content even if the conversation ID differs (e.g. new record, same text)
+  const lastAnalyzedTextHashRef = useRef<string | null>(null);
+  const [storageLoaded, setStorageLoaded] = useState(false);
 
   // Handle tone change
   const handleToneChange = useCallback((tone: ToneId) => {
@@ -192,19 +205,22 @@ export function SpeakBetterWidget() {
     saveTone(tone);
   }, []);
 
-  // Load from storage on mount
+  // Load from storage on mount — must complete before observation subscribes
   useEffect(() => {
-    if (hasLoadedFromStorageRef.current) return;
-    hasLoadedFromStorageRef.current = true;
-
+    let cancelled = false;
     loadFromStorage().then(stored => {
+      if (cancelled) return;
       if (stored) {
         setResult(stored);
         setLoadingState("success");
-        // Restore the last analyzed ID to prevent re-analyzing on reload
         lastAnalyzedIdRef.current = stored.conversationId;
+        lastAnalyzedTextHashRef.current = simpleHash(stored.originalText);
       }
-    }).catch(() => {});
+      setStorageLoaded(true);
+    }).catch(() => {
+      if (!cancelled) setStorageLoaded(true);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   // Format result for TTS narration
@@ -228,12 +244,18 @@ export function SpeakBetterWidget() {
   }, []);
 
   // Emit TTS event to narrate the result (if narrator widget is loaded, it will speak)
+  // Deduped via profileStorage hash — same text is only narrated once across reloads.
   const narrateResult = useCallback(
     (result: AnalysisResult) => {
       const text = formatForSpeech(result);
-      if (text) {
-        eventBus.emit("tts:speak", { text, mode: "queue" });
-      }
+      if (!text) return;
+
+      const hash = simpleHash(text);
+      const lastHash = profileStorage.getItem('speak-better-last-narrated');
+      if (lastHash === hash) return;
+
+      profileStorage.setItem('speak-better-last-narrated', hash);
+      eventBus.emit("tts:speak", { text, mode: "queue" });
     },
     [formatForSpeech],
   );
@@ -264,10 +286,15 @@ export function SpeakBetterWidget() {
     [narrateResult, selectedTone],
   );
 
+  // Stable ref for use in observation subscription (same pattern as questions widget)
+  const analyzeRef = useRef(analyze);
+  analyzeRef.current = analyze;
+
   // Observe conversations for new user messages
+  // Gated on storageLoaded to prevent the race condition where the observation
+  // fires before loadFromStorage() completes, causing a redundant re-analysis.
   useEffect(() => {
-    // Don't observe when paused
-    if (isPaused) return;
+    if (isPaused || !storageLoaded) return;
 
     const conversations = database.get<Conversation>("conversations");
     const query = conversations.query(
@@ -280,15 +307,22 @@ export function SpeakBetterWidget() {
       if (results.length === 0) return;
 
       const latest = results[0];
-      // Only analyze if this is a new conversation we haven't seen
-      if (latest.id !== lastAnalyzedIdRef.current) {
+      // Skip if same conversation ID
+      if (latest.id === lastAnalyzedIdRef.current) return;
+      // Skip if same text content (different record, same words)
+      const textHash = simpleHash(latest.sanitizedText || '');
+      if (textHash === lastAnalyzedTextHashRef.current) {
         lastAnalyzedIdRef.current = latest.id;
-        analyze(latest.id, latest.sanitizedText);
+        return;
       }
+
+      lastAnalyzedIdRef.current = latest.id;
+      lastAnalyzedTextHashRef.current = textHash;
+      analyzeRef.current(latest.id, latest.sanitizedText);
     });
 
     return () => subscription.unsubscribe();
-  }, [analyze, isPaused]);
+  }, [isPaused, storageLoaded]);
 
   // Manual refresh with latest text
   const handleRefresh = useCallback(async () => {
@@ -317,9 +351,12 @@ export function SpeakBetterWidget() {
         <PauseOverlay />
         <AlertCircle className="w-5 h-5 mb-1 text-error" />
         <span className="text-[10px] text-base-content/60">{error}</span>
-        <button onClick={handleRefresh} className="btn btn-xs btn-ghost mt-2">
-          Retry
-        </button>
+        <div className="flex items-center gap-2 mt-2">
+          <PauseButton />
+          <button onClick={handleRefresh} className="btn btn-xs btn-ghost">
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -334,12 +371,17 @@ export function SpeakBetterWidget() {
         <PauseOverlay />
         <Sparkles className="w-5 h-5 mb-1 opacity-40" />
         <span className="text-[10px]">
-          {loadingState === "loading" ? "Analyzing..." : "No analysis yet"}
+          {isPaused ? "Paused" : loadingState === "loading" ? "Analyzing..." : "No analysis yet"}
         </span>
-        <span className="text-[9px] opacity-50">Start talking first</span>
-        {loadingState === "loading" && (
-          <span className="loading loading-spinner loading-xs mt-2 text-primary"></span>
-        )}
+        <span className="text-[9px] opacity-50">
+          {isPaused ? "Resume to start analyzing" : "Start talking first"}
+        </span>
+        <div className="flex items-center gap-2 mt-2">
+          <PauseButton />
+          {loadingState === "loading" && (
+            <span className="loading loading-spinner loading-xs text-primary"></span>
+          )}
+        </div>
       </div>
     );
   }

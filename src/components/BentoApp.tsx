@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useSyncExternalStore, Suspense, lazy } from 'react';
 import { runV4PostMigrationIfNeeded } from '../program/services/decayService';
 import { initConsolidation } from '../program/kernel/consolidation';
 import {
@@ -31,7 +31,8 @@ import {
 } from '../widgets';
 import { QuestionWidget, SuggestionWidget, SpeakBetterWidget, MeetingTranscriptionWidget } from '../widgets/on-demand';
 import { MetaQueryLensWidget } from '../widgets/lens';
-import { RotateCcw, PencilRuler, Loader2, Settings } from 'lucide-react';
+import { RotateCcw, PencilRuler, Loader2, Settings, Pause } from 'lucide-react';
+import { systemPause } from '../lib/systemPause';
 import { uploadFiles, isSupportedFileType } from '../services/fileUpload';
 import { useNavigate, useParams } from 'react-router-dom';
 import { GlobalSTTController } from './GlobalSTTController';
@@ -54,6 +55,12 @@ export const BentoApp: React.FC = () => {
   // Navigation
   const navigate = useNavigate();
   const { profileName } = useParams();
+
+  // System-wide pause — reactive via useSyncExternalStore
+  const isSystemPaused = useSyncExternalStore(
+    systemPause.subscribe,
+    () => systemPause.isPaused,
+  );
 
   const [tree, setTree] = useState<BentoTree>(() => {
     const savedTree = loadTreeFromStorage();
@@ -218,7 +225,20 @@ export const BentoApp: React.FC = () => {
       <div className="w-screen h-screen flex flex-col bg-slate-100">
         {/* Header */}
         <header className="h-9 bg-white border-b border-slate-200 flex items-center gap-3 px-3 flex-shrink-0">
-          <img src="/ramble-icon.png" alt="Ramble" className="w-5 h-5 flex-shrink-0" />
+          <button
+            onClick={() => systemPause.toggle()}
+            className={`w-5 h-5 flex-shrink-0 flex items-center justify-center rounded transition-all ${
+              isSystemPaused
+                ? 'ring-2 ring-warning/60 bg-warning/10'
+                : ''
+            }`}
+            title={isSystemPaused ? 'System paused — click to resume' : 'Click to pause system'}
+          >
+            {isSystemPaused
+              ? <Pause size={14} className="text-warning" />
+              : <img src="/ramble-icon.png" alt="Ramble" className="w-5 h-5" />
+            }
+          </button>
           <RambleNativeStatus />
           <CloudSTTStatus />
           <ActiveGoalTimer />

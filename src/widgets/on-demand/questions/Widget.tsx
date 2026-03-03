@@ -141,9 +141,12 @@ export function QuestionWidget() {
         <PauseOverlay />
         <AlertCircle className="w-5 h-5 mb-1 text-error" />
         <span className="text-[10px] text-base-content/60">{error}</span>
-        <button onClick={() => fetchQuestions()} className="btn btn-xs btn-ghost mt-2">
-          Retry
-        </button>
+        <div className="flex items-center gap-2 mt-2">
+          <PauseButton />
+          <button onClick={() => fetchQuestions()} className="btn btn-xs btn-ghost">
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -157,12 +160,17 @@ export function QuestionWidget() {
       >
         <PauseOverlay />
         <HelpCircle className="w-5 h-5 mb-1 opacity-40" />
-        <span className="text-[10px]">No questions</span>
-        <span className="text-[9px] opacity-50">Start talking first</span>
-        <button onClick={handleRefresh} className="btn btn-xs btn-ghost mt-2 gap-1">
-          <RefreshCw size={10} />
-          Refresh
-        </button>
+        <span className="text-[10px]">{isPaused ? 'Paused' : 'No questions'}</span>
+        <span className="text-[9px] opacity-50">{isPaused ? 'Resume to start generating' : 'Start talking first'}</span>
+        <div className="flex items-center gap-2 mt-2">
+          <PauseButton />
+          {!isPaused && (
+            <button onClick={handleRefresh} className="btn btn-xs btn-ghost gap-1">
+              <RefreshCw size={10} />
+              Refresh
+            </button>
+          )}
+        </div>
       </div>
     );
   }

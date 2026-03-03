@@ -197,7 +197,9 @@ export async function normalizeInput(
       ? `Pre-applied corrections:\n${allCorrections.map(c => `- "${c.from}" → "${c.to}"`).join('\n')}\n\n`
       : ''
 
-    const prompt = `${contextBlock}${correctionBlock}${phoneticSection ? phoneticSection + '\n\n' : ''}Normalize this input. Fix punctuation and capitalization. Apply any phonetic corrections if they make sense in context. Extract entity and topic hints as search keys.
+    const prompt = `${contextBlock}${correctionBlock}${phoneticSection ? phoneticSection + '\n\n' : ''}Current time: ${new Date().toString()}
+
+Normalize this input. Fix punctuation and capitalization. Apply any phonetic corrections if they make sense in context. Extract entity and topic hints as search keys.
 
 Input:
 ${currentText}

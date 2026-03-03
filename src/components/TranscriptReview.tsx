@@ -19,6 +19,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { entityStore, learnedCorrectionStore } from '../db/stores';
+import { settingsHelpers } from '../stores/settingsStore';
 import {
   analyzeText,
   applyCorrections,
@@ -729,6 +730,12 @@ export function registerTranscriptReview(fn: (text: string, onSubmit: Transcript
 }
 
 export function showTranscriptReview(text: string, onSubmit: TranscriptCallback, metadata?: RambleMetadata | null) {
+  // When review is disabled in settings, submit directly — skip the review popup
+  if (!settingsHelpers.isReviewEnabled()) {
+    onSubmit(text);
+    return;
+  }
+
   if (showReviewFn) {
     showReviewFn(text, onSubmit, metadata);
   } else {

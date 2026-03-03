@@ -11,6 +11,7 @@ export const conversationStore = {
     sanitizedText?: string
     source: ConversationSource
     speaker: Speaker
+    recordingId?: string
   }): Promise<Conversation> {
     const now = Date.now()
     return await database.write(async () => {
@@ -23,6 +24,7 @@ export const conversationStore = {
         c.speaker = data.speaker
         c.processed = false
         c.createdAt = now
+        if (data.recordingId) c.recordingId = data.recordingId
       })
     })
   },

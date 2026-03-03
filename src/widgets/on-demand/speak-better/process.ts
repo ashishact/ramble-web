@@ -264,44 +264,23 @@ Respond with JSON only.`;
 
 	const startTime = performance.now();
 
-	try {
-		const response = await callLLM({
-			tier: 'large', // Use best model for quality suggestions
-			prompt: userPrompt,
-			systemPrompt: buildSystemPrompt(tone),
-			options: {
-				temperature: 0.7,
-				max_tokens: 1500,
-			},
-		});
+	const response = await callLLM({
+		tier: 'large', // Use best model for quality suggestions
+		prompt: userPrompt,
+		systemPrompt: buildSystemPrompt(tone),
+		options: {
+			temperature: 0.7,
+			max_tokens: 1500,
+		},
+	});
 
-		const durationMs = Math.round(performance.now() - startTime);
-		const { data, error } = parseLLMJSON(response.content);
+	const durationMs = Math.round(performance.now() - startTime);
+	const { data, error } = parseLLMJSON(response.content);
 
-		const outputChars = response.content.length;
+	const outputChars = response.content.length;
 
-		if (error || !data) {
-			console.error('Failed to parse speak-better response:', error);
-			return {
-				conversationId,
-				originalText: inputText,
-				betterVersion: '',
-				suggestions: [],
-				vocabularyTips: [],
-				generatedAt: Date.now(),
-				inputChars,
-				outputChars,
-				truncated,
-				durationMs,
-			};
-		}
-
-		const result = normalizeResult(conversationId, inputText, data, inputChars, outputChars, truncated, durationMs);
-		saveToStorage(result);
-		return result;
-	} catch (error) {
-		const durationMs = Math.round(performance.now() - startTime);
-		console.error('Speak-better analysis failed:', error);
+	if (error || !data) {
+		console.error('Failed to parse speak-better response:', error);
 		return {
 			conversationId,
 			originalText: inputText,
@@ -310,11 +289,15 @@ Respond with JSON only.`;
 			vocabularyTips: [],
 			generatedAt: Date.now(),
 			inputChars,
-			outputChars: 0,
+			outputChars,
 			truncated,
 			durationMs,
 		};
 	}
+
+	const result = normalizeResult(conversationId, inputText, data, inputChars, outputChars, truncated, durationMs);
+	saveToStorage(result);
+	return result;
 }
 
 // ============================================================================

@@ -6,21 +6,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import { goalStore } from '../../db/stores';
 import { SortIcon } from './SortIcon';
+import { formatRelativeTime } from '../../program/utils/time';
 import type Goal from '../../db/models/Goal';
 import type { GoalStatus } from '../../db/models/Goal';
-
-// Helper to format relative time
-function timeAgo(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(timestamp).toLocaleDateString();
-}
 
 type SortField = 'statement' | 'type' | 'status' | 'progress' | 'lastReferenced' | 'firstExpressed';
 type SortDir = 'asc' | 'desc';
@@ -405,7 +393,7 @@ export function GoalManager({ onClose }: GoalManagerProps) {
                         <span className="text-xs font-mono">{goal.progress}%</span>
                       </div>
                     </td>
-                    <td className="text-xs opacity-60">{timeAgo(goal.lastReferenced)}</td>
+                    <td className="text-xs opacity-60">{formatRelativeTime(goal.lastReferenced)}</td>
                     <td>
                       <div className="flex gap-1">
                         {goal.status === 'active' && (

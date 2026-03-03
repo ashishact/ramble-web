@@ -1,31 +1,60 @@
-import { useState, useEffect } from 'react';
+/**
+ * ConversationWidget — Width-aware wrapper
+ *
+ * Uses ResizeObserver to measure container width and switch views:
+ *   < 480px  →  ConversationCompactView (existing ConversationList)
+ *   ≥ 480px  →  ConversationExpandedView (blog-style annotated view)
+ *
+ * Both views share the same data from useConversationStream.
+ */
+
+import { useState, useEffect, useRef } from 'react';
 import type { WidgetProps } from '../types';
-import { ConversationList } from '../../components/v2/ConversationList';
-import { database } from '../../db/database';
-import Conversation from '../../db/models/Conversation';
-import { Q } from '@nozbe/watermelondb';
+import { useConversationStream } from './conversation/useConversationStream';
+import { ConversationCompactView } from './ConversationCompactView';
+import { ConversationExpandedView } from './ConversationExpandedView';
+
+const EXPANDED_BREAKPOINT = 480;
 
 export const ConversationWidget: React.FC<WidgetProps> = () => {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const { conversations, extractionsByConvId, pipelineState, isMeetingMode, finalConvId } =
+    useConversationStream();
 
+  // Measure container width with ResizeObserver
   useEffect(() => {
-    const query = database
-      .get<Conversation>('conversations')
-      .query(Q.sortBy('timestamp', Q.desc), Q.take(50));
+    const el = containerRef.current;
+    if (!el) return;
 
-    const subscription = query.observe().subscribe((results) => {
-      setConversations(results);
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width = entry.contentRect.width;
+        setIsExpanded(width >= EXPANDED_BREAKPOINT);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   return (
     <div
-      className="w-full h-full overflow-auto"
-      data-doc='{"icon":"mdi:message-text","title":"Conversation","desc":"View your conversation history. Toggle R (Raw) for original transcript or C (Clean) for sanitized text. Sessions are marked with timestamps."}'
+      ref={containerRef}
+      className="w-full h-full overflow-hidden"
+      data-doc='{"icon":"mdi:message-text","title":"Conversation","desc":"View your conversation history. Toggle R (Raw) for original transcript or C (Clean) for sanitized text. Sessions are marked with timestamps. Expands to blog-style view when panel is wide enough."}'
     >
-      <ConversationList conversations={conversations} />
+      {isExpanded ? (
+        <ConversationExpandedView
+          conversations={conversations}
+          extractionsByConvId={extractionsByConvId}
+          pipelineState={pipelineState}
+          isMeetingMode={isMeetingMode}
+          finalConvId={finalConvId}
+        />
+      ) : (
+        <ConversationCompactView conversations={conversations} />
+      )}
     </div>
   );
 };

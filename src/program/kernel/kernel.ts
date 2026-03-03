@@ -17,6 +17,7 @@ import { createLogger } from '../utils/logger';
 import { pipelineStatus } from './pipelineStatus';
 import { recordingManager } from './recordingManager';
 import { eventBus } from '../../lib/eventBus';
+import { systemPause } from '../../lib/systemPause';
 import type Session from '../../db/models/Session';
 
 const logger = createLogger('Kernel');
@@ -58,6 +59,16 @@ class Kernel {
 
   private listeners: Set<(state: KernelState) => void> = new Set();
   private recordingUnsubscribers: Array<() => void> = [];
+
+  /**
+   * In-memory dedup caches — prevent duplicate conversation records.
+   *
+   * recentRawTexts: rawText → conversationId for the last N texts.
+   * Catches exact duplicates regardless of source (WebSocket dupe, paste dupe,
+   * dual submission path, etc.). Entries auto-expire after 2 minutes.
+   */
+  private recentRawTexts = new Map<string, string>();
+  private readonly DEDUP_TTL_MS = 2 * 60 * 1000;
 
   private constructor() {}
 
@@ -277,6 +288,11 @@ class Kernel {
     source: 'speech' | 'text' = 'text',
     recordingId?: string
   ): Promise<InputResult> {
+    if (systemPause.isPaused) {
+      logger.info('System paused — dropping input', { source, chars: text.length });
+      return { conversationId: '' };
+    }
+
     if (!this.initialized || !this.currentSession) {
       throw new Error('Kernel not initialized');
     }
@@ -345,6 +361,20 @@ class Kernel {
     }
     const sessionId = this.currentSession.id;
 
+    // ── Exact rawText dedup gate (in-memory) ─────────────────────────────
+    // The same text can arrive via multiple paths (WebSocket + paste, native
+    // recording + cloud STT, etc.) — only the first one should create a record.
+    // Check against in-memory cache of recently created texts — no DB query.
+    const existingConvId = this.recentRawTexts.get(text);
+    if (existingConvId) {
+      console.log(
+        '%c[Kernel] Duplicate rawText — skipping',
+        'color: red; font-weight: bold',
+        { existingConvId, source, textPreview: text.slice(0, 80) }
+      );
+      return { conversationId: existingConvId };
+    }
+
     // Start pipeline tracking
     pipelineStatus.start();
     pipelineStatus.step('input', 'running');
@@ -363,7 +393,12 @@ class Kernel {
       sanitizedText,
       source,
       speaker: 'user',
+      recordingId,
     });
+
+    // Cache rawText → conversationId for dedup (auto-expires)
+    this.recentRawTexts.set(text, conversation.id);
+    setTimeout(() => this.recentRawTexts.delete(text), this.DEDUP_TTL_MS);
 
     // 3. Increment session unit count
     await sessionStore.incrementUnitCount(sessionId);
@@ -444,6 +479,8 @@ class Kernel {
     chunkIndex: number,
     recordingId: string
   ): Promise<ProcessingResult | null> {
+    if (systemPause.isPaused) return null;
+
     if (!this.initialized || !this.currentSession) {
       return null;
     }
@@ -458,6 +495,7 @@ class Kernel {
         sanitizedText: chunkText,
         source: 'speech',
         speaker: 'user',
+        recordingId,
       });
 
       // Run System I processing — fire-and-forget, no durable task

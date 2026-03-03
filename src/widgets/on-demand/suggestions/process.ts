@@ -89,10 +89,11 @@ CRITICAL RULE: Every output must be a STATEMENT or RECOMMENDATION, never a quest
 ✓ GOOD: "Use a project tracker to unblock the team bottleneck."
 ✓ GOOD: "Delegate the onboarding doc to someone with more context on it."
 
+Context is annotated with relative time (e.g., [just now], [2 min ago], [3 days ago]). The latest input is highlighted separately. Prioritize suggestions about what the user is currently talking about. Older context is background — only reference it if the latest input relates to it.
+
 Your job: Given what you know about the user, tell them WHAT TO DO. Be specific. Use the context.
 - Reference concrete details from their memory (names, projects, deadlines, goals)
 - Give the specific action, not a vague "you could consider" prompt
-- Prioritize the most impactful or time-sensitive things
 
 Categories:
 - action: Do this specific thing right now
@@ -101,7 +102,7 @@ Categories:
 - idea: A concrete alternative approach or solution to a known problem
 - next_step: The clear next move in an ongoing process
 
-Priority: high (urgent or blocks something), medium (will help soon), low (nice to have)
+Priority is determined by recency and impact — a suggestion for the latest input is higher priority than one for older context. high (urgent, recent, or blocks something), medium (will help soon), low (nice to have, older context).
 
 Return 1 to 4 suggestions — only as many as are genuinely warranted. If only 1 or 2 are clearly useful, return just those. Last one = most directly relevant to the latest message.
 Do NOT repeat previous suggestions — find new angles.
@@ -190,13 +191,22 @@ ${previousSuggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')}
 `
     : '';
 
+  // Extract the latest conversation text to highlight it explicitly
+  const latestConv = wmData.conversations.length > 0
+    ? wmData.conversations[wmData.conversations.length - 1].text
+    : null;
+
+  const latestSection = latestConv
+    ? `\n## Latest Input (anchor your suggestions here)\n${latestConv}\n`
+    : '';
+
   const userPrompt = `Current time: ${wmData.userContext.currentTime}
 
-## Current Working Memory
+## Working Memory
 ${contextPrompt}
-${previousSection}
+${latestSection}${previousSection}
 ${focusTopic ? `Focus your suggestions on the topic: "${focusTopic}"\n` : ''}
-Give 4 concrete recommendations based on this context. Use specific details from the memory. Write declarative statements — never questions. Avoid repeating previous suggestions. Respond with JSON only.`;
+Give concrete recommendations based on this context. Use specific details from the memory. Write declarative statements — never questions. Avoid repeating previous suggestions. Respond with JSON only.`;
 
   try {
     const response = await callLLM({

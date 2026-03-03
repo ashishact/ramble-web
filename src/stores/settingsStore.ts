@@ -59,6 +59,8 @@ export const appSettingsSchema = z.object({
     prefixPaddingMs: z.number().default(300),
   }),
   currentNodeId: z.number().nullable().default(null),
+  /** Show the transcript review popup after recording/paste. When false, input is submitted directly. */
+  reviewEnabled: z.boolean().default(false),
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -86,6 +88,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     prefixPaddingMs: 300,
   },
   currentNodeId: null,
+  reviewEnabled: false,
 };
 
 // Load settings from localStorage
@@ -232,6 +235,15 @@ export const settingsHelpers = {
 
   getCurrentNodeId: (): number | null => {
     return cachedSettings.currentNodeId;
+  },
+
+  // Review popup
+  isReviewEnabled: (): boolean => cachedSettings.reviewEnabled,
+
+  setReviewEnabled: (enabled: boolean) => {
+    cachedSettings = { ...cachedSettings, reviewEnabled: enabled };
+    saveSettings(cachedSettings);
+    notifyListeners();
   },
 
   // Reset to defaults

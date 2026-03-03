@@ -129,6 +129,26 @@ export interface GoalRef {
 }
 
 // ============================================================================
+// Temporal Formatting
+// ============================================================================
+
+function formatRelativeTime(timestamp: number, now: number): string {
+  const diffMs = now - timestamp;
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days} days ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks <= 4) return `${weeks}w ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
+
+// ============================================================================
 // Size Configuration
 // ============================================================================
 
@@ -579,8 +599,9 @@ class WorkingMemory {
       parts.push(`User: ${data.userContext.userName}`);
     }
 
-    // Recent conversations
+    // Recent conversations — chronological with relative time
     if (data.conversations.length > 0) {
+      const now = data.meta.asOfTime;
       parts.push('## Recent Conversation');
       for (let i = 0; i < data.conversations.length; i++) {
         const c = data.conversations[i];
@@ -589,44 +610,54 @@ class WorkingMemory {
 
         // Use summary for older large conversations, full text otherwise
         const displayText = (isRecent || !isLarge || !c.summary) ? c.text : c.summary;
-        // Short timestamp: "Feb-01 08:44:22" (Mon-DD HH:mm:ss, 24hr)
-        const d = new Date(c.timestamp);
-        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-        const ts = `${months[d.getMonth()]}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
-        parts.push(`${ts}: ${displayText}`);
+        const age = formatRelativeTime(c.timestamp, now);
+        parts.push(`[${age}]: ${displayText}`);
       }
     }
 
-    // Known entities
+    // Known entities — sorted by most recently mentioned
     if (data.entities.length > 0) {
+      const now = data.meta.asOfTime;
+      const sorted = [...data.entities].sort((a, b) => b.lastMentioned - a.lastMentioned);
       parts.push('\n## Known Entities');
-      for (const e of data.entities) {
-        parts.push(`- ${e.name} (${e.type})`);
+      for (const e of sorted) {
+        const age = e.lastMentioned > 0 ? ` [${formatRelativeTime(e.lastMentioned, now)}]` : '';
+        parts.push(`- ${e.name} (${e.type})${age}`);
       }
     }
 
-    // Active topics
+    // Active topics — sorted by most recently mentioned
     if (data.topics.length > 0) {
+      const now = data.meta.asOfTime;
+      const sorted = [...data.topics].sort((a, b) => b.lastMentioned - a.lastMentioned);
       parts.push('\n## Active Topics');
-      for (const t of data.topics) {
-        parts.push(`- ${t.name}${t.category ? ` [${t.category}]` : ''}`);
+      for (const t of sorted) {
+        const age = t.lastMentioned > 0 ? ` [${formatRelativeTime(t.lastMentioned, now)}]` : '';
+        parts.push(`- ${t.name}${t.category ? ` [${t.category}]` : ''}${age}`);
       }
     }
 
-    // Working memories — shortId allows LLM to reference specific memories
+    // Working memories — sorted by most recently reinforced
+    // shortId allows LLM to reference specific memories
     // (e.g. in contradicts field when a new belief conflicts with m3)
     if (data.memories.length > 0) {
+      const now = data.meta.asOfTime;
+      const sorted = [...data.memories].sort((a, b) => b.lastReinforced - a.lastReinforced);
       parts.push('\n## Working Memory');
-      for (const m of data.memories) {
-        parts.push(`- [${m.shortId}] [${m.type}] ${m.content}`);
+      for (const m of sorted) {
+        const age = m.lastReinforced > 0 ? ` [${formatRelativeTime(m.lastReinforced, now)}]` : '';
+        parts.push(`- [${m.shortId}] [${m.type}] ${m.content}${age}`);
       }
     }
 
-    // Goals with short IDs
+    // Goals with short IDs — sorted by most recently referenced
     if (data.goals.length > 0) {
+      const now = data.meta.asOfTime;
+      const sorted = [...data.goals].sort((a, b) => b.lastReferenced - a.lastReferenced);
       parts.push('\n## Active Goals');
-      for (const g of data.goals) {
-        parts.push(`- [${g.shortId}] ${g.statement} (${g.status}, ${g.progress}%)`);
+      for (const g of sorted) {
+        const age = g.lastReferenced > 0 ? ` [${formatRelativeTime(g.lastReferenced, now)}]` : '';
+        parts.push(`- [${g.shortId}] ${g.statement} (${g.status}, ${g.progress}%)${age}`);
       }
     }
 

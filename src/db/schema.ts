@@ -30,7 +30,7 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 export const DATABASE_NAME = 'ramble_v3'
 
 export const schema = appSchema({
-  version: 7,
+  version: 8,
   tables: [
     // ========================================================================
     // CORE - Foundation (Keep from v4)
@@ -64,6 +64,8 @@ export const schema = appSchema({
         // v4 additions
         { name: 'normalizedText', type: 'string', isOptional: true },   // Phase 1 output: cleaned full text
         { name: 'sentences', type: 'string', isOptional: true },        // JSON array of { text, speakerHint }
+        // v8 additions
+        { name: 'recordingId', type: 'string', isOptional: true, isIndexed: true },  // Links to recording that created this conv
       ]
     }),
 
@@ -379,6 +381,20 @@ export const schema = appSchema({
 // Migrations - IMPORTANT: Only additive changes to preserve data
 export const migrations = schemaMigrations({
   migrations: [
+    {
+      // v7 → v8: Add recordingId to conversations for intermediate chunk grouping
+      // Links each conversation to the recording that created it, enabling reliable
+      // dedup of intermediate chunks (whose text differs from the final corrected version).
+      toVersion: 8,
+      steps: [
+        addColumns({
+          table: 'conversations',
+          columns: [
+            { name: 'recordingId', type: 'string', isOptional: true, isIndexed: true },
+          ],
+        }),
+      ],
+    },
     {
       // v6 → v7: Add recordings + uploaded_files tables for unified pipeline
       // recordings: time-travel through all input sessions (voice, text, paste, document, image)

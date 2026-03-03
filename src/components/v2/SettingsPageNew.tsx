@@ -422,6 +422,27 @@ export function SettingsPageNew({ onBack }: { onBack: () => void }) {
                 </p>
               </div>
 
+              <div className="card bg-base-100 shadow-md">
+                <div className="card-body">
+                  <h2 className="card-title text-lg flex items-center gap-2">
+                    <Icon icon="mdi:text-box-check" className="w-5 h-5" />
+                    Input Review
+                  </h2>
+                  <p className="text-sm text-base-content/60 mb-4">
+                    Show a review popup after recording or pasting text, allowing you to correct transcription before submitting.
+                  </p>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="toggle toggle-primary"
+                      checked={settings.reviewEnabled}
+                      onChange={(e) => settingsHelpers.setReviewEnabled(e.target.checked)}
+                    />
+                    <span className="text-sm">Enable transcript review popup</span>
+                  </label>
+                </div>
+              </div>
+
               <div className="card bg-base-100 shadow-md border border-error/20">
                 <div className="card-body">
                   <h2 className="card-title text-lg flex items-center gap-2 text-error">

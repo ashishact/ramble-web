@@ -10,6 +10,7 @@ import { callLLM } from '../../../program/llmClient';
 import { workingMemory } from '../../../program/WorkingMemory';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
 import { widgetRecordStore } from '../../../db/stores';
+import { eventBus } from '../../../lib/eventBus';
 // (no localStorage key needed — storage is WatermelonDB via widgetRecordStore)
 
 // ============================================================================
@@ -52,6 +53,8 @@ export function saveQuestionsToStorage(result: QuestionResult): void {
     type: WIDGET_TYPE,
     content: result,
     createdAt: result.generatedAt,
+  }).then(() => {
+    eventBus.emit('questions:updated', { questions: result.questions });
   }).catch(e => console.warn('Failed to save questions to DB:', e));
 }
 
@@ -81,16 +84,12 @@ export async function loadQuestionsFromStorage(): Promise<QuestionResult | null>
 // Prompts
 // ============================================================================
 
-const SYSTEM_PROMPT = `You analyze a user's memory to identify GAPS - missing information they should provide.
+const SYSTEM_PROMPT = `You analyze a user's conversation to identify GAPS — missing information they should provide.
 
-Your job is GAP ANALYSIS. You prompt the user to SPEAK MORE, not give solutions.
-- Frame everything as SHORT questions or prompts
-- Identify what's incomplete, vague, or unexplored
-- Encourage the user to add more context
+Your job is GAP ANALYSIS. Prompt the user to SPEAK MORE, not give solutions.
+Frame everything as SHORT questions or prompts (10-20 words). Identify what's incomplete, vague, or unexplored.
 
-STYLE:
-- Brief but clear (10-20 words)
-- Questions or prompts, NOT solutions
+Context is annotated with relative time (e.g., [just now], [2 min ago], [3 days ago]). The latest input is highlighted separately. Prioritize questions about what the user is currently talking about. Older context is background — only ask about it if the user's latest input relates to it.
 
 Categories:
 - missing_info: Missing details (deadlines, names, numbers, context)
@@ -99,11 +98,9 @@ Categories:
 - action: Decisions pending or next steps unclear
 - explore: Topics to dig deeper into
 
-Priority: high (critical gaps), medium (helpful), low (nice to have)
+Priority is determined by recency and criticalness — a gap in the latest input is higher priority than a gap in older context. high (critical gap in recent input), medium (helpful), low (nice to have, older context).
 
-Return 1 to 4 questions — only as many as there are real gaps worth asking about. If only 1 or 2 gaps are meaningful, return just those. Last one = most relevant to latest message.
-
-IMPORTANT: If previous questions are provided, do NOT repeat them. Find NEW gaps to explore.
+Return 1 to 4 questions — only as many as there are real gaps. If previous questions are provided, find NEW gaps.
 
 JSON format:
 {
@@ -112,7 +109,7 @@ JSON format:
   ]
 }
 
-topic = "Domain / Topic" format (e.g., "Work / Planning", "Health / Exercise")
+topic = "Domain / Topic" format
 
 SHORT questions that prompt more input. No solutions.`;
 
@@ -189,13 +186,22 @@ ${previousQuestions.map((s, i) => `${i + 1}. ${s}`).join('\n')}
 `
     : '';
 
+  // Extract the latest conversation text to highlight it explicitly
+  const latestConv = wmData.conversations.length > 0
+    ? wmData.conversations[wmData.conversations.length - 1].text
+    : null;
+
+  const latestSection = latestConv
+    ? `\n## Latest Input (anchor your questions here)\n${latestConv}\n`
+    : '';
+
   const userPrompt = `Current time: ${wmData.userContext.currentTime}
 
-## Current Working Memory
+## Working Memory
 ${contextPrompt}
-${previousSection}
+${latestSection}${previousSection}
 ${focusTopic ? `Focus your analysis on the topic: "${focusTopic}"\n` : ''}
-Analyze this working memory and identify gaps. Avoid repeating previous questions. Respond with JSON only.`;
+Analyze and identify gaps. Respond with JSON only.`;
 
   try {
     const response = await callLLM({

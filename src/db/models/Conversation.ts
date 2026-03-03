@@ -24,6 +24,8 @@ export default class Conversation extends Model {
   // v4: Phase 1 normalization output
   @field('normalizedText') normalizedText?: string   // cleaned full text
   @field('sentences') sentences?: string             // JSON array of NormalizedSentence
+  // v8: Recording linkage for intermediate chunk grouping
+  @field('recordingId') recordingId?: string          // Links to recording that created this conv
 
   get sentencesParsed(): NormalizedSentence[] {
     try {

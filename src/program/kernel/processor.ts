@@ -335,6 +335,11 @@ function normalizeExtraction(raw: unknown): NormalizedExtraction {
 const SYSTEM_PROMPT = `You are analyzing a conversation to extract structured knowledge.
 The input is from speech-to-text and may contain residual transcription errors. Use the Known Entities and Working Memory context to interpret what was likely meant — if a word sounds like a known entity, use the known entity name in your extractions. Do not output corrections; just use the correct form directly in entities, memories, and goals.
 
+Context items (entities, topics, memories, goals) are annotated with their age (e.g., [2 min ago], [7 days ago]). Use this to reason temporally:
+- Do NOT associate old entities or memories with new input unless the user explicitly names them.
+- When creating goals, only use entities and context from the current conversation. Do not infer goals by combining old context with new input.
+- If no specific person/entity is mentioned in the new input, do not guess — extract only what is explicitly stated.
+
 Given the user's latest input and the context, extract:
 
 1. **entities**: People, places, organizations, projects, or named concepts.
@@ -375,10 +380,11 @@ GOALS
 Hierarchical namespace. Active goals listed with short IDs (g1, g2, etc.).
 
 Statement format:
-- "Namespace / Goal" — focused, descriptive sentence
+- "Namespace / Goal" — a compressed phrase capturing the desired outcome (max 10 words after the namespace)
 - "Namespace / Goal / Sub-goal" — for truly distinct sub-objectives
+e.g. "Health / Run a half marathon", "Work / Ship v2 billing integration"
 
-Goal quality over quantity. A good goal captures the core intent in one clear sentence. When the user talks about variations or examples of the same concept, compress them into one goal that captures the essence — do not split into many granular goals. Only create multiple goals when the objectives are genuinely distinct and independently trackable. Fewer well-formed goals are more useful than many fragmented ones.
+A goal is a destination, not a roadmap — compress the user's intent into its essence. When the user talks about variations or examples of the same concept, capture them as one goal. Only create multiple goals when the objectives are genuinely distinct and independently trackable.
 
 Rules:
 - Reuse existing categories — do NOT create many new categories
@@ -631,6 +637,7 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
   } else {
     eventBus.emit('processing:system-ii', {
       recordingId: options?.recordingId,
+      conversationId,
       result: processingResult,
       context: wmData,
     });
