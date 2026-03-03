@@ -53,7 +53,8 @@ export type LogModule =
   | 'UnitPipeline'
   // Unified pipeline (v7)
   | 'RecordingManager'
-  | 'FileUpload';
+  | 'FileUpload'
+  | 'MemoryDedup';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -115,6 +116,7 @@ const MODULE_COLORS: Record<LogModule, string> = {
   // Unified pipeline (v7)
   RecordingManager: '#009688',
   FileUpload: '#795548',
+  MemoryDedup: '#FF5722',
 };
 
 interface LogConfig {

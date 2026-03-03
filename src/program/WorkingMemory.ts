@@ -320,7 +320,7 @@ class WorkingMemory {
       .slice(0, limits.memories)
       .map((m, i) => toMemoryRef(m, i));
 
-    // Goals get short IDs assigned based on position
+    // Goals: limit to budget, short IDs assigned based on position
     const filteredGoals = allGoals
       .filter(g => g.lastReferenced <= asOfTime)
       .slice(0, limits.goals);
@@ -506,6 +506,61 @@ class WorkingMemory {
     }
 
     data.memories = newMemories;
+
+    // ── Goal budget allocation with minimum guarantees ─────────────────
+    const goalTotal = limits.goals;
+    const goalMinRecency = Math.min(2, Math.max(1, Math.floor(goalTotal * 0.3)));
+    const goalContextBudget = goalTotal - goalMinRecency;
+
+    // Bucket 1: Context-relevant goals (entity/topic overlap)
+    const contextGoals = await goalStore.getByContextRelevance(
+      contextEntityIds, contextTopicIds, goalContextBudget * 3
+    );
+
+    const usedGoalIds = new Set<string>();
+    const newGoals: GoalRef[] = [];
+
+    // Fill context bucket
+    for (const { goal } of contextGoals) {
+      if (newGoals.length >= goalContextBudget) break;
+      if (usedGoalIds.has(goal.id)) continue;
+      if (goal.lastReferenced > asOfTime) continue;
+      usedGoalIds.add(goal.id);
+      newGoals.push(toGoalRef(goal, newGoals.length));
+    }
+
+    // Bucket 2: Recency (most recently referenced, any topic)
+    const baseGoals = data.goals;
+    let goalRecencyAdded = 0;
+    for (const g of baseGoals) {
+      if (goalRecencyAdded >= goalMinRecency) break;
+      if (usedGoalIds.has(g.id)) continue;
+      usedGoalIds.add(g.id);
+      newGoals.push({ ...g, shortId: `g${newGoals.length + 1}` });
+      goalRecencyAdded++;
+    }
+
+    // Overflow: fill remaining from context, then base
+    if (newGoals.length < goalTotal) {
+      for (const { goal } of contextGoals) {
+        if (newGoals.length >= goalTotal) break;
+        if (usedGoalIds.has(goal.id)) continue;
+        if (goal.lastReferenced > asOfTime) continue;
+        usedGoalIds.add(goal.id);
+        newGoals.push(toGoalRef(goal, newGoals.length));
+      }
+    }
+    if (newGoals.length < goalTotal) {
+      for (const g of baseGoals) {
+        if (newGoals.length >= goalTotal) break;
+        if (usedGoalIds.has(g.id)) continue;
+        usedGoalIds.add(g.id);
+        newGoals.push({ ...g, shortId: `g${newGoals.length + 1}` });
+      }
+    }
+
+    data.goals = newGoals;
+
     data.meta.estimatedTokens = this.estimateTokens(data);
 
     return data;

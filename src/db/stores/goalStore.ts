@@ -172,6 +172,62 @@ export const goalStore = {
     }
   },
 
+  /**
+   * Retrieve active goals scored by relevance to the current conversation context.
+   *
+   * Same concept as memoryStore.getByContextRelevance() — score goals by
+   * entity/topic overlap with the current conversation's entity/topic IDs.
+   *
+   * Score formula:
+   *   0.50 * contextRelevance (entity/topic overlap)
+   * + 0.30 * recency          (7-day half-life exponential decay)
+   * + 0.20 * statusBoost      (active = 1, others = 0)
+   *
+   * When context IDs are empty, falls back to getActive() with limit.
+   */
+  async getByContextRelevance(
+    contextEntityIds: string[],
+    contextTopicIds: string[],
+    limit = 10
+  ): Promise<Array<{ goal: Goal; contextScore: number }>> {
+    if (contextEntityIds.length === 0 && contextTopicIds.length === 0) {
+      const active = await this.getActive()
+      return active.slice(0, limit).map(g => ({ goal: g, contextScore: 0 }))
+    }
+
+    const active = await this.getActive()
+
+    const now = Date.now()
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+    const entityIdSet = new Set(contextEntityIds)
+    const topicIdSet = new Set(contextTopicIds)
+
+    const scored = active.map(g => {
+      const goalEntityIds = g.entityIdsParsed
+      const goalTopicIds = g.topicIdsParsed
+      const entityOverlap = goalEntityIds.filter(id => entityIdSet.has(id)).length
+      const topicOverlap = goalTopicIds.filter(id => topicIdSet.has(id)).length
+
+      const contextRelevance = Math.min(1, entityOverlap * 0.4 + topicOverlap * 0.3)
+
+      const ageMs = Math.max(0, now - g.lastReferenced)
+      const recency = Math.exp(-ageMs / SEVEN_DAYS_MS)
+
+      const statusBoost = g.status === 'active' ? 1 : 0
+
+      const contextScore =
+        0.50 * contextRelevance +
+        0.30 * recency +
+        0.20 * statusBoost
+
+      return { goal: g, contextScore }
+    })
+
+    return scored
+      .sort((a, b) => b.contextScore - a.contextScore)
+      .slice(0, limit)
+  },
+
   async getAll(): Promise<Goal[]> {
     return await goals.query().fetch()
   },

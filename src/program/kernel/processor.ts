@@ -54,6 +54,8 @@ import type { ConversationSource } from '../../db/models/Conversation';
 import type { ProcessingMode, NormalizationHints } from '../types/recording';
 import { runPlugins, type PluginOutput } from '../plugins';
 import { createLogger } from '../utils/logger';
+import { checkMemoryDuplicate } from './memoryDedup';
+import { resolveTemporalExpression } from './temporalResolver';
 
 const logger = createLogger('Pipeline');
 
@@ -139,6 +141,8 @@ interface NormalizedExtraction {
     importance?: number;
     subject?: string;
     contradicts?: string[];  // short IDs (m1, m2...) of memories this belief competes with
+    validFrom?: string;      // ISO date or relative expression (resolved before DB write)
+    validUntil?: string;     // ISO date or relative expression (resolved before DB write)
   }>;
   goals: Array<{ statement: string; type: string; status?: string; progress?: number; shortId?: string }>;
   corrections: Array<{ wrong: string; correct: string }>;
@@ -182,7 +186,7 @@ function normalizeTopic(t: unknown): { name: string; category?: string } | null 
 /**
  * Normalize a single memory (handles string or object)
  */
-function normalizeMemory(m: unknown): { content: string; type: string; importance?: number; subject?: string; contradicts?: string[] } | null {
+function normalizeMemory(m: unknown): { content: string; type: string; importance?: number; subject?: string; contradicts?: string[]; validFrom?: string; validUntil?: string } | null {
   if (typeof m === 'string' && m.trim()) {
     return { content: m.trim(), type: 'fact' };
   }
@@ -204,6 +208,8 @@ function normalizeMemory(m: unknown): { content: string; type: string; importanc
         importance: typeof obj.importance === 'number' ? obj.importance : undefined,
         subject: typeof obj.subject === 'string' ? obj.subject : undefined,
         contradicts,
+        validFrom: typeof obj.validFrom === 'string' ? obj.validFrom : undefined,
+        validUntil: typeof obj.validUntil === 'string' ? obj.validUntil : undefined,
       };
     }
   }
@@ -357,7 +363,12 @@ Working Memory lists existing memories with short IDs like [m1], [m2], etc.
 If a new memory CONTRADICTS an existing one (different assignment, conflicting facts, updated information), include a "contradicts" field with the short IDs of the competing memories.
 Do NOT omit or replace the old memory — both beliefs coexist. The system resolves the winner at read time based on confidence.
 
-Fields: content (string), type (fact|belief|preference|concern|intention|decision), importance (0-1), contradicts (array of short IDs, optional), subject (who/what this is about, optional).
+Fields: content (string), type (fact|belief|preference|concern|intention|decision), importance (0-1), contradicts (array of short IDs, optional), subject (who/what this is about, optional),
+        validFrom (ISO date or relative expression like "tomorrow", optional),
+        validUntil (ISO date or relative expression like "by Friday", optional).
+
+Use validFrom/validUntil when the memory has temporal bounds — deadlines, scheduled events,
+time-limited facts. Leave empty for timeless facts like preferences or relationships.
 
 GOALS
 =====
@@ -695,6 +706,28 @@ async function saveExtraction(
 
   // Save memories (already normalized)
   for (const m of extraction.memories) {
+    // ── Memory dedup gate ────────────────────────────────────────────
+    const dupCheck = await checkMemoryDuplicate(m.content);
+
+    if (dupCheck.action === 'reinforce') {
+      // Near-identical: just boost the existing one, skip creation
+      await memoryStore.reinforce(dupCheck.existingId);
+      result.memories.push({ id: dupCheck.existingId, content: m.content, type: m.type });
+      continue;
+    }
+
+    // ── Resolve temporal expressions to absolute timestamps ──────────
+    let validFrom: number | undefined;
+    let validUntil: number | undefined;
+    if (m.validFrom) {
+      const resolved = resolveTemporalExpression(m.validFrom, Date.now());
+      validFrom = resolved?.validFrom;
+    }
+    if (m.validUntil) {
+      const resolved = resolveTemporalExpression(m.validUntil, Date.now());
+      validUntil = resolved?.validUntil;
+    }
+
     // Link to entities and topics we just processed
     const entityIds = result.entities.map((e) => e.id);
     const topicIds = result.topics.map((t) => t.id);
@@ -707,10 +740,17 @@ async function saveExtraction(
       topicIds,
       sourceConversationIds: [conversationId],
       importance: m.importance ?? 0.5,
+      validFrom,
+      validUntil,
       // confidence defaults to origin-based prior inside memoryStore.create()
       origin,
       extractionVersion: EXTRACTION_VERSION,
     });
+
+    // ── Supersede old memory if dedup detected an updated version ─────
+    if (dupCheck.action === 'supersede') {
+      await memoryStore.supersede(dupCheck.existingId, memory.id);
+    }
 
     result.memories.push({
       id: memory.id,
