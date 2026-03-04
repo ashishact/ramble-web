@@ -41,7 +41,7 @@ import { GlobalSTTController } from './GlobalSTTController';
 import { RambleNativeStatus } from './RambleNativeStatus';
 import { CloudSTTStatus } from './CloudSTTStatus';
 import { HelpStrip } from './HelpStrip';
-import { ActiveGoalTimer } from './ActiveGoalTimer';
+import { SpotlightBar } from '../modules/spotlight';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { OnboardingFlow, useOnboarding } from '../modules/onboarding';
 
@@ -256,7 +256,7 @@ export const BentoApp: React.FC = () => {
           <RambleNativeStatus />
           <CloudSTTStatus />
           <WorkspaceSwitcher onTreeChange={setTree} />
-          <ActiveGoalTimer />
+          <SpotlightBar />
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={() => setEditMode((prev) => !prev)}

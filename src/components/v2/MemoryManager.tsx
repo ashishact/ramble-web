@@ -14,11 +14,12 @@ type SortDir = 'asc' | 'desc';
 
 interface MemoryManagerProps {
   onClose: () => void;
+  editMemoryId?: string;
 }
 
 const TYPE_OPTIONS = ['fact', 'preference', 'event', 'relationship', 'insight', 'belief', 'habit'];
 
-export function MemoryManager({ onClose }: MemoryManagerProps) {
+export function MemoryManager({ onClose, editMemoryId }: MemoryManagerProps) {
   // Data
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +55,14 @@ export function MemoryManager({ onClose }: MemoryManagerProps) {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Auto-open edit modal when editMemoryId is provided
+  useEffect(() => {
+    if (editMemoryId && !loading && memories.length > 0) {
+      const memory = memories.find(m => m.id === editMemoryId);
+      if (memory) openEdit(memory);
+    }
+  }, [editMemoryId, loading, memories]);
 
   // Get unique types for filter
   const allTypes = [...new Set(memories.map(m => m.type))].sort();

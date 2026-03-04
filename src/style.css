@@ -23,3 +23,12 @@
   animation: fadeIn 300ms ease-out forwards;
 }
 
+/* Spotlight picker row slide-in */
+@keyframes spotlightSlideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.spotlight-slide-in {
+  animation: spotlightSlideIn 200ms ease-out both;
+}
+

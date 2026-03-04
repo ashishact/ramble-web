@@ -15,12 +15,13 @@ type SortDir = 'asc' | 'desc';
 
 interface GoalManagerProps {
   onClose: () => void;
+  editGoalId?: string;
 }
 
 const STATUS_OPTIONS: GoalStatus[] = ['active', 'achieved', 'abandoned', 'blocked'];
 const TYPE_OPTIONS = ['short-term', 'long-term', 'recurring', 'milestone'];
 
-export function GoalManager({ onClose }: GoalManagerProps) {
+export function GoalManager({ onClose, editGoalId }: GoalManagerProps) {
   // Data
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +56,14 @@ export function GoalManager({ onClose }: GoalManagerProps) {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Auto-open edit modal when editGoalId is provided
+  useEffect(() => {
+    if (editGoalId && !loading && goals.length > 0) {
+      const goal = goals.find(g => g.id === editGoalId);
+      if (goal) openEdit(goal);
+    }
+  }, [editGoalId, loading, goals]);
 
   // Stats
   const stats = {

@@ -79,6 +79,16 @@ export const SALIENCE_HALFLIFE = HALF_LIFE.SIX_HOURS;
 export const ACCESS_BOOST_DURATION = 5 * 60 * 1000;
 
 /**
+ * Format a duration in seconds as HH:MM:SS
+ */
+export function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+/**
  * Format a timestamp as ISO date string (YYYY-MM-DD)
  */
 export function toDateString(timestamp: number): string {
