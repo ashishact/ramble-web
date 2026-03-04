@@ -169,7 +169,7 @@ function BetterVersionText({
   );
 }
 
-export function SpeakBetterWidget() {
+export function SpeakBetterWidget({ nodeId }: { nodeId: string }) {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loadingState, setLoadingState] = useState<LoadingState>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -177,9 +177,9 @@ export function SpeakBetterWidget() {
   const [showSettings, setShowSettings] = useState(false);
   const [hoveredSuggestionIndex, setHoveredSuggestionIndex] = useState<number | null>(null);
 
-  // Pause functionality
+  // Pause functionality — scoped to leaf node ID
   const { isPaused, PauseButton, PauseOverlay } = useWidgetPause(
-    "speak-better",
+    nodeId,
     "Speak Better",
   );
 

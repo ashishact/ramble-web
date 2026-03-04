@@ -7,6 +7,7 @@ import {
   type SuggestionResult,
 } from './process';
 import { eventBus } from '../../../lib/eventBus';
+import { profileStorage } from '../../../lib/profileStorage';
 import { useWidgetPause } from '../useWidgetPause';
 import {
   Lightbulb,
@@ -18,6 +19,7 @@ import {
   Bell,
   Sparkles,
   ArrowRight,
+  ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -53,14 +55,15 @@ const categoryLabels: Record<Suggestion['category'], string> = {
 /** Throttle for System I events — don't regenerate faster than every 30s */
 const SYSTEM_I_THROTTLE_MS = 30_000;
 
-export function SuggestionWidget() {
+export function SuggestionWidget({ nodeId }: { nodeId: string }) {
   const [result, setResult] = useState<SuggestionResult | null>(null);
   const [loadingState, setLoadingState] = useState<LoadingState>('idle');
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [topicsExpanded, setTopicsExpanded] = useState(() => profileStorage.getItem('suggestions-topics-expanded') === 'true');
   const [error, setError] = useState<string | null>(null);
 
-  // Pause functionality
-  const { isPaused, PauseButton, PauseOverlay } = useWidgetPause('suggestions', 'Suggestions');
+  // Pause functionality — scoped to leaf node ID
+  const { isPaused, PauseButton, PauseOverlay } = useWidgetPause(nodeId, 'Suggestions');
 
   const hasLoadedFromStorageRef = useRef(false);
   const lastSystemIGenRef = useRef(0);
@@ -248,11 +251,30 @@ export function SuggestionWidget() {
         })}
       </div>
 
-      {/* Topic Filters */}
+      {/* Topic Filters — collapsible */}
       {result.availableTopics.length > 0 && (
-        <div className={`flex-shrink-0 px-2 py-1 border-t border-base-200/50 ${loadingState === 'loading' ? 'opacity-50 pointer-events-none' : ''}`}>
-          <div className="flex items-center gap-1 mb-0.5">
-            <span className="text-[9px] text-base-content/40 uppercase tracking-wide">Topics</span>
+        <div
+          className={`flex-shrink-0 px-2 py-1 border-t border-base-200/50 ${loadingState === 'loading' ? 'opacity-50 pointer-events-none' : ''}`}
+          data-doc='{"icon":"mdi:tag-multiple","title":"Topic Filter","desc":"Select a topic to regenerate suggestions focused on that area. Click again to deselect. Topics are extracted from your recent conversations."}'
+        >
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                const next = !topicsExpanded;
+                setTopicsExpanded(next);
+                profileStorage.setItem('suggestions-topics-expanded', String(next));
+              }}
+              className="flex items-center gap-1 hover:text-base-content/60 transition-colors"
+            >
+              <ChevronDown size={10} className={`text-base-content/30 transition-transform duration-200 ${topicsExpanded ? '' : '-rotate-90'}`} />
+              <span className="text-[9px] text-base-content/40 uppercase tracking-wide">Topics</span>
+            </button>
+            {!topicsExpanded && !selectedTopic && (
+              <span className="text-[8px] text-base-content/25 italic">tap to filter by topic</span>
+            )}
+            {selectedTopic && (
+              <span className="text-[9px] text-primary/60 truncate max-w-[120px]">{selectedTopic}</span>
+            )}
             {selectedTopic && (
               <button
                 onClick={() => { setSelectedTopic(null); fetchSuggestions(); }}
@@ -263,22 +285,24 @@ export function SuggestionWidget() {
               </button>
             )}
           </div>
-          <div className="flex flex-wrap gap-0.5">
-            {result.availableTopics.map((topic) => (
-              <button
-                key={topic}
-                onClick={() => handleTopicClick(topic)}
-                disabled={loadingState === 'loading'}
-                className={`px-1.5 py-0.5 text-[10px] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                  selectedTopic === topic
-                    ? 'bg-primary/20 text-primary'
-                    : 'bg-base-200/50 text-base-content/60 hover:bg-base-300 hover:text-base-content'
-                }`}
-              >
-                {topic}
-              </button>
-            ))}
-          </div>
+          {topicsExpanded && (
+            <div className="flex flex-wrap gap-0.5 mt-0.5">
+              {result.availableTopics.map((topic) => (
+                <button
+                  key={topic}
+                  onClick={() => handleTopicClick(topic)}
+                  disabled={loadingState === 'loading'}
+                  className={`px-1.5 py-0.5 text-[10px] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    selectedTopic === topic
+                      ? 'bg-primary/20 text-primary'
+                      : 'bg-base-200/50 text-base-content/60 hover:bg-base-300 hover:text-base-content'
+                  }`}
+                >
+                  {topic}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

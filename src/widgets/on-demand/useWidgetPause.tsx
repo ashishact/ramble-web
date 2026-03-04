@@ -6,6 +6,9 @@
  * - Widget should not process or make LLM calls
  * - An overlay is shown indicating paused state
  * - State persists across page reloads
+ *
+ * Storage shape: Record<nodeId, WidgetState>
+ * Each widget's state is a JSON object so additional fields can be added later.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -13,19 +16,24 @@ import { z } from 'zod';
 import { Pause, Play } from 'lucide-react';
 import { profileStorage } from '../../lib/profileStorage';
 
-const PAUSE_STORAGE_KEY = 'widget-pause-states';
+const STORAGE_KEY = 'widget-states';
 
-const PauseStatesSchema = z.record(z.string(), z.boolean());
+const WidgetStateSchema = z.object({
+	paused: z.boolean().optional(),
+}).passthrough();
 
-type PauseStates = z.infer<typeof PauseStatesSchema>;
+const WidgetStatesSchema = z.record(z.string(), WidgetStateSchema);
 
-function loadPauseStates(): PauseStates {
+type WidgetState = z.infer<typeof WidgetStateSchema>;
+type WidgetStates = z.infer<typeof WidgetStatesSchema>;
+
+function loadWidgetStates(): WidgetStates {
 	try {
-		const raw = profileStorage.getJSON<unknown>(PAUSE_STORAGE_KEY);
+		const raw = profileStorage.getJSON<unknown>(STORAGE_KEY);
 		if (raw == null) return {};
-		const result = PauseStatesSchema.safeParse(raw);
+		const result = WidgetStatesSchema.safeParse(raw);
 		if (!result.success) {
-			console.warn('[useWidgetPause] Stored pause states failed validation — resetting:', result.error.issues);
+			console.warn('[widgetStates] Stored widget states failed validation — resetting:', result.error.issues);
 			return {};
 		}
 		return result.data;
@@ -34,13 +42,46 @@ function loadPauseStates(): PauseStates {
 	}
 }
 
-function savePauseState(widgetId: string, isPaused: boolean): void {
+function saveWidgetStates(states: WidgetStates): void {
 	try {
-		const states = loadPauseStates();
-		states[widgetId] = isPaused;
-		profileStorage.setJSON(PAUSE_STORAGE_KEY, states);
+		profileStorage.setJSON(STORAGE_KEY, states);
 	} catch (error) {
-		console.warn('Failed to save widget pause state:', error);
+		console.warn('Failed to save widget states:', error);
+	}
+}
+
+function getWidgetState(nodeId: string): WidgetState {
+	const states = loadWidgetStates();
+	return states[nodeId] ?? {};
+}
+
+function updateWidgetState(nodeId: string, patch: Partial<WidgetState>): void {
+	const states = loadWidgetStates();
+	states[nodeId] = { ...states[nodeId], ...patch };
+	saveWidgetStates(states);
+}
+
+/**
+ * Toggle pause for a widget externally (e.g. from a keyboard shortcut).
+ * Dispatches a DOM event so any mounted useWidgetPause hook for that nodeId stays in sync.
+ */
+export function toggleWidgetPauseExternal(nodeId: string): void {
+	const state = getWidgetState(nodeId);
+	const newValue = !(state.paused ?? false);
+	updateWidgetState(nodeId, { paused: newValue });
+	window.dispatchEvent(new CustomEvent('widget-pause-changed', {
+		detail: { widgetId: nodeId, isPaused: newValue },
+	}));
+}
+
+/** Remove all persisted state for a widget (e.g. when a leaf node is deleted). */
+export function removeWidgetState(nodeId: string): void {
+	try {
+		const states = loadWidgetStates();
+		delete states[nodeId];
+		saveWidgetStates(states);
+	} catch (error) {
+		console.warn('Failed to remove widget state:', error);
 	}
 }
 
@@ -58,13 +99,13 @@ interface UseWidgetPauseResult {
 /**
  * Hook to add pause functionality to on-demand widgets
  *
- * @param widgetId Unique identifier for this widget type (e.g., 'questions', 'suggestions', 'speak-better')
+ * @param widgetId Unique identifier — scoped to the bento leaf node ID for per-instance pause
  * @param _widgetName Display name for the widget (reserved for future use)
  */
 export function useWidgetPause(widgetId: string, _widgetName?: string): UseWidgetPauseResult {
 	const [isPaused, setIsPaused] = useState<boolean>(() => {
-		const states = loadPauseStates();
-		return states[widgetId] ?? false;
+		const state = getWidgetState(widgetId);
+		return state.paused ?? false;
 	});
 
 	const hasInitialized = useRef(false);
@@ -74,16 +115,26 @@ export function useWidgetPause(widgetId: string, _widgetName?: string): UseWidge
 		if (hasInitialized.current) return;
 		hasInitialized.current = true;
 
-		const states = loadPauseStates();
-		if (states[widgetId] !== undefined) {
-			setIsPaused(states[widgetId]);
+		const state = getWidgetState(widgetId);
+		if (state.paused !== undefined) {
+			setIsPaused(state.paused);
 		}
+	}, [widgetId]);
+
+	// Sync with external pause toggles (e.g. Space shortcut from BentoApp)
+	useEffect(() => {
+		const handler = (e: Event) => {
+			const { widgetId: id, isPaused: paused } = (e as CustomEvent).detail;
+			if (id === widgetId) setIsPaused(paused);
+		};
+		window.addEventListener('widget-pause-changed', handler);
+		return () => window.removeEventListener('widget-pause-changed', handler);
 	}, [widgetId]);
 
 	const togglePause = useCallback(() => {
 		setIsPaused((prev) => {
 			const newValue = !prev;
-			savePauseState(widgetId, newValue);
+			updateWidgetState(widgetId, { paused: newValue });
 			return newValue;
 		});
 	}, [widgetId]);

@@ -268,11 +268,12 @@ function ArchivedMeetingRow({ meeting, onSelect }: { meeting: ArchivedMeeting; o
 
 type View = 'live' | 'archive-list' | 'archive-detail' | 'settings';
 
-export function MeetingTranscriptionWidget() {
+export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
   const [meetingState, setMeetingState] = useState<MeetingState>(() => createInitialMeetingState());
   const [archivedMeetings, setArchivedMeetings] = useState<ArchivedMeeting[]>([]);
   const [settings, setSettings] = useState<MeetingSettings>(() => loadMeetingSettings());
   const [view, setView] = useState<View>('live');
+  const prevViewRef = useRef<View>('live');
   const [selectedArchiveMeeting, setSelectedArchiveMeeting] = useState<ArchivedMeeting | null>(null);
   const [isLLMRunning, setIsLLMRunning] = useState(false);
   const [durationDisplay, setDurationDisplay] = useState('');
@@ -317,7 +318,7 @@ export function MeetingTranscriptionWidget() {
   const isMeetingRecordingRef = useRef(false);
   const [isMeetingMode, setIsMeetingMode] = useState(false);
 
-  const { isPaused, PauseButton } = useWidgetPause('meeting-transcription', 'Meeting');
+  const { isPaused, PauseButton } = useWidgetPause(nodeId, 'Meeting');
   const isPausedRef = useRef(isPaused);
   isPausedRef.current = isPaused;
 
@@ -717,7 +718,7 @@ export function MeetingTranscriptionWidget() {
     return (
       <MeetingDetailView
         meeting={selectedArchiveMeeting}
-        onBack={() => setView('archive-list')}
+        onBack={() => setView(prevViewRef.current)}
       />
     );
   }
@@ -745,7 +746,7 @@ export function MeetingTranscriptionWidget() {
                 <ArchivedMeetingRow
                   key={meeting.id}
                   meeting={meeting}
-                  onSelect={() => { setSelectedArchiveMeeting(meeting); setView('archive-detail'); }}
+                  onSelect={() => { setSelectedArchiveMeeting(meeting); prevViewRef.current = 'archive-list'; setView('archive-detail'); }}
                 />
               ))}
             </div>
@@ -868,9 +869,18 @@ export function MeetingTranscriptionWidget() {
         <div className="flex items-center gap-2 mt-0.5">
           <PauseButton />
           {archivedMeetings.length > 0 && (
+            <button
+              onClick={() => { setSelectedArchiveMeeting(archivedMeetings[0]); prevViewRef.current = 'live'; setView('archive-detail'); }}
+              className="flex items-center gap-1 text-[10px] text-base-content/40 hover:text-base-content/60 transition-colors"
+            >
+              <Icon icon="mdi:history" width={11} height={11} />
+              Last meeting
+            </button>
+          )}
+          {archivedMeetings.length > 1 && (
             <button onClick={() => setView('archive-list')} className="flex items-center gap-1 text-[10px] text-base-content/40 hover:text-base-content/60 transition-colors">
               <Clock size={10} />
-              {archivedMeetings.length} past
+              All ({archivedMeetings.length})
             </button>
           )}
           <button onClick={handleNewMeeting} className="flex items-center gap-1 text-[10px] text-base-content/40 hover:text-base-content/60 transition-colors">

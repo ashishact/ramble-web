@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import type { LeafNode, WidgetType } from './types';
 import { BentoLeafMenu } from './BentoLeafMenu';
 import {
@@ -6,6 +6,7 @@ import {
   Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio
 } from 'lucide-react';
 import { uploadFiles, isSupportedFileType } from '../../services/fileUpload';
+import { hoveredWidgetStore } from '../../stores/hoveredWidgetStore';
 
 interface BentoLeafProps {
   node: LeafNode;
@@ -54,6 +55,9 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
+
+  const globalHovered = useSyncExternalStore(hoveredWidgetStore.subscribe, hoveredWidgetStore.getState);
+  const isGloballyHovered = globalHovered?.nodeId === node.id;
 
   const isSetupMode = node.widgetType === 'empty';
 
@@ -202,9 +206,10 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
     <div
       className={`bento-widget relative w-full h-full flex flex-col overflow-hidden ${node.color} text-slate-800 border border-slate-200/50 group transition-all duration-200
       ${editMode && isHovered && !isDragOver ? 'ring-1 ring-inset ring-blue-500/20 shadow-inner' : ''}
+      ${!editMode && isGloballyHovered ? 'ring-1 ring-inset ring-primary/30' : ''}
       `}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={() => { setIsHovered(true); hoveredWidgetStore.set(node.id, node.widgetType); }}
+      onMouseLeave={() => { setIsHovered(false); hoveredWidgetStore.clear(node.id); }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}

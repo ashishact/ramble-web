@@ -32,6 +32,9 @@ import { QuestionWidget, SuggestionWidget, SpeakBetterWidget, MeetingTranscripti
 import { MetaQueryLensWidget } from '../widgets/lens';
 import { RotateCcw, PencilRuler, Loader2, Settings, Pause } from 'lucide-react';
 import { systemPause } from '../lib/systemPause';
+import { useShortcut } from '../hooks/useShortcut';
+import { hoveredWidgetStore } from '../stores/hoveredWidgetStore';
+import { toggleWidgetPauseExternal, removeWidgetState } from '../widgets/on-demand/useWidgetPause';
 import { uploadFiles, isSupportedFileType } from '../services/fileUpload';
 import { useNavigate, useParams } from 'react-router-dom';
 import { GlobalSTTController } from './GlobalSTTController';
@@ -66,6 +69,13 @@ export const BentoApp: React.FC = () => {
   const wsState = useSyncExternalStore(workspaceStore.subscribe, workspaceStore.getState);
   const [tree, setTree] = useState<BentoTree>(() => workspaceStore.getActiveTree());
   const [editMode, setEditMode] = useState(false);
+
+  // Space bar toggles pause on the currently-hovered widget (scoped to leaf node ID)
+  useShortcut('widget-toggle-pause', { key: ' ' }, () => {
+    const hovered = hoveredWidgetStore.getState();
+    if (!hovered) return;
+    toggleWidgetPauseExternal(hovered.nodeId);
+  }, 'Toggle pause on hovered widget');
 
   // Sync tree when active workspace changes (e.g. from WorkspaceSwitcher)
   useEffect(() => {
@@ -102,6 +112,7 @@ export const BentoApp: React.FC = () => {
   }, []);
 
   const handleRemove = useCallback((id: string) => {
+    removeWidgetState(id);
     setTree((prev) => removeNode(prev, id));
   }, []);
 
@@ -177,11 +188,11 @@ export const BentoApp: React.FC = () => {
       case 'working-memory':
         return <WorkingMemoryWidget {...props} />;
       case 'questions':
-        return <QuestionWidget />;
+        return <QuestionWidget nodeId={node.id} />;
       case 'suggestions':
-        return <SuggestionWidget />;
+        return <SuggestionWidget nodeId={node.id} />;
       case 'speak-better':
-        return <SpeakBetterWidget />;
+        return <SpeakBetterWidget nodeId={node.id} />;
       case 'learned-corrections':
         return <LearnedCorrectionsWidget />;
       case 'tts':
@@ -196,7 +207,7 @@ export const BentoApp: React.FC = () => {
           </Suspense>
         );
       case 'meeting-transcription':
-        return <MeetingTranscriptionWidget />;
+        return <MeetingTranscriptionWidget nodeId={node.id} />;
       // Lens Widgets - intercept input on hover, bypass core pipeline
       case 'meta-query':
         return <MetaQueryLensWidget />;
