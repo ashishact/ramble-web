@@ -40,7 +40,7 @@ export const Resizer: React.FC<ResizerProps> = ({ direction, onResizeStart, onRe
 
   return (
     <div
-      className={`relative z-10 flex-none bg-slate-200/50 hover:bg-blue-400 transition-colors duration-200 ${cursorClass} ${sizeClass} ${isDragging ? 'bg-blue-500 scale-x-125 scale-y-125 shadow-sm' : ''}`}
+      className={`relative z-10 flex-none hover:bg-blue-400 transition-colors duration-200 ${cursorClass} ${sizeClass} ${isDragging ? 'bg-blue-500 scale-x-125 scale-y-125 shadow-sm' : ''}`}
       onMouseDown={(e) => {
         e.preventDefault();
         startPosRef.current = direction === 'horizontal' ? e.clientX : e.clientY;
