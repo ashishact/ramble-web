@@ -386,7 +386,7 @@ export function SpeakBetterWidget({ nodeId }: { nodeId: string }) {
       <PauseOverlay />
       {/* Header */}
       <div className="flex-shrink-0 px-2 py-1.5 border-b border-base-200 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 whitespace-nowrap">
           {loadingState === "loading" ? (
             <>
               <span className="loading loading-spinner loading-xs text-primary"></span>
