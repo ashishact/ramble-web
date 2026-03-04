@@ -604,27 +604,14 @@ export const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({ onTreeChan
               </div>
 
               {/* Keyboard shortcut hints */}
-              <div className="border-t border-slate-100 px-3 py-2 space-y-1">
-                <div className="flex items-center justify-between text-[10px] text-slate-400">
-                  <span>Previous / Next</span>
-                  <div className="flex items-center gap-0.5">
-                    <kbd className="px-1 py-0.5 bg-slate-100 rounded text-[9px] font-mono">Ctrl</kbd>
-                    <span>+</span>
-                    <kbd className="px-1 py-0.5 bg-slate-100 rounded text-[9px] font-mono">[</kbd>
-                    <span className="mx-0.5">/</span>
-                    <kbd className="px-1 py-0.5 bg-slate-100 rounded text-[9px] font-mono">]</kbd>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between text-[10px] text-slate-400">
-                  <span>Jump to workspace</span>
-                  <div className="flex items-center gap-0.5">
-                    <kbd className="px-1 py-0.5 bg-slate-100 rounded text-[9px] font-mono">Ctrl</kbd>
-                    <span>+</span>
-                    <kbd className="px-1 py-0.5 bg-slate-100 rounded text-[9px] font-mono">1</kbd>
-                    <span>–</span>
-                    <kbd className="px-1 py-0.5 bg-slate-100 rounded text-[9px] font-mono">9</kbd>
-                  </div>
-                </div>
+              <div
+                className="border-t border-slate-100 px-3 py-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[9px] text-slate-400"
+                data-doc='{"icon":"mdi:keyboard","title":"Workspace Shortcuts","desc":"Ctrl+[ and Ctrl+] cycle through workspaces. Ctrl+1 through Ctrl+9 jump directly to a workspace by position."}'
+              >
+                <span>Previous / Next</span>
+                <span className="text-right whitespace-nowrap"><kbd className="px-1 bg-slate-100 rounded font-mono">CTRL+[</kbd> <kbd className="px-1 bg-slate-100 rounded font-mono">CTRL+]</kbd></span>
+                <span>Jump to workspace</span>
+                <span className="text-right whitespace-nowrap"><kbd className="px-1 bg-slate-100 rounded font-mono">CTRL + 1–9</kbd></span>
               </div>
             </>
           )}

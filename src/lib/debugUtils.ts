@@ -25,6 +25,7 @@ import {
   goalStore,
   conversationStore,
 } from '../db/stores'
+import { workspaceStore } from '../stores/workspaceStore'
 
 // ============================================================================
 // Export serializers — flatten WatermelonDB models to plain objects
@@ -158,6 +159,9 @@ interface RambleDebug {
   setData: (key: string, type: string, value: unknown) => Promise<void>
   deleteData: (key: string) => Promise<boolean>
 
+  // Workspace export
+  exportWorkspaces: () => unknown
+
   // Data export (dev only) — returns data and copies to clipboard
   exportMemories: () => Promise<unknown[]>
   exportConversations: (limit?: number) => Promise<unknown[]>
@@ -269,6 +273,16 @@ const rambleDebug: RambleDebug = {
     const result = await dataStore.delete(key)
     console.log(`[ramble] Data[${key}] deleted:`, result)
     return result
+  },
+
+  // ============================================================================
+  // Workspace Export
+  // ============================================================================
+
+  exportWorkspaces() {
+    const state = workspaceStore.getState()
+    console.log(`[ramble] Exported ${state.workspaces.length} workspaces`)
+    return state
   },
 
   // ============================================================================

@@ -10,8 +10,8 @@
 import { z } from 'zod/v4';
 import type { BentoTree } from '../components/bento/types';
 import { BentoTreeSchema } from '../components/bento/types';
-import { generateId, createInitialTree } from '../components/bento/utils';
-import { getTemplate } from './workspaceTemplates';
+import { generateId } from '../components/bento/utils';
+import { getTemplate, BUILT_IN_TEMPLATES } from './workspaceTemplates';
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -105,22 +105,24 @@ const loadState = (): WorkspaceState => {
     console.warn('[Workspaces] Failed to parse stored state:', e);
   }
 
-  // Build fresh Default workspace
+  // Seed all built-in templates as workspaces
   const now = Date.now();
-  const defaultWs: Workspace = {
+  const workspaces: Workspace[] = BUILT_IN_TEMPLATES.map((t, i) => ({
     id: generateId(),
-    name: 'Default',
-    tree: createInitialTree(),
+    name: t.name,
+    tree: t.createTree(),
     builtIn: true,
-    templateId: 'default',
-    order: 0,
+    templateId: t.id,
+    description: t.description,
+    icon: t.icon,
+    order: i,
     createdAt: now,
     modifiedAt: now,
-  };
+  }));
 
   const state: WorkspaceState = {
-    activeId: defaultWs.id,
-    workspaces: [defaultWs],
+    activeId: workspaces[0].id,
+    workspaces,
   };
 
   saveState(state);

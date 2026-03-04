@@ -12,7 +12,7 @@ export interface WorkspaceTemplate {
   id: string;
   name: string;
   description: string;
-  icon: string;           // Iconify icon name, e.g. "mdi:view-grid"
+  icon: string;           // Iconify icon name
   createTree: () => BentoTree;
 }
 
@@ -24,147 +24,216 @@ const leaf = (
   parent: string,
   widgetType: LeafNode['widgetType'],
   content: string,
+  color = 'bg-white',
 ): LeafNode => ({
   id,
   type: 'leaf',
   parent,
   content,
-  color: 'bg-white',
+  color,
   widgetType,
 });
 
 // ---------------------------------------------------------------------------
-// Default — 2×2: VoiceRecorder | Conversation / Goals | Memories
+// Default — Questions (narrow) | Conversation (wide) | Suggestions (narrow)
 // ---------------------------------------------------------------------------
 const createDefaultTree = (): BentoTree => {
   const rootId = generateId();
-  const topRowId = generateId();
-  const bottomRowId = generateId();
-  const voiceRecorderId = generateId();
+  const rightSplitId = generateId();
+  const questionsId = generateId();
   const conversationId = generateId();
-  const goalsId = generateId();
-  const memoriesId = generateId();
+  const suggestionsId = generateId();
 
   return {
     rootId,
     nodes: {
       [rootId]: {
         id: rootId, type: 'split', parent: null,
-        direction: 'vertical', ratio: 0.5,
-        first: topRowId, second: bottomRowId,
+        direction: 'horizontal', ratio: 0.19,
+        first: questionsId, second: rightSplitId,
       } as SplitNode,
-      [topRowId]: {
-        id: topRowId, type: 'split', parent: rootId,
-        direction: 'horizontal', ratio: 0.5,
-        first: voiceRecorderId, second: conversationId,
+      [rightSplitId]: {
+        id: rightSplitId, type: 'split', parent: rootId,
+        direction: 'horizontal', ratio: 0.70,
+        first: conversationId, second: suggestionsId,
       } as SplitNode,
-      [bottomRowId]: {
-        id: bottomRowId, type: 'split', parent: rootId,
-        direction: 'horizontal', ratio: 0.5,
-        first: goalsId, second: memoriesId,
-      } as SplitNode,
-      [voiceRecorderId]: leaf(voiceRecorderId, topRowId, 'voice-recorder', 'Voice Recorder'),
-      [conversationId]: leaf(conversationId, topRowId, 'conversation', 'Conversation'),
-      [goalsId]: leaf(goalsId, bottomRowId, 'goals', 'Goals'),
-      [memoriesId]: leaf(memoriesId, bottomRowId, 'memories', 'Memories'),
+      [questionsId]: leaf(questionsId, rootId, 'questions', 'Questions', 'bg-slate-50'),
+      [conversationId]: leaf(conversationId, rightSplitId, 'conversation', 'Conversation', 'bg-pink-50'),
+      [suggestionsId]: leaf(suggestionsId, rightSplitId, 'suggestions', 'Suggestions', 'bg-blue-50'),
     },
   };
 };
 
 // ---------------------------------------------------------------------------
-// Focus — VoiceRecorder (30%) | Conversation (70%)
+// Focus — Conversation (75%) | Goals (25%)
 // ---------------------------------------------------------------------------
 const createFocusTree = (): BentoTree => {
   const rootId = generateId();
-  const voiceId = generateId();
   const convId = generateId();
+  const goalsId = generateId();
 
   return {
     rootId,
     nodes: {
       [rootId]: {
         id: rootId, type: 'split', parent: null,
-        direction: 'horizontal', ratio: 0.3,
-        first: voiceId, second: convId,
+        direction: 'horizontal', ratio: 0.74,
+        first: convId, second: goalsId,
       } as SplitNode,
-      [voiceId]: leaf(voiceId, rootId, 'voice-recorder', 'Voice Recorder'),
       [convId]: leaf(convId, rootId, 'conversation', 'Conversation'),
+      [goalsId]: leaf(goalsId, rootId, 'goals', 'Goals', 'bg-zinc-50'),
     },
   };
 };
 
 // ---------------------------------------------------------------------------
-// Meeting — 2×2: MeetingTranscription | Conversation / Suggestions | Questions
+// Conversation — Questions | Conversation | Suggestions | Goals (narrow)
+// ---------------------------------------------------------------------------
+const createConversationTree = (): BentoTree => {
+  const rootId = generateId();
+  const leftSplitId = generateId();
+  const middleSplitId = generateId();
+  const questionsId = generateId();
+  const conversationId = generateId();
+  const suggestionsId = generateId();
+  const goalsId = generateId();
+
+  return {
+    rootId,
+    nodes: {
+      [rootId]: {
+        id: rootId, type: 'split', parent: null,
+        direction: 'horizontal', ratio: 0.82,
+        first: leftSplitId, second: goalsId,
+      } as SplitNode,
+      [leftSplitId]: {
+        id: leftSplitId, type: 'split', parent: rootId,
+        direction: 'horizontal', ratio: 0.28,
+        first: questionsId, second: middleSplitId,
+      } as SplitNode,
+      [middleSplitId]: {
+        id: middleSplitId, type: 'split', parent: leftSplitId,
+        direction: 'horizontal', ratio: 0.69,
+        first: conversationId, second: suggestionsId,
+      } as SplitNode,
+      [questionsId]: leaf(questionsId, leftSplitId, 'questions', 'Questions', 'bg-purple-50'),
+      [conversationId]: leaf(conversationId, middleSplitId, 'conversation', 'Conversation'),
+      [suggestionsId]: leaf(suggestionsId, middleSplitId, 'suggestions', 'Suggestions'),
+      [goalsId]: leaf(goalsId, rootId, 'goals', 'Goals'),
+    },
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Meeting — Meeting Transcription (66%) | Questions / Suggestions (stacked)
 // ---------------------------------------------------------------------------
 const createMeetingTree = (): BentoTree => {
   const rootId = generateId();
-  const topRowId = generateId();
-  const bottomRowId = generateId();
+  const rightSplitId = generateId();
   const transcriptionId = generateId();
-  const conversationId = generateId();
-  const suggestionsId = generateId();
   const questionsId = generateId();
+  const suggestionsId = generateId();
 
   return {
     rootId,
     nodes: {
       [rootId]: {
         id: rootId, type: 'split', parent: null,
-        direction: 'vertical', ratio: 0.5,
-        first: topRowId, second: bottomRowId,
+        direction: 'horizontal', ratio: 0.66,
+        first: transcriptionId, second: rightSplitId,
       } as SplitNode,
-      [topRowId]: {
-        id: topRowId, type: 'split', parent: rootId,
-        direction: 'horizontal', ratio: 0.5,
-        first: transcriptionId, second: conversationId,
+      [rightSplitId]: {
+        id: rightSplitId, type: 'split', parent: rootId,
+        direction: 'vertical', ratio: 0.50,
+        first: questionsId, second: suggestionsId,
       } as SplitNode,
-      [bottomRowId]: {
-        id: bottomRowId, type: 'split', parent: rootId,
-        direction: 'horizontal', ratio: 0.5,
-        first: suggestionsId, second: questionsId,
-      } as SplitNode,
-      [transcriptionId]: leaf(transcriptionId, topRowId, 'meeting-transcription', 'Meeting Transcription'),
-      [conversationId]: leaf(conversationId, topRowId, 'conversation', 'Conversation'),
-      [suggestionsId]: leaf(suggestionsId, bottomRowId, 'suggestions', 'Suggestions'),
-      [questionsId]: leaf(questionsId, bottomRowId, 'questions', 'Questions'),
+      [transcriptionId]: leaf(transcriptionId, rootId, 'meeting-transcription', 'Meeting Transcription'),
+      [questionsId]: leaf(questionsId, rightSplitId, 'questions', 'Questions', 'bg-emerald-50'),
+      [suggestionsId]: leaf(suggestionsId, rightSplitId, 'suggestions', 'Suggestions', 'bg-purple-50'),
     },
   };
 };
 
 // ---------------------------------------------------------------------------
-// Coaching — (VoiceRecorder / SpeakBetter) | (Conversation / LearnedCorrections)
+// Debug — Conversation | Context/Stats | Memories/Meta Query
 // ---------------------------------------------------------------------------
-const createCoachingTree = (): BentoTree => {
+const createDebugTree = (): BentoTree => {
   const rootId = generateId();
-  const leftColId = generateId();
-  const rightColId = generateId();
-  const voiceId = generateId();
-  const speakBetterId = generateId();
-  const convId = generateId();
-  const correctionsId = generateId();
+  const rightSplitId = generateId();
+  const midColId = generateId();
+  const farColId = generateId();
+  const conversationId = generateId();
+  const contextId = generateId();
+  const statsId = generateId();
+  const memoriesId = generateId();
+  const metaQueryId = generateId();
 
   return {
     rootId,
     nodes: {
       [rootId]: {
         id: rootId, type: 'split', parent: null,
-        direction: 'horizontal', ratio: 0.5,
-        first: leftColId, second: rightColId,
+        direction: 'horizontal', ratio: 0.33,
+        first: conversationId, second: rightSplitId,
       } as SplitNode,
-      [leftColId]: {
-        id: leftColId, type: 'split', parent: rootId,
-        direction: 'vertical', ratio: 0.5,
-        first: voiceId, second: speakBetterId,
+      [rightSplitId]: {
+        id: rightSplitId, type: 'split', parent: rootId,
+        direction: 'horizontal', ratio: 0.30,
+        first: midColId, second: farColId,
       } as SplitNode,
-      [rightColId]: {
-        id: rightColId, type: 'split', parent: rootId,
-        direction: 'vertical', ratio: 0.5,
-        first: convId, second: correctionsId,
+      [midColId]: {
+        id: midColId, type: 'split', parent: rightSplitId,
+        direction: 'vertical', ratio: 0.60,
+        first: contextId, second: statsId,
       } as SplitNode,
-      [voiceId]: leaf(voiceId, leftColId, 'voice-recorder', 'Voice Recorder'),
-      [speakBetterId]: leaf(speakBetterId, leftColId, 'speak-better', 'Speak Better'),
-      [convId]: leaf(convId, rightColId, 'conversation', 'Conversation'),
-      [correctionsId]: leaf(correctionsId, rightColId, 'learned-corrections', 'Learned Corrections'),
+      [farColId]: {
+        id: farColId, type: 'split', parent: rightSplitId,
+        direction: 'horizontal', ratio: 0.47,
+        first: memoriesId, second: metaQueryId,
+      } as SplitNode,
+      [conversationId]: leaf(conversationId, rootId, 'conversation', 'Conversation'),
+      [contextId]: leaf(contextId, midColId, 'working-memory', 'Context'),
+      [statsId]: leaf(statsId, midColId, 'stats', 'Stats', 'bg-zinc-50'),
+      [memoriesId]: leaf(memoriesId, farColId, 'memories', 'Memories'),
+      [metaQueryId]: leaf(metaQueryId, farColId, 'meta-query', 'Meta Query', 'bg-zinc-50'),
+    },
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Speak Better — Questions (narrow) | Conversation | Speak Better / TTS
+// ---------------------------------------------------------------------------
+const createSpeakBetterTree = (): BentoTree => {
+  const rootId = generateId();
+  const rightSplitId = generateId();
+  const farSplitId = generateId();
+  const questionsId = generateId();
+  const conversationId = generateId();
+  const speakBetterId = generateId();
+  const ttsId = generateId();
+
+  return {
+    rootId,
+    nodes: {
+      [rootId]: {
+        id: rootId, type: 'split', parent: null,
+        direction: 'horizontal', ratio: 0.17,
+        first: questionsId, second: rightSplitId,
+      } as SplitNode,
+      [rightSplitId]: {
+        id: rightSplitId, type: 'split', parent: rootId,
+        direction: 'horizontal', ratio: 0.60,
+        first: conversationId, second: farSplitId,
+      } as SplitNode,
+      [farSplitId]: {
+        id: farSplitId, type: 'split', parent: rightSplitId,
+        direction: 'horizontal', ratio: 0.50,
+        first: speakBetterId, second: ttsId,
+      } as SplitNode,
+      [questionsId]: leaf(questionsId, rootId, 'questions', 'Questions', 'bg-slate-50'),
+      [conversationId]: leaf(conversationId, rightSplitId, 'conversation', 'Conversation', 'bg-pink-50'),
+      [speakBetterId]: leaf(speakBetterId, farSplitId, 'speak-better', 'Speak Better', 'bg-rose-50'),
+      [ttsId]: leaf(ttsId, farSplitId, 'tts', 'TTS', 'bg-orange-50'),
     },
   };
 };
@@ -176,30 +245,44 @@ export const BUILT_IN_TEMPLATES: WorkspaceTemplate[] = [
   {
     id: 'default',
     name: 'Default',
-    description: 'General purpose — voice, conversation, goals, memories',
-    icon: 'mdi:view-grid',
+    description: 'Questions, conversation, and suggestions side by side',
+    icon: 'streamline-ultimate-color:dropbox-logo',
     createTree: createDefaultTree,
   },
   {
     id: 'focus',
     name: 'Focus',
-    description: 'Minimal — voice input and conversation side by side',
-    icon: 'mdi:target',
+    description: 'Minimal — conversation with goals',
+    icon: 'solar:music-notes-broken',
     createTree: createFocusTree,
+  },
+  {
+    id: 'conversation',
+    name: 'Conversation',
+    description: 'Have long conversations with full context',
+    icon: 'streamline-ultimate-color:audio-file-mp3',
+    createTree: createConversationTree,
   },
   {
     id: 'meeting',
     name: 'Meeting',
-    description: 'Live meeting — transcription, conversation, suggestions, questions',
-    icon: 'mdi:account-group',
+    description: 'Live meeting transcription with questions and suggestions',
+    icon: 'streamline-ultimate-color:team-meeting',
     createTree: createMeetingTree,
   },
   {
-    id: 'coaching',
-    name: 'Coaching',
-    description: 'Speech improvement — speak better and learned corrections',
-    icon: 'mdi:school',
-    createTree: createCoachingTree,
+    id: 'debug',
+    name: 'Debug',
+    description: 'Debug how the system is working — only for developers',
+    icon: 'codicon:debug',
+    createTree: createDebugTree,
+  },
+  {
+    id: 'speak-better',
+    name: 'Speak Better',
+    description: 'Speak with narration and speech improvement',
+    icon: 'emojione:speak-no-evil-monkey',
+    createTree: createSpeakBetterTree,
   },
 ];
 
