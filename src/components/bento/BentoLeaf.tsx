@@ -205,7 +205,7 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
   return (
     <div
       className={`bento-widget relative w-full h-full flex flex-col overflow-hidden rounded ${node.color} text-slate-800 border border-slate-200/50 group transition-all duration-200
-      ${editMode && isHovered && !isDragOver ? 'ring-1 ring-inset ring-blue-500/20 shadow-inner' : ''}
+      ${editMode && isHovered && !isDragOver ? 'outline outline-1 -outline-offset-1 outline-blue-500/30' : ''}
       ${!editMode && isGloballyHovered ? 'outline outline-1 -outline-offset-1 outline-primary/30' : ''}
       `}
       onMouseEnter={() => { setIsHovered(true); hoveredWidgetStore.set(node.id, node.widgetType); }}
