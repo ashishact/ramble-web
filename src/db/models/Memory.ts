@@ -77,9 +77,9 @@ export default class Memory extends Model {
   }
 
   get isActive(): boolean {
-    // Tombstones: explicitly killed via supersede() — exclude
+    // Tombstones: explicitly killed via supersede() or retract() — exclude
     if (this.supersededBy) return false
-    if (this.state === 'superseded') return false
+    if (this.state === 'superseded' || this.state === 'retracted') return false
     // Expired temporal memories
     if (this.validUntil && Date.now() > this.validUntil) return false
     // 'contested' memories ARE active — they compete, not die

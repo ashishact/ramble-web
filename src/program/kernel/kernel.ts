@@ -10,8 +10,12 @@
  * [userinput] → [search/surface] → LLM → [update] → save → wait
  */
 
-import { sessionStore, conversationStore, taskStore, recordingStore } from '../../db/stores';
+import { sessionStore, conversationStore, taskStore, recordingStore, memoryStore } from '../../db/stores';
 import { processInput, type ProcessingResult } from './processor';
+import { normalizeInput } from '../services/normalizeInput';
+import { splitText } from './textSplitter';
+import { curateTree } from '../knowledgeTree/curateTree';
+import { extractTimeline } from '../timelineExtractor';
 import { seedCorePlugins } from '../plugins';
 import { createLogger } from '../utils/logger';
 import { pipelineStatus } from './pipelineStatus';
@@ -52,7 +56,7 @@ class Kernel {
   private isProcessing = false;
   private inputQueue: Array<{
     text: string;
-    source: 'speech' | 'text';
+    source: 'speech' | 'text' | 'meeting';
     recordingId?: string;
     resolve: (result: InputResult) => void;
     reject: (error: Error) => void;
@@ -60,6 +64,14 @@ class Kernel {
 
   private listeners: Set<(state: KernelState) => void> = new Set();
   private recordingUnsubscribers: Array<() => void> = [];
+
+  /**
+   * Holds the meeting transcript received from `native:meeting-transcript-complete`.
+   * The native app sends this BEFORE `native:recording-ended`. When recording-ended
+   * fires, we check this field: if set, we use the meeting transcript (with speaker
+   * labels) instead of the flat fullText from recordingManager.
+   */
+  private pendingMeetingTranscript: string | null = null;
 
   /**
    * In-memory dedup caches — prevent duplicate conversation records.
@@ -206,21 +218,45 @@ class Kernel {
       })
     );
 
+    // ── Meeting transcript received (before recording-ended) ──
+    this.recordingUnsubscribers.push(
+      eventBus.on('native:meeting-transcript-complete', (payload) => {
+        logger.info('Meeting transcript received', {
+          segments: payload.segments?.length,
+          transcriptLength: payload.transcript?.length,
+        });
+        this.pendingMeetingTranscript = payload.transcript;
+      })
+    );
+
     // ── Recording end → System II processing ──
     this.recordingUnsubscribers.push(
       eventBus.on('native:recording-ended', () => {
         if (!recordingManager.isRecording) return;
 
         const { recording, fullText, chunks } = recordingManager.end();
-        logger.info('Recording ended', { id: recording.id, chars: fullText.length });
 
-        if (fullText.trim()) {
+        // Check if we have a meeting transcript — if so, use it instead of flat fullText
+        const isMeeting = this.pendingMeetingTranscript !== null;
+        const textToProcess = isMeeting ? this.pendingMeetingTranscript! : fullText;
+        const source = isMeeting ? 'meeting' as const : 'speech' as const;
+
+        // Clear pending meeting transcript after consuming
+        this.pendingMeetingTranscript = null;
+
+        logger.info('Recording ended', {
+          id: recording.id,
+          chars: textToProcess.length,
+          isMeeting,
+        });
+
+        if (textToProcess.trim()) {
           // Save recording to DB for time travel
           recordingStore.create({
             type: recording.type,
             startedAt: recording.startedAt,
             endedAt: recording.endedAt,
-            fullText,
+            fullText: textToProcess,
             source: 'in-app',
             audioType: recording.audioType,
             throughputRate: recording.throughputRate,
@@ -231,7 +267,7 @@ class Kernel {
 
           // Submit for System II (durable) processing — pass recordingId
           // so the event chain stays connected: recording → processing → widgets
-          this.submitInput(fullText.trim(), 'speech', recording.id)
+          this.submitInput(textToProcess.trim(), source, recording.id)
             .catch(err => logger.error('System II processing failed', { error: err }));
         }
       })
@@ -287,7 +323,7 @@ class Kernel {
    */
   async submitInput(
     text: string,
-    source: 'speech' | 'text' = 'text',
+    source: 'speech' | 'text' | 'meeting' = 'text',
     recordingId?: string
   ): Promise<InputResult> {
     if (systemPause.isPaused) {
@@ -355,7 +391,7 @@ class Kernel {
 
   private async processInputItem(
     text: string,
-    source: 'speech' | 'text',
+    source: 'speech' | 'text' | 'meeting',
     recordingId?: string
   ): Promise<InputResult> {
     if (!this.currentSession?.id) {
@@ -382,11 +418,51 @@ class Kernel {
     pipelineStatus.start();
     pipelineStatus.step('input', 'running');
 
-    // Corrections are now handled inside normalizeInput (Phase 1 of processor)
-    // The raw text goes through as-is — normalizeInput applies dictionary,
-    // phonetic, and learned corrections before the LLM call.
-    const sanitizedText = text;
+    // ── Phase 1: Normalize the full text FIRST ───────────────────────────
+    // Normalization adds proper punctuation/sentence boundaries and extracts
+    // entity/topic hints. We need this before splitting because raw STT text
+    // may lack sentence boundaries entirely.
+    const recentConvs = await conversationStore.getRecent(3);
+    const recentSentences: string[] = recentConvs
+      .reverse()
+      .flatMap(c => {
+        const parsed = c.sentencesParsed;
+        if (parsed.length > 0) return parsed.map(s => s.text);
+        return c.sanitizedText.split(/(?<=[.!?])\s+/).filter(Boolean);
+      })
+      .slice(-5);
+
+    const normalizeResult = await normalizeInput(text, recentSentences, source);
+    const normalizedText = normalizeResult.normalizedText;
+    const hints = normalizeResult.hints;
     pipelineStatus.step('input', 'success');
+
+    // ── Check if text needs splitting ────────────────────────────────────
+    // Split the NORMALIZED text (has proper sentence boundaries now).
+    // If multiple chunks, delegate to sequential chunked processing.
+    const chunks = splitText(normalizedText);
+
+    // Detect meeting mode from source
+    const isMeeting = source === 'meeting';
+
+    if (chunks.length > 1) {
+      logger.info('Long text detected, splitting into chunks', {
+        originalLength: text.length,
+        normalizedLength: normalizedText.length,
+        chunkCount: chunks.length,
+        source,
+        isMeeting,
+      });
+      return await this.processChunkedInput(
+        text, chunks, hints, source, sessionId, recordingId, isMeeting
+      );
+    }
+
+    // ── Single chunk: existing flow (with pre-computed hints) ────────────
+    const sanitizedText = normalizedText;
+
+    // Cache rawText → conversationId for dedup (auto-expires)
+    // (set after we know we're not splitting — for splits, dedup is per-chunk)
 
     // 2. Save conversation unit
     pipelineStatus.step('save', 'running');
@@ -399,7 +475,6 @@ class Kernel {
       recordingId,
     });
 
-    // Cache rawText → conversationId for dedup (auto-expires)
     this.recentRawTexts.set(textHash, conversation.id);
     setTimeout(() => this.recentRawTexts.delete(textHash), this.DEDUP_TTL_MS);
 
@@ -419,7 +494,7 @@ class Kernel {
     });
     pipelineStatus.step('save', 'success');
 
-    // 5. Process immediately
+    // 5. Process immediately — pass pre-computed hints to skip re-normalization
     pipelineStatus.step('process', 'running');
     try {
       await taskStore.start(task.id);
@@ -429,7 +504,7 @@ class Kernel {
         conversation.id,
         sanitizedText,
         source,
-        { mode: 'system-ii', recordingId }
+        { mode: 'system-ii', recordingId, hints, isMeeting }
       );
 
       await conversationStore.markProcessed(conversation.id);
@@ -442,6 +517,11 @@ class Kernel {
 
       pipelineStatus.step('process', 'success');
       pipelineStatus.step('done', 'success');
+
+      // Drain any follow-up tasks (e.g. curate-trees) that processInput() queued
+      this.resumePendingTasks().catch(err =>
+        logger.error('Follow-up task processing failed (non-fatal)', { error: err })
+      );
 
       return {
         conversationId: conversation.id,
@@ -459,6 +539,142 @@ class Kernel {
         error: errorMessage,
       };
     }
+  }
+
+  // ==========================================================================
+  // Chunked Input Processing (Long Text Splitting)
+  // ==========================================================================
+
+  /**
+   * Process long text as sequential chunks. Each chunk gets its own conversation
+   * record and extraction pass. Sequential (not parallel) so each chunk's
+   * extracted entities/memories are in the DB before the next chunk's context
+   * retrieval runs — giving later chunks progressively richer context.
+   *
+   * @param rawText - Original raw text (for the first conversation's rawText field)
+   * @param normalizedText - Full normalized text (already punctuated)
+   * @param chunks - Pre-split chunks from splitText()
+   * @param hints - Pre-computed normalization hints (entity/topic search keys)
+   * @param source - Input source ('speech' | 'text')
+   * @param sessionId - Current session ID
+   * @param recordingId - Optional recording ID
+   */
+  private async processChunkedInput(
+    rawText: string,
+    chunks: import('./textSplitter').TextChunk[],
+    hints: import('../types/recording').NormalizationHints,
+    source: 'speech' | 'text' | 'meeting',
+    sessionId: string,
+    recordingId?: string,
+    isMeeting?: boolean
+  ): Promise<InputResult> {
+    // Cache the full rawText for dedup
+    const textHash = simpleHash(rawText);
+    // We'll set the dedup entry to the first conversation ID below
+
+    let lastConversationId = '';
+    let lastResult: ProcessingResult | undefined;
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+
+      logger.info(`Processing chunk ${chunk.index + 1}/${chunk.totalChunks}`, {
+        chunkLength: chunk.text.length,
+      });
+      pipelineStatus.start();
+      pipelineStatus.step('input', 'success');
+      pipelineStatus.step('save', 'running');
+
+      // Create conversation record for this chunk
+      const conversation = await conversationStore.create({
+        sessionId,
+        rawText: i === 0 ? rawText : chunk.text,  // First chunk stores full raw text
+        sanitizedText: chunk.text,
+        source,
+        speaker: 'user',
+        recordingId,
+      });
+
+      // Set dedup to first conversation
+      if (i === 0) {
+        this.recentRawTexts.set(textHash, conversation.id);
+        setTimeout(() => this.recentRawTexts.delete(textHash), this.DEDUP_TTL_MS);
+      }
+
+      await sessionStore.incrementUnitCount(sessionId);
+
+      const task = await taskStore.create({
+        taskType: 'process-input',
+        payload: {
+          conversationId: conversation.id,
+          sessionId,
+          text: chunk.text,
+          source,
+          chunkIndex: chunk.index,
+          totalChunks: chunk.totalChunks,
+        },
+        sessionId,
+      });
+      pipelineStatus.step('save', 'success');
+
+      // Process this chunk — pass pre-computed hints to skip re-normalization
+      pipelineStatus.step('process', 'running');
+      try {
+        await taskStore.start(task.id);
+
+        const processingResult = await processInput(
+          sessionId,
+          conversation.id,
+          chunk.text,
+          source,
+          { mode: 'system-ii', recordingId, hints, isMeeting }
+        );
+
+        await conversationStore.markProcessed(conversation.id);
+
+        await taskStore.complete(task.id, {
+          entities: processingResult.entities.length,
+          topics: processingResult.topics.length,
+          memories: processingResult.memories.length,
+          chunkIndex: chunk.index,
+          totalChunks: chunk.totalChunks,
+        });
+
+        pipelineStatus.step('process', 'success');
+        pipelineStatus.step('done', 'success');
+
+        lastConversationId = conversation.id;
+        lastResult = processingResult;
+
+        logger.info(`Chunk ${chunk.index + 1}/${chunk.totalChunks} complete`, {
+          entities: processingResult.entities.length,
+          memories: processingResult.memories.length,
+        });
+
+        // IMPORTANT: Do NOT continue to next chunk until this one's follow-up
+        // tasks (curate-trees, etc.) have drained — so the next chunk's context
+        // retrieval picks up the freshest data.
+        await this.resumePendingTasks();
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        await taskStore.fail(task.id, errorMessage);
+
+        pipelineStatus.step('process', 'error');
+        pipelineStatus.step('done', 'error');
+
+        logger.error(`Chunk ${chunk.index + 1}/${chunk.totalChunks} failed`, {
+          error: errorMessage,
+        });
+
+        // Continue to next chunk — don't let one failure stop the whole batch
+        lastConversationId = conversation.id;
+      }
+    }
+
+    return {
+      conversationId: lastConversationId,
+      processingResult: lastResult,
+    };
   }
 
   // ==========================================================================
@@ -633,6 +849,72 @@ class Kernel {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           await taskStore.fail(task.id, errorMessage);
           logger.error('Failed to resume task', { taskId: task.id, error: errorMessage });
+        }
+      } else if (task.taskType === 'curate-trees') {
+        const payload = task.payloadParsed as {
+          entityIds: string[];
+          memoryIds: string[];
+          conversationId: string;
+          intent?: string;
+        };
+
+        try {
+          await taskStore.start(task.id);
+
+          // Load memories for curation context
+          const memories = (await Promise.all(
+            payload.memoryIds.map(id => memoryStore.getById(id))
+          )).filter((m): m is NonNullable<typeof m> => m !== null);
+
+          const conversation = await conversationStore.getById(payload.conversationId);
+          const contextSummary = conversation?.summary ?? conversation?.rawText?.slice(0, 200) ?? '';
+          const intent = (payload.intent ?? 'inform') as import('../types/recording').Intent;
+
+          // Curate each entity's tree
+          for (const entityId of payload.entityIds) {
+            await curateTree(
+              entityId,
+              memories.map(m => ({ id: m.id, content: m.content, type: m.type })),
+              contextSummary,
+              intent
+            );
+          }
+
+          await taskStore.complete(task.id);
+          logger.info('Tree curation task completed', { taskId: task.id, entityCount: payload.entityIds.length });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          await taskStore.fail(task.id, errorMessage);
+          logger.error('Tree curation task failed', { taskId: task.id, error: errorMessage });
+        }
+      } else if (task.taskType === 'curate-timeline') {
+        const payload = task.payloadParsed as {
+          entityIds: string[];
+          memoryIds: string[];
+          conversationId: string;
+          intent?: string;
+        };
+
+        try {
+          await taskStore.start(task.id);
+
+          const conversation = await conversationStore.getById(payload.conversationId);
+          const contextSummary = conversation?.summary ?? conversation?.rawText?.slice(0, 200) ?? '';
+          const intent = (payload.intent ?? 'inform') as import('../types/recording').Intent;
+
+          await extractTimeline({
+            memoryIds: payload.memoryIds,
+            entityIds: payload.entityIds,
+            conversationContext: contextSummary,
+            intent,
+          });
+
+          await taskStore.complete(task.id);
+          logger.info('Timeline extraction task completed', { taskId: task.id });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          await taskStore.fail(task.id, errorMessage);
+          logger.error('Timeline extraction task failed', { taskId: task.id, error: errorMessage });
         }
       }
     }

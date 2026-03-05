@@ -3,7 +3,7 @@ import type { LeafNode, WidgetType } from './types';
 import { BentoLeafMenu } from './BentoLeafMenu';
 import {
   GripHorizontal, AlertTriangle, X, Check, Upload,
-  Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio
+  Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio, GitBranch, Clock, FlaskConical
 } from 'lucide-react';
 import { uploadFiles, isSupportedFileType } from '../../services/fileUpload';
 import { hoveredWidgetStore } from '../../stores/hoveredWidgetStore';
@@ -40,6 +40,10 @@ const WIDGET_OPTIONS: { type: WidgetType; label: string; icon: React.ReactNode }
     { type: 'meeting-transcription', label: 'Meeting', icon: <Radio size={18} /> },
     // Lens Widgets - intercept input on hover, bypass core pipeline
     { type: 'meta-query', label: 'Meta Query', icon: <Search size={18} /> },
+    // Knowledge tree widgets (v9)
+    { type: 'knowledge-tree', label: 'Knowledge Tree', icon: <GitBranch size={18} /> },
+    { type: 'timeline', label: 'Timeline', icon: <Clock size={18} /> },
+    { type: 'tree-dev-tools', label: 'Tree Dev Tools', icon: <FlaskConical size={18} /> },
 ];
 
 export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, onRemove, onSwap, onColorChange, onContentChange, onWidgetChange, renderWidget, isRoot }) => {

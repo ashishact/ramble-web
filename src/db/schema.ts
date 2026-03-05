@@ -30,7 +30,7 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 export const DATABASE_NAME = 'ramble_v3'
 
 export const schema = appSchema({
-  version: 8,
+  version: 10,
   tables: [
     // ========================================================================
     // CORE - Foundation (Keep from v4)
@@ -66,6 +66,8 @@ export const schema = appSchema({
         { name: 'sentences', type: 'string', isOptional: true },        // JSON array of { text, speakerHint }
         // v8 additions
         { name: 'recordingId', type: 'string', isOptional: true, isIndexed: true },  // Links to recording that created this conv
+        // v10 additions
+        { name: 'intent', type: 'string', isOptional: true },  // inform | correct | retract | update | instruct | narrate | query | elaborate
       ]
     }),
 
@@ -375,12 +377,145 @@ export const schema = appSchema({
         { name: 'updatedAt',       type: 'number' },
       ]
     }),
+
+    // ========================================================================
+    // KNOWLEDGE TREE - Per-entity structured knowledge (v9)
+    // ========================================================================
+
+    // Knowledge Nodes — per-entity tree structure
+    // Trees are materialized indexes over base memories, curated by LLM.
+    // Each entity gets a tree of nodes; root node = entity itself.
+    tableSchema({
+      name: 'knowledge_nodes',
+      columns: [
+        { name: 'entityId',      type: 'string', isIndexed: true },
+        { name: 'parentId',      type: 'string', isOptional: true, isIndexed: true },
+        { name: 'depth',         type: 'number', isIndexed: true },
+        { name: 'sortOrder',     type: 'number' },
+        { name: 'label',         type: 'string', isIndexed: true },
+        { name: 'summary',       type: 'string', isOptional: true },
+        { name: 'content',       type: 'string', isOptional: true },
+        { name: 'nodeType',      type: 'string' },          // text|keyvalue|table|reference|group
+        { name: 'source',        type: 'string' },          // user|document|meeting_other|inferred
+        { name: 'verification',  type: 'string' },          // unverified|mentioned|confirmed|contradicted
+        { name: 'memoryIds',     type: 'string' },          // JSON array
+        { name: 'templateKey',   type: 'string', isOptional: true },
+        { name: 'childCount',    type: 'number' },
+        { name: 'metadata',      type: 'string' },          // JSON
+        { name: 'createdAt',     type: 'number', isIndexed: true },
+        { name: 'modifiedAt',    type: 'number', isIndexed: true },
+      ]
+    }),
+
+    // Entity Co-occurrences — disambiguation graph
+    // Tracks which entities appear together in conversations.
+    // Pairs are stored canonically (smaller ID first).
+    tableSchema({
+      name: 'entity_cooccurrences',
+      columns: [
+        { name: 'entityA',        type: 'string', isIndexed: true },  // smaller ID first (canonical)
+        { name: 'entityB',        type: 'string', isIndexed: true },  // larger ID second
+        { name: 'count',          type: 'number' },
+        { name: 'lastSeen',       type: 'number' },
+        { name: 'recentContexts', type: 'string' },         // JSON array of last 3 snippets
+        { name: 'createdAt',      type: 'number' },
+      ]
+    }),
+
+    // Timeline Events — temporal event index
+    // Stores interpreted time events extracted from conversations.
+    // eventTime is the INTERPRETED time (when the event happened), not createdAt.
+    tableSchema({
+      name: 'timeline_events',
+      columns: [
+        { name: 'entityIds',       type: 'string' },         // JSON array
+        { name: 'eventTime',       type: 'number', isIndexed: true },  // INTERPRETED time, not createdAt
+        { name: 'timeGranularity', type: 'string' },         // exact|day|week|month|approximate
+        { name: 'timeConfidence',  type: 'number' },         // 0-1
+        { name: 'title',           type: 'string' },
+        { name: 'description',     type: 'string' },
+        { name: 'significance',    type: 'string', isOptional: true },
+        { name: 'memoryIds',       type: 'string' },         // JSON array
+        { name: 'source',          type: 'string' },         // user|document|meeting_other|inferred
+        { name: 'metadata',        type: 'string' },         // JSON
+        { name: 'createdAt',       type: 'number', isIndexed: true },
+      ]
+    }),
   ]
 })
 
 // Migrations - IMPORTANT: Only additive changes to preserve data
 export const migrations = schemaMigrations({
   migrations: [
+    {
+      // v9 → v10: Add intent column to conversations for intent classification
+      // Normalization LLM now classifies intent (inform, correct, retract, update, etc.)
+      // Enables skipping extraction for query intents and future intent-specific handlers
+      toVersion: 10,
+      steps: [
+        addColumns({
+          table: 'conversations',
+          columns: [
+            { name: 'intent', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
+    {
+      // v8 → v9: Add knowledge tree tables (knowledge_nodes, entity_cooccurrences, timeline_events)
+      // Per-entity structured knowledge trees, entity co-occurrence graph, temporal event index
+      toVersion: 9,
+      steps: [
+        createTable({
+          name: 'knowledge_nodes',
+          columns: [
+            { name: 'entityId',      type: 'string', isIndexed: true },
+            { name: 'parentId',      type: 'string', isOptional: true, isIndexed: true },
+            { name: 'depth',         type: 'number', isIndexed: true },
+            { name: 'sortOrder',     type: 'number' },
+            { name: 'label',         type: 'string', isIndexed: true },
+            { name: 'summary',       type: 'string', isOptional: true },
+            { name: 'content',       type: 'string', isOptional: true },
+            { name: 'nodeType',      type: 'string' },
+            { name: 'source',        type: 'string' },
+            { name: 'verification',  type: 'string' },
+            { name: 'memoryIds',     type: 'string' },
+            { name: 'templateKey',   type: 'string', isOptional: true },
+            { name: 'childCount',    type: 'number' },
+            { name: 'metadata',      type: 'string' },
+            { name: 'createdAt',     type: 'number', isIndexed: true },
+            { name: 'modifiedAt',    type: 'number', isIndexed: true },
+          ],
+        }),
+        createTable({
+          name: 'entity_cooccurrences',
+          columns: [
+            { name: 'entityA',        type: 'string', isIndexed: true },
+            { name: 'entityB',        type: 'string', isIndexed: true },
+            { name: 'count',          type: 'number' },
+            { name: 'lastSeen',       type: 'number' },
+            { name: 'recentContexts', type: 'string' },
+            { name: 'createdAt',      type: 'number' },
+          ],
+        }),
+        createTable({
+          name: 'timeline_events',
+          columns: [
+            { name: 'entityIds',       type: 'string' },
+            { name: 'eventTime',       type: 'number', isIndexed: true },
+            { name: 'timeGranularity', type: 'string' },
+            { name: 'timeConfidence',  type: 'number' },
+            { name: 'title',           type: 'string' },
+            { name: 'description',     type: 'string' },
+            { name: 'significance',    type: 'string', isOptional: true },
+            { name: 'memoryIds',       type: 'string' },
+            { name: 'source',          type: 'string' },
+            { name: 'metadata',        type: 'string' },
+            { name: 'createdAt',       type: 'number', isIndexed: true },
+          ],
+        }),
+      ],
+    },
     {
       // v7 → v8: Add recordingId to conversations for intermediate chunk grouping
       // Links each conversation to the recording that created it, enabling reliable

@@ -18,7 +18,7 @@ export interface PhoneticMatch {
  * Soundex algorithm - converts word to phonetic code
  * Words that sound similar get the same code
  */
-function soundex(word: string): string {
+export function soundex(word: string): string {
   const s = word.toUpperCase().replace(/[^A-Z]/g, '');
   if (!s) return '';
 
@@ -49,7 +49,7 @@ function soundex(word: string): string {
  * Calculate similarity between two strings (0-1)
  * Uses Levenshtein distance normalized by length
  */
-function stringSimilarity(a: string, b: string): number {
+export function stringSimilarity(a: string, b: string): number {
   const la = a.toLowerCase();
   const lb = b.toLowerCase();
 
@@ -100,20 +100,22 @@ function extractPotentialNames(text: string): string[] {
 export async function findPhoneticMatches(inputText: string): Promise<PhoneticMatch[]> {
   const matches: PhoneticMatch[] = [];
 
-  // Get known entities (limit to recent/frequent ones for performance)
-  const entities = await entityStore.getRecent(50);
+  // Get all known entities — phonetic matching needs the full vocabulary
+  const entities = await entityStore.getAll();
   if (entities.length === 0) return [];
 
-  // Build soundex map for entities
-  const entitySoundexMap = new Map<string, Array<{ name: string; type: string }>>();
+  // Build soundex map for entities — index every significant word in the name
+  const entitySoundexMap = new Map<string, Array<{ name: string; type: string; matchedWord: string }>>();
   for (const entity of entities) {
-    // Handle multi-word names - use first word for primary matching
-    const firstName = entity.name.split(/\s+/)[0];
-    const code = soundex(firstName);
-    if (!entitySoundexMap.has(code)) {
-      entitySoundexMap.set(code, []);
+    const words = entity.name.split(/\s+/).filter(w => w.length > 1);
+    for (const word of words) {
+      const code = soundex(word);
+      if (!code) continue;
+      if (!entitySoundexMap.has(code)) {
+        entitySoundexMap.set(code, []);
+      }
+      entitySoundexMap.get(code)!.push({ name: entity.name, type: entity.type, matchedWord: word });
     }
-    entitySoundexMap.get(code)!.push({ name: entity.name, type: entity.type });
   }
 
   // Extract potential names from input
@@ -126,15 +128,16 @@ export async function findPhoneticMatches(inputText: string): Promise<PhoneticMa
 
     if (candidates) {
       for (const candidate of candidates) {
-        // Don't match if it's exactly the same
-        const firstName = candidate.name.split(/\s+/)[0];
-        if (word.toLowerCase() === firstName.toLowerCase()) continue;
+        // Don't match if it's exactly the same word
+        if (word.toLowerCase() === candidate.matchedWord.toLowerCase()) continue;
 
-        // Calculate confidence based on string similarity
-        const similarity = stringSimilarity(word, firstName);
+        // Calculate confidence based on string similarity to the matched word
+        const similarity = stringSimilarity(word, candidate.matchedWord);
 
-        // Only include if reasonably similar (> 0.4)
-        if (similarity > 0.4) {
+        // Lower threshold for person names (0.3) vs general entities (0.4)
+        const threshold = candidate.type === 'person' ? 0.3 : 0.4;
+
+        if (similarity > threshold) {
           matches.push({
             inputWord: word,
             matchedEntity: candidate.name,
@@ -181,34 +184,42 @@ ${lines.join('\n')}`;
 export async function findSpellingMatches(inputText: string): Promise<PhoneticMatch[]> {
   const matches: PhoneticMatch[] = [];
 
-  // Get known entities
-  const entities = await entityStore.getRecent(50);
+  // Get all known entities
+  const entities = await entityStore.getAll();
   if (entities.length === 0) return [];
 
   // Extract words from input
   const inputWords = inputText.split(/[\s,.:;!?'"()\[\]{}]+/).filter(w => w.length > 3);
 
   for (const word of inputWords) {
+    let bestMatch: PhoneticMatch | null = null;
+
     for (const entity of entities) {
-      const firstName = entity.name.split(/\s+/)[0];
+      // Check every significant word in entity name, not just the first
+      const nameWords = entity.name.split(/\s+/).filter(w => w.length > 1);
+      for (const nameWord of nameWords) {
+        // Skip if exact match
+        if (word.toLowerCase() === nameWord.toLowerCase()) continue;
 
-      // Skip if exact match
-      if (word.toLowerCase() === firstName.toLowerCase()) continue;
+        const similarity = stringSimilarity(word, nameWord);
 
-      // Only match if very similar (high threshold for typed text)
-      const similarity = stringSimilarity(word, firstName);
+        // Higher threshold for text (0.7) vs speech (0.4), lower for person names (0.6)
+        const threshold = entity.type === 'person' ? 0.6 : 0.7;
 
-      // Higher threshold for text (0.7) vs speech (0.4)
-      if (similarity >= 0.7 && similarity < 1) {
-        matches.push({
-          inputWord: word,
-          matchedEntity: entity.name,
-          entityType: entity.type,
-          confidence: similarity,
-        });
-        break; // One match per word is enough
+        if (similarity >= threshold && similarity < 1) {
+          if (!bestMatch || similarity > bestMatch.confidence) {
+            bestMatch = {
+              inputWord: word,
+              matchedEntity: entity.name,
+              entityType: entity.type,
+              confidence: similarity,
+            };
+          }
+        }
       }
     }
+
+    if (bestMatch) matches.push(bestMatch);
   }
 
   return matches;

@@ -33,3 +33,8 @@ export { widgetRecordStore } from './widgetRecordStore'
 // Recordings + uploaded files (unified pipeline v7)
 export { recordingStore } from './recordingStore'
 export { uploadedFileStore } from './uploadedFileStore'
+
+// Knowledge tree (v9)
+export { knowledgeNodeStore } from './knowledgeNodeStore'
+export { cooccurrenceStore } from './cooccurrenceStore'
+export { timelineEventStore } from './timelineEventStore'

@@ -259,6 +259,19 @@ export const updateNodeWidgetType = (tree: BentoTree, nodeId: string, widgetType
     };
 };
 
+export const updateNodeWidgetConfig = (tree: BentoTree, nodeId: string, widgetConfig: Record<string, unknown>): BentoTree => {
+    const node = tree.nodes[nodeId];
+    if (!node || node.type !== 'leaf') return tree;
+
+    return {
+        ...tree,
+        nodes: {
+            ...tree.nodes,
+            [nodeId]: { ...node, widgetConfig }
+        }
+    };
+};
+
 // Swap any two leaf nodes in the tree
 export const swapNodes = (tree: BentoTree, id1: string, id2: string): BentoTree => {
   if (id1 === id2) return tree;

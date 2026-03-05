@@ -119,13 +119,26 @@ interface RambleRecordingCancelledEvent {
   };
 }
 
+interface RambleMeetingTranscriptCompleteEvent {
+  type: 'meeting_transcript_complete';
+  id: string;
+  payload: {
+    recordingId?: string;
+    duration?: number;
+    ts?: number;
+    segments: Array<{ source: 'mic' | 'system'; text: string; startMs: number; endMs: number }>;
+    transcript: string;
+  };
+}
+
 type RambleNativeEvent =
   | RambleStateChangedEvent
   | RambleIntermediateTextEvent
   | RambleTranscriptionCompleteEvent
   | RambleDurationUpdateEvent
   | RambleModeChangedEvent
-  | RambleRecordingCancelledEvent;
+  | RambleRecordingCancelledEvent
+  | RambleMeetingTranscriptCompleteEvent;
 
 // Callbacks for UI updates
 export interface RambleNativeCallbacks {
@@ -244,6 +257,26 @@ class RambleNative {
    */
   getState(): RambleNativeState | null {
     return this.isConnected ? this.currentState : null;
+  }
+
+  /**
+   * Send a mode change command to the native app.
+   * Only call this from direct user interaction (button click).
+   */
+  sendSetMode(mode: 'meeting' | 'solo'): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn('[RambleNative] Cannot send set_mode — not connected');
+      return;
+    }
+
+    const message = {
+      id: crypto.randomUUID(),
+      type: 'set_mode',
+      payload: { mode, ts: Date.now() },
+    };
+
+    this.ws.send(JSON.stringify(message));
+    console.log('[RambleNative] Sent set_mode:', mode);
   }
 
   /**
@@ -374,6 +407,20 @@ class RambleNative {
           eventBus.emit('native:recording-cancelled', {
             reason: event.payload.reason,
             ts: Date.now(),
+          });
+          break;
+
+        case 'meeting_transcript_complete':
+          console.log('[RambleNative] meeting_transcript_complete:', {
+            segments: event.payload.segments?.length,
+            transcriptLength: event.payload.transcript?.length,
+          });
+          eventBus.emit('native:meeting-transcript-complete', {
+            recordingId: event.payload.recordingId,
+            duration: event.payload.duration,
+            ts: event.payload.ts ?? Date.now(),
+            segments: event.payload.segments,
+            transcript: event.payload.transcript,
           });
           break;
       }

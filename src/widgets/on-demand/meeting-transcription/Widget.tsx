@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '@iconify/react';
 import { Radio, RefreshCw, Clock, ChevronLeft, Plus, Settings } from 'lucide-react';
 import { eventBus } from '../../../lib/eventBus';
+import { rambleNative } from '../../../services/stt/rambleNative';
 import { useWidgetPause } from '../useWidgetPause';
 import {
   processMeetingUpdate,
@@ -653,10 +654,12 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
       // Switch OFF meeting mode → back to solo
       isMeetingRecordingRef.current = false;
       setIsMeetingMode(false);
+      rambleNative.sendSetMode('solo');
     } else {
       // Switch ON meeting mode
       isMeetingRecordingRef.current = true;
       setIsMeetingMode(true);
+      rambleNative.sendSetMode('meeting');
       // Stamp startedAt if fresh
       if (stateRef.current.segmentCount === 0) {
         const now = Date.now();

@@ -39,7 +39,11 @@ export type WidgetType =
   // Lens Widgets: Intercept input on hover, bypass core pipeline, ephemeral results
   // See src/lib/lensController.ts for architecture details
   | 'meeting-transcription' // Live meeting transcript + LLM summary (volatile, not saved)
-  | 'meta-query';         // Lens: Ask questions about your conversation without saving
+  | 'meta-query'          // Lens: Ask questions about your conversation without saving
+  // Knowledge tree widgets (v9)
+  | 'knowledge-tree'      // Interactive per-entity knowledge tree viewer
+  | 'timeline'            // Chronological timeline event view
+  | 'tree-dev-tools';     // Testing panel: backfill, curation log, stats
 
 export interface LeafNode extends BaseNode {
   type: 'leaf';

@@ -162,7 +162,7 @@ export const memoryStore = {
     // Recency uses a 7-day half-life exponential decay so recent memories
     // surface above old ones that were reinforced many times in the past.
     const scored = candidates
-      .filter(m => m.state !== 'superseded')
+      .filter(m => m.state !== 'superseded' && m.state !== 'retracted')
       .map(m => {
         const ageMs = Math.max(0, now - m.lastReinforced)
         const recency = Math.exp(-ageMs / SEVEN_DAYS_MS)
@@ -224,6 +224,23 @@ export const memoryStore = {
         await oldMemory.update((m) => {
           m.supersededBy = newId
           m.state = 'superseded'
+        })
+      })
+    } catch {
+      // Not found
+    }
+  },
+
+  /**
+   * Retract a memory — the user explicitly invalidated it.
+   * Sets state to 'retracted' which excludes it from retrieval and working memory.
+   */
+  async retract(id: string): Promise<void> {
+    try {
+      const memory = await memories.find(id)
+      await database.write(async () => {
+        await memory.update((m) => {
+          m.state = 'retracted'
         })
       })
     } catch {
@@ -405,7 +422,7 @@ export const memoryStore = {
     const topicIdSet = new Set(contextTopicIds)
 
     const scored = candidates
-      .filter(m => m.state !== 'superseded')
+      .filter(m => m.state !== 'superseded' && m.state !== 'retracted')
       .map(m => {
         const memEntityIds = m.entityIdsParsed
         const memTopicIds = m.topicIdsParsed

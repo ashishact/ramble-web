@@ -14,3 +14,6 @@ export { WorkingMemoryWidget } from './cards/WorkingMemoryWidget';
 export { SettingsWidget } from './cards/SettingsWidget';
 export { LearnedCorrectionsWidget } from './cards/LearnedCorrectionsWidget';
 export { TTSWidget } from './cards/TTSWidget';
+export { KnowledgeTreeWidget } from './cards/KnowledgeTreeWidget';
+export { TimelineWidget } from './cards/TimelineWidget';
+export { TreeDevToolsWidget } from './cards/TreeDevToolsWidget';

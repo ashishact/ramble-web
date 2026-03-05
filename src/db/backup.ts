@@ -47,6 +47,10 @@ const TABLES_TO_BACKUP = [
   'plugins',
   'corrections',
   'extraction_logs',
+  // Knowledge tree (v9)
+  'knowledge_nodes',
+  'entity_cooccurrences',
+  'timeline_events',
 ];
 
 // ============================================================================

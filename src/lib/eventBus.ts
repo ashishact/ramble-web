@@ -118,6 +118,16 @@ export interface EventPayloads {
 	// Emitted when the native app switches between meeting mode and solo mode
 	'native:mode-changed': { mode: 'meeting' | 'solo'; ts: number };
 
+	// Native meeting transcript (sent once at meeting recording end)
+	// Contains the full interleaved transcript with speaker labels
+	'native:meeting-transcript-complete': {
+		recordingId?: string;
+		duration?: number;
+		ts: number;
+		segments: Array<{ source: 'mic' | 'system'; text: string; startMs: number; endMs: number }>;
+		transcript: string;  // Pre-formatted "source: text\n..." string
+	};
+
 	// Native transcription events (from Ramble native app via rambleNative.ts)
 	// These carry audioType so widgets can distinguish mic vs. system audio
 	'native:transcription-intermediate': {
@@ -179,6 +189,10 @@ export interface EventPayloads {
 
 	// Widget data events
 	'questions:updated': { questions: Array<{ id: string; text: string; topic: string; category: string; priority: string }> };
+
+	// Knowledge tree navigation events
+	'navigate:entity': { entityId: string };
+	'highlight:node': { nodeId: string };
 
 	// Generic fallback for custom events
 	[key: string]: unknown;

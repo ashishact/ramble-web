@@ -54,7 +54,11 @@ export type LogModule =
   // Unified pipeline (v7)
   | 'RecordingManager'
   | 'FileUpload'
-  | 'MemoryDedup';
+  | 'MemoryDedup'
+  // Knowledge tree
+  | 'TreeCuration'
+  // Timeline extraction
+  | 'TimelineExtractor';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -117,6 +121,8 @@ const MODULE_COLORS: Record<LogModule, string> = {
   RecordingManager: '#009688',
   FileUpload: '#795548',
   MemoryDedup: '#FF5722',
+  TreeCuration: '#4DB6AC',
+  TimelineExtractor: '#FF7043',
 };
 
 interface LogConfig {

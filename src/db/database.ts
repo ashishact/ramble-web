@@ -91,6 +91,9 @@ export const collections = {
   get widgetRecords() { return getDatabase().get('widget_records') },
   get recordings() { return getDatabase().get('recordings') },
   get uploadedFiles() { return getDatabase().get('uploaded_files') },
+  get knowledgeNodes() { return getDatabase().get('knowledge_nodes') },
+  get entityCooccurrences() { return getDatabase().get('entity_cooccurrences') },
+  get timelineEvents() { return getDatabase().get('timeline_events') },
 }
 
 // Type-safe collection getters

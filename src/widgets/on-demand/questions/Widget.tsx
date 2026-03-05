@@ -16,6 +16,8 @@ import {
   X,
   Target,
   Compass,
+  Layers,
+  Clock,
   MessageCircle,
   Search,
   ChevronDown,
@@ -26,6 +28,11 @@ type LoadingState = 'idle' | 'loading' | 'success' | 'error';
 
 // Category icons
 const categoryIcons: Record<Question['category'], LucideIcon> = {
+  // Tree-aware categories
+  gap: Search,
+  depth: Layers,
+  staleness: Clock,
+  // Conversation categories
   missing_info: Search,
   follow_up: MessageCircle,
   clarification: HelpCircle,
@@ -35,15 +42,21 @@ const categoryIcons: Record<Question['category'], LucideIcon> = {
 
 // Category colors using DaisyUI semantic colors
 const categoryColors: Record<Question['category'], string> = {
+  gap: 'text-warning',
+  depth: 'text-info',
+  staleness: 'text-secondary',
   missing_info: 'text-warning',
-  follow_up: 'text-info',
-  clarification: 'text-secondary',
+  follow_up: 'text-success',
+  clarification: 'text-accent',
   action: 'text-success',
-  explore: 'text-accent',
+  explore: 'text-info',
 };
 
 // Minimal category labels
 const categoryLabels: Record<Question['category'], string> = {
+  gap: 'gap',
+  depth: 'deepen',
+  staleness: 'refresh',
   missing_info: 'missing',
   follow_up: 'follow-up',
   clarification: 'clarify',
@@ -239,7 +252,14 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
                     {domain && <span className="text-[9px] text-base-content/30">/</span>}
                     <span className="text-[9px] text-base-content/50">{topicName}</span>
                   </div>
-                  <p className="text-xs text-base-content/70 leading-snug">{question.text}</p>
+                  <p className="text-xs text-base-content/70 leading-snug">
+                    {question.text}
+                    {question.targetEntity && question.targetNode && (
+                      <span className="text-[9px] text-base-content/30 ml-1">
+                        → {question.targetEntity} / {question.targetNode}
+                      </span>
+                    )}
+                  </p>
                   <span className="text-[9px] text-base-content/40 mt-0.5">
                     {categoryLabels[question.category]}
                   </span>

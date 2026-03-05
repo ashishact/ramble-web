@@ -29,7 +29,9 @@ import { callLLM } from '../llmClient'
 import { parseLLMJSON } from '../utils/jsonUtils'
 import { correctionStore, learnedCorrectionStore } from '../../db/stores'
 import { findPhoneticMatches, findSpellingMatches, formatMatchesForLLM } from './phoneticMatcher'
-import type { NormalizationHints } from '../types/recording'
+import type { NormalizationHints, Intent } from '../types/recording'
+
+const VALID_INTENTS: Intent[] = ['inform', 'correct', 'retract', 'update', 'instruct', 'narrate', 'query', 'elaborate']
 
 // ============================================================================
 // Types
@@ -57,9 +59,10 @@ export interface NormalizeResult {
 
 const SYSTEM_PROMPT = `You are a text normalization assistant that also extracts search hints.
 
-Your TWO jobs:
+Your THREE jobs:
 1. Fix punctuation, capitalization, and apply STT corrections
 2. Extract entity and topic hints as search keys
+3. Classify the user's intent
 
 Rules for normalization:
 - Add missing punctuation (periods, commas, question marks, etc.)
@@ -74,6 +77,18 @@ Rules for hints:
   - Include the name as-is (even if misspelled — downstream will fuzzy match)
   - Include a confidence score (0.0-1.0) based on how clear the name is
 - topicHints: Topics/themes being discussed (e.g. "project deadline", "health")
+
+Classify the user's intent as one of these — pick the single best match:
+- inform: sharing new information or facts (DEFAULT — use this when unsure)
+- correct: fixing a mistake — spelling, name, entity type, wrong fact ("it's spelled X", "that's actually Y", "no, I meant Z")
+- retract: removing or invalidating old info ("forget that", "that's no longer true", "delete X", "ignore what I said")
+- update: explicitly changing something already known ("the deadline moved to March 15", "she's feeling better now", "we signed the deal")
+- instruct: giving a persistent instruction or setting identity ("my name is X", "always remember that", "when I say X I mean Y")
+- narrate: telling a story or recounting events in sequence ("last week first we did X, then Y happened")
+- query: asking a question, wants retrieval not knowledge creation ("what do I know about X?", "when did I last mention Y?")
+- elaborate: intentionally going deep on one topic ("let me tell you everything about X", "okay so about the architecture...")
+
+Return this as the "intent" field. When in doubt, use "inform".
 
 Output JSON only. No explanation.`
 
@@ -209,7 +224,8 @@ Respond with JSON:
   "normalizedText": "full cleaned text",
   "sentences": [{ "text": "Sentence.", "speakerHint": null }],
   "entityHints": [{ "name": "Person Name", "type": "person", "confidence": 0.9 }],
-  "topicHints": [{ "name": "topic name", "category": "work" }]
+  "topicHints": [{ "name": "topic name", "category": "work" }],
+  "intent": "inform"
 }`
 
     const response = await callLLM({
@@ -227,13 +243,14 @@ Respond with JSON:
       sentences?: unknown[]
       entityHints?: unknown[]
       topicHints?: unknown[]
+      intent?: unknown
     }>(response.content)
 
     if (error || !data) {
       return {
         normalizedText: currentText,
         sentences: [],
-        hints: { entityHints: [], topicHints: [], correctionsApplied: allCorrections },
+        hints: { entityHints: [], topicHints: [], correctionsApplied: allCorrections, intent: 'inform' },
       }
     }
 
@@ -290,6 +307,11 @@ Respond with JSON:
           }))
       : []
 
+    // Parse intent (default to 'inform' if missing or invalid)
+    const intent: Intent = typeof data.intent === 'string' && VALID_INTENTS.includes(data.intent as Intent)
+      ? data.intent as Intent
+      : 'inform'
+
     return {
       normalizedText,
       sentences,
@@ -297,6 +319,7 @@ Respond with JSON:
         entityHints,
         topicHints,
         correctionsApplied: allCorrections,
+        intent,
       },
     }
   } catch {
@@ -304,7 +327,7 @@ Respond with JSON:
     return {
       normalizedText: rawText,
       sentences: [],
-      hints: { entityHints: [], topicHints: [], correctionsApplied: allCorrections },
+      hints: { entityHints: [], topicHints: [], correctionsApplied: allCorrections, intent: 'inform' },
     }
   }
 }

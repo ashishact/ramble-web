@@ -127,6 +127,9 @@ export interface RecordingChunk {
  * what the user is talking about yet?" Answer: first pass gives approximate
  * keys, second pass uses them to fetch precise context.
  */
+/** User intent — classifies what the speaker is trying to do */
+export type Intent = 'inform' | 'correct' | 'retract' | 'update' | 'instruct' | 'narrate' | 'query' | 'elaborate'
+
 export interface NormalizationHints {
   /** Named entities detected in the text — approximate names for search */
   entityHints: Array<{
@@ -151,6 +154,8 @@ export interface NormalizationHints {
     /** Corrected text (after correction) */
     to: string
   }>
+  /** Classified intent of the input (default: 'inform') */
+  intent: Intent
 }
 
 // ============================================================================

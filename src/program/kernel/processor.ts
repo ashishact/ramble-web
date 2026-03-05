@@ -48,6 +48,8 @@ import {
   extractionLogStore,
   correctionStore,
   conversationStore,
+  cooccurrenceStore,
+  taskStore,
 } from '../../db/stores';
 import type { MemoryOrigin } from '../../db/stores/memoryStore';
 import type { ConversationSource } from '../../db/models/Conversation';
@@ -56,6 +58,10 @@ import { runPlugins, type PluginOutput } from '../plugins';
 import { createLogger } from '../utils/logger';
 import { checkMemoryDuplicate } from './memoryDedup';
 import { resolveTemporalExpression } from './temporalResolver';
+import { soundex, stringSimilarity } from '../services/phoneticMatcher';
+import { database } from '../../db/database';
+import { filterEligibleEntities } from '../knowledgeTree/entityFilter';
+import { buildExtractionSystemPrompt, buildMeetingExtractionSystemPrompt } from './extractionPrompt';
 
 const logger = createLogger('Pipeline');
 
@@ -146,6 +152,7 @@ interface NormalizedExtraction {
   }>;
   goals: Array<{ statement: string; type: string; status?: string; progress?: number; shortId?: string }>;
   corrections: Array<{ wrong: string; correct: string }>;
+  retractions: string[];     // short IDs (m1, m2...) of memories to retract (intent: retract)
   summary?: string;  // LLM-generated summary for large inputs
 }
 
@@ -272,6 +279,7 @@ function normalizeExtraction(raw: unknown): NormalizedExtraction {
     memories: [],
     goals: [],
     corrections: [],
+    retractions: [],
   };
 
   if (!raw || typeof raw !== 'object') {
@@ -320,6 +328,15 @@ function normalizeExtraction(raw: unknown): NormalizedExtraction {
     }
   }
 
+  // Normalize retractions — array of short IDs (e.g. ["m1", "m3"])
+  if (Array.isArray(obj.retractions)) {
+    for (const r of obj.retractions) {
+      if (typeof r === 'string' && r.trim()) {
+        result.retractions.push(r.trim());
+      }
+    }
+  }
+
   // Extract summary if present
   if (typeof obj.summary === 'string' && obj.summary.trim()) {
     result.summary = obj.summary.trim();
@@ -327,81 +344,6 @@ function normalizeExtraction(raw: unknown): NormalizedExtraction {
 
   return result;
 }
-
-// ============================================================================
-// System Prompt
-// ============================================================================
-
-const SYSTEM_PROMPT = `You are analyzing a conversation to extract structured knowledge.
-The input is from speech-to-text and may contain residual transcription errors. Use the Known Entities and Working Memory context to interpret what was likely meant — if a word sounds like a known entity, use the known entity name in your extractions. Do not output corrections; just use the correct form directly in entities, memories, and goals.
-
-Context items (entities, topics, memories, goals) are annotated with their age (e.g., [2 min ago], [7 days ago]). Use this to reason temporally:
-- Do NOT associate old entities or memories with new input unless the user explicitly names them.
-- When creating goals, only use entities and context from the current conversation. Do not infer goals by combining old context with new input.
-- If no specific person/entity is mentioned in the new input, do not guess — extract only what is explicitly stated.
-
-Given the user's latest input and the context, extract:
-
-1. **entities**: People, places, organizations, projects, or named concepts.
-   Do NOT include: dates, times, numbers, or temporal expressions.
-   Prefer matching against existing Known Entities rather than creating duplicates.
-
-2. **topics**: What is the user talking about now? Format: "Domain / Topic" (e.g., "Work / Planning", "Health / Exercise"). Reuse existing domains from Working Memory when possible.
-
-3. **memories**: Knowledge worth preserving — facts, beliefs, preferences, concerns, decisions, or intentions.
-
-4. **goals**: Goals mentioned — new goals, progress updates, edits, or completions.
-
-MEMORIES
-========
-Each memory is a self-contained knowledge unit that must be interpretable on its own, without any surrounding context, even months later.
-
-Content principles:
-- Resolve all pronouns and references to their concrete names (people, projects, tools, places).
-- Include relevant specifics: amounts, dates, entity names, roles, conditions.
-- When multiple related facts emerge about the same subject in one input, consolidate them into a single richer memory rather than several thin fragments.
-- If the fact is inherently simple (a relationship, a single attribute), keep it concise — do not pad artificially.
-- The test: would a stranger reading only this one sentence understand what it means?
-
-Belief competition:
-Working Memory lists existing memories with short IDs like [m1], [m2], etc.
-If a new memory CONTRADICTS an existing one (different assignment, conflicting facts, updated information), include a "contradicts" field with the short IDs of the competing memories.
-Do NOT omit or replace the old memory — both beliefs coexist. The system resolves the winner at read time based on confidence.
-
-Fields: content (string), type (fact|belief|preference|concern|intention|decision), importance (0-1), contradicts (array of short IDs, optional), subject (who/what this is about, optional),
-        validFrom (ISO date or relative expression like "tomorrow", optional),
-        validUntil (ISO date or relative expression like "by Friday", optional).
-
-Use validFrom/validUntil when the memory has temporal bounds — deadlines, scheduled events,
-time-limited facts. Leave empty for timeless facts like preferences or relationships.
-
-GOALS
-=====
-Hierarchical namespace. Active goals listed with short IDs (g1, g2, etc.).
-
-Statement format:
-- "Namespace / Goal" — a compressed phrase capturing the desired outcome (max 10 words after the namespace)
-- "Namespace / Goal / Sub-goal" — for truly distinct sub-objectives
-e.g. "Health / Run a half marathon", "Work / Ship v2 billing integration"
-
-A goal is a destination, not a roadmap — compress the user's intent into its essence. When the user talks about variations or examples of the same concept, capture them as one goal. Only create multiple goals when the objectives are genuinely distinct and independently trackable.
-
-Rules:
-- Reuse existing categories — do NOT create many new categories
-- Prefer adding depth to existing goals over creating new top-level goals
-- Maximum 3 levels
-
-Actions:
-- {"statement": "Category / Goal sentence", "type": "work|personal|health"} — new goal
-- {"shortId": "g1", "status": "achieved"} — mark existing goal complete
-- {"shortId": "g1", "status": "progress", "progress": 0-100} — progress update
-- {"shortId": "g1", "status": "edit", "statement": "Category / Corrected goal sentence"} — fix or refine goal text (spelling, scope, clarification). The statement replaces the old one entirely.
-- {"shortId": "g1", "status": "abandoned"} — user explicitly gave up or said it's no longer relevant.
-
-type = domain/why (work, personal, health)
-statement = Category / What you want to achieve
-
-Respond with a JSON object containing only the fields that have content. Only extract what is clearly stated or strongly implied.`;
 
 // ============================================================================
 // Processor
@@ -419,12 +361,13 @@ export async function processInput(
   sessionId: string,
   conversationId: string,
   inputText: string,
-  source: 'speech' | 'text' = 'text',
+  source: 'speech' | 'text' | 'meeting' = 'text',
   options?: {
     mode?: ProcessingMode           // 'system-i' | 'system-ii' (default: 'system-ii')
     recordingId?: string
     chunkIndex?: number
     hints?: NormalizationHints      // Pre-computed hints (skips normalization if provided)
+    isMeeting?: boolean             // Use meeting-specific extraction prompt
   }
 ): Promise<ProcessingResult> {
   const mode = options?.mode ?? 'system-ii';
@@ -440,10 +383,19 @@ export async function processInput(
   let hints: NormalizationHints
 
   if (options?.hints) {
-    // Pre-computed hints from caller (System I submitChunk path)
+    // Pre-computed hints from caller (chunked processing or System I submitChunk path)
     normalizedText = inputText
     sentences = []
     hints = options.hints
+
+    // Persist normalization data on conversation record (intent, normalized text)
+    // so chunked conversations are fully annotated like single-pass ones.
+    await conversationStore.updateNormalized(
+      conversationId,
+      normalizedText,
+      '[]',
+      hints.intent
+    );
   } else {
     // Full normalization with correction pipeline
     const recentConvs = await conversationStore.getRecent(3);
@@ -463,12 +415,24 @@ export async function processInput(
     sentences = normalizeResult.sentences;
     hints = normalizeResult.hints;
 
-    // Persist Phase 1 output on the conversation record
+    // Persist Phase 1 output on the conversation record (including intent)
     await conversationStore.updateNormalized(
       conversationId,
       normalizedText,
-      JSON.stringify(sentences)
+      JSON.stringify(sentences),
+      hints.intent
     );
+  }
+
+  const intent = hints.intent
+  logger.info('Intent classified', { intent, conversationId });
+
+  // ── Query intent: skip extraction entirely ─────────────────────────────
+  // The user is asking a question, not providing knowledge.
+  // Prevents "The user wants to know about X" being saved as a memory.
+  if (intent === 'query') {
+    logger.info('Query intent detected, skipping extraction', { conversationId });
+    return { entities: [], topics: [], memories: [], goalUpdates: [], pluginOutputs: [], rawResponse: '' };
   }
 
   // ── Phase 2: Build context + extract ─────────────────────────────────────
@@ -509,15 +473,21 @@ ${extractionText}
 Extract entities, topics, memories, and goals from the new input. Respond with JSON only.${summaryInstruction}`;
 
   // 4. Call LLM (Phase 2 extraction)
+  // Meeting mode: use meeting-specific prompt + higher token budget (multi-speaker, denser)
+  const systemPrompt = options?.isMeeting
+    ? buildMeetingExtractionSystemPrompt()
+    : buildExtractionSystemPrompt(intent);
+  const maxTokens = options?.isMeeting ? 4000 : 3000;
+
   let llmResponse: string;
   try {
     const response = await callLLM({
       tier: 'small', // Use cheap tier for extraction
       prompt: userPrompt,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt,
       options: {
         temperature: 0.3, // Low temperature for structured output
-        max_tokens: 1000,
+        max_tokens: maxTokens,
       },
     });
     llmResponse = response.content;
@@ -588,6 +558,49 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
         }
       }
     }
+  }
+
+  // 5.3 Queue tree curation for eligible entities
+  // Only System II (deep processing) triggers tree curation — skip for System I chunks.
+  if (mode !== 'system-i' && result.entities.length > 0 && result.memories.length > 0) {
+    // Look up entities from DB to get mentionCount, then run eligibility filter
+    // (user's entity always qualifies, generics filtered, others need mentionCount >= 3)
+    const nonNewEntities = result.entities.filter(e => !e.isNew)
+    const dbEntities = (await Promise.all(
+      nonNewEntities.map(e => entityStore.getById(e.id))
+    )).filter((e): e is NonNullable<typeof e> => e !== null)
+    const eligible = await filterEligibleEntities(dbEntities)
+
+    if (eligible.length > 0) {
+      await taskStore.create({
+        taskType: 'curate-trees',
+        payload: {
+          entityIds: eligible.map(e => e.id),
+          memoryIds: result.memories.map(m => m.id),
+          conversationId,
+          intent,
+        },
+        priority: 5,  // lower priority than base extraction
+        sessionId,
+      })
+    }
+  }
+
+  // 5.4 Queue timeline extraction (parallel to tree curation — independent task)
+  // Timeline extracts real-world events from memories (meetings, trips, deadlines).
+  // No entity eligibility filter — the LLM decides if memories are timeline-worthy.
+  if (mode !== 'system-i' && result.memories.length > 0) {
+    await taskStore.create({
+      taskType: 'curate-timeline',
+      payload: {
+        entityIds: result.entities.map(e => e.id),
+        memoryIds: result.memories.map(m => m.id),
+        conversationId,
+        intent,
+      },
+      priority: 4,
+      sessionId,
+    })
   }
 
   // 6. Log success
@@ -664,6 +677,96 @@ async function handlePluginOutputs(outputs: PluginOutput[]): Promise<void> {
 }
 
 /**
+ * Find an existing entity that fuzzy-matches the given name.
+ * Checks: exact name (case-insensitive), Levenshtein distance ≤ 2, or soundex match.
+ * Returns the matched entity or null.
+ */
+async function findFuzzyEntity(name: string): Promise<{ id: string; name: string; type: string } | null> {
+  const all = await entityStore.getAll();
+  const nameLower = name.toLowerCase();
+  const nameWords = name.split(/\s+/).filter(w => w.length > 1);
+  const nameSoundexCodes = nameWords.map(w => soundex(w)).filter(Boolean);
+
+  let bestMatch: { entity: typeof all[0]; score: number } | null = null;
+
+  for (const entity of all) {
+    const entityLower = entity.name.toLowerCase();
+
+    // Exact case-insensitive match — findOrCreate handles this, but just in case
+    if (entityLower === nameLower) {
+      return { id: entity.id, name: entity.name, type: entity.type };
+    }
+
+    // Levenshtein distance: if the names are close enough (distance ≤ 2)
+    const sim = stringSimilarity(nameLower, entityLower);
+    const maxLen = Math.max(nameLower.length, entityLower.length);
+    const distance = Math.round((1 - sim) * maxLen);
+
+    if (distance <= 2 && distance > 0) {
+      const score = sim;
+      if (!bestMatch || score > bestMatch.score) {
+        bestMatch = { entity, score };
+      }
+      continue;
+    }
+
+    // Soundex match on individual words
+    const entityWords = entity.name.split(/\s+/).filter(w => w.length > 1);
+    const entitySoundexCodes = entityWords.map(w => soundex(w)).filter(Boolean);
+    const soundexOverlap = nameSoundexCodes.some(code => entitySoundexCodes.includes(code));
+
+    if (soundexOverlap && sim > 0.5) {
+      const score = sim * 0.9; // Slight penalty for soundex-only match
+      if (!bestMatch || score > bestMatch.score) {
+        bestMatch = { entity, score };
+      }
+    }
+  }
+
+  if (bestMatch) {
+    return { id: bestMatch.entity.id, name: bestMatch.entity.name, type: bestMatch.entity.type };
+  }
+  return null;
+}
+
+/**
+ * Re-link all memories and goals that reference sourceEntityId to use targetEntityId instead.
+ * Used when merging duplicate entities after correction.
+ */
+async function relinkEntityReferences(sourceEntityId: string, targetEntityId: string): Promise<void> {
+  // Re-link memories
+  const allMemories = await memoryStore.getAll();
+  for (const memory of allMemories) {
+    const entityIds = memory.entityIdsParsed;
+    if (entityIds.includes(sourceEntityId)) {
+      const updated = entityIds.map(id => id === sourceEntityId ? targetEntityId : id);
+      // Deduplicate in case target was already linked
+      const deduped = [...new Set(updated)];
+      await database.write(async () => {
+        await memory.update((m) => {
+          m.entityIds = JSON.stringify(deduped);
+        });
+      });
+    }
+  }
+
+  // Re-link goals
+  const allGoals = await goalStore.getAll();
+  for (const goal of allGoals) {
+    const entityIds = goal.entityIdsParsed;
+    if (entityIds.includes(sourceEntityId)) {
+      const updated = entityIds.map(id => id === sourceEntityId ? targetEntityId : id);
+      const deduped = [...new Set(updated)];
+      await database.write(async () => {
+        await goal.update((g) => {
+          g.entityIds = JSON.stringify(deduped);
+        });
+      });
+    }
+  }
+}
+
+/**
  * Save extraction results to DB
  * Extraction is already normalized and validated
  * Uses WorkingMemoryData for goal short ID lookups
@@ -684,6 +787,29 @@ async function saveExtraction(
 
   // Save entities (already normalized)
   for (const e of extraction.entities) {
+    // Skip entities with type "unknown" — too ambiguous to be useful
+    if (e.type === 'unknown') {
+      logger.debug('Skipping unknown-type entity', { name: e.name });
+      continue;
+    }
+
+    // Fuzzy match: check if a similar entity already exists before creating
+    const fuzzyMatch = await findFuzzyEntity(e.name);
+    if (fuzzyMatch) {
+      // Use existing entity instead of creating a near-duplicate
+      await entityStore.recordMention(fuzzyMatch.id);
+      result.entities.push({
+        id: fuzzyMatch.id,
+        name: fuzzyMatch.name,
+        type: fuzzyMatch.type,
+        isNew: false,
+      });
+      if (fuzzyMatch.name !== e.name) {
+        logger.debug('Fuzzy-matched entity', { input: e.name, matched: fuzzyMatch.name });
+      }
+      continue;
+    }
+
     const entity = await entityStore.findOrCreate({
       name: e.name,
       type: e.type,
@@ -695,6 +821,18 @@ async function saveExtraction(
       type: entity.type,
       isNew,
     });
+  }
+
+  // Co-occurrence increment: track which entities appear together in this extraction.
+  // Zero LLM cost — just counter increments during the existing extraction flow.
+  const savedEntityIds = result.entities.map(e => e.id);
+  if (savedEntityIds.length >= 2) {
+    const snippet = extraction.memories[0]?.content?.slice(0, 100) ?? '';
+    for (let i = 0; i < savedEntityIds.length; i++) {
+      for (let j = i + 1; j < savedEntityIds.length; j++) {
+        await cooccurrenceStore.increment(savedEntityIds[i], savedEntityIds[j], snippet);
+      }
+    }
   }
 
   // Save topics (already normalized)
@@ -830,9 +968,40 @@ async function saveExtraction(
     }
   }
 
-  // Handle corrections
+  // Handle corrections — save and merge orphan entities when applicable
   for (const c of extraction.corrections) {
     await correctionStore.findOrCreate(c.wrong, c.correct);
+
+    // If the correct name matches an existing entity, merge any orphan entity
+    // created under the wrong name into it. This retroactively cleans up
+    // duplicate entities caused by STT errors (e.g. "Asha" → "Ashish").
+    const targetEntity = await entityStore.getByName(c.correct);
+    if (targetEntity) {
+      const orphanEntity = await entityStore.getByName(c.wrong);
+      if (orphanEntity && orphanEntity.id !== targetEntity.id) {
+        logger.info('Merging orphan entity from correction', {
+          orphan: orphanEntity.name,
+          target: targetEntity.name,
+        });
+        // Re-link all memories and goals that reference the orphan
+        await relinkEntityReferences(orphanEntity.id, targetEntity.id);
+        // Merge mention counts, aliases, etc. and delete the orphan
+        await entityStore.merge(targetEntity.id, orphanEntity.id);
+      }
+    }
+  }
+
+  // Handle retractions — mark referenced memories as retracted
+  if (extraction.retractions.length > 0) {
+    for (const shortId of extraction.retractions) {
+      const existing = workingMemory.findMemoryByShortId(wmData, shortId);
+      if (existing) {
+        await memoryStore.retract(existing.id);
+        logger.info('Retracted memory', { shortId, memoryId: existing.id });
+      } else {
+        logger.warn('Retraction target not found', { shortId });
+      }
+    }
   }
 
   return result;

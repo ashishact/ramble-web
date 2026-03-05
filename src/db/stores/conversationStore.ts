@@ -105,13 +105,14 @@ export const conversationStore = {
     }
   },
 
-  async updateNormalized(id: string, normalizedText: string, sentences: string): Promise<void> {
+  async updateNormalized(id: string, normalizedText: string, sentences: string, intent?: string): Promise<void> {
     try {
       const conv = await conversations.find(id)
       await database.write(async () => {
         await conv.update((c) => {
           c.normalizedText = normalizedText
           c.sentences = sentences
+          if (intent) c.intent = intent
         })
       })
     } catch {

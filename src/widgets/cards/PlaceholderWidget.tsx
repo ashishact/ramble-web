@@ -1,6 +1,6 @@
 import type { WidgetProps } from '../types';
 import type { WidgetType } from '../../components/bento/types';
-import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio } from 'lucide-react';
+import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio, GitBranch, Clock, FlaskConical } from 'lucide-react';
 
 const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'empty': null,
@@ -22,6 +22,10 @@ const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'meeting-transcription': <Radio className="w-8 h-8" />,
   // Lens Widgets
   'meta-query': <Search className="w-8 h-8" />,
+  // Knowledge tree widgets (v9)
+  'knowledge-tree': <GitBranch className="w-8 h-8" />,
+  'timeline': <Clock className="w-8 h-8" />,
+  'tree-dev-tools': <FlaskConical className="w-8 h-8" />,
 };
 
 const WIDGET_LABELS: Record<WidgetType, string> = {
@@ -44,6 +48,10 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   'meeting-transcription': 'Meeting',
   // Lens Widgets
   'meta-query': 'Meta Query',
+  // Knowledge tree widgets (v9)
+  'knowledge-tree': 'Knowledge Tree',
+  'timeline': 'Timeline',
+  'tree-dev-tools': 'Tree Dev Tools',
 };
 
 interface PlaceholderWidgetProps extends WidgetProps {

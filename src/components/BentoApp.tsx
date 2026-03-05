@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useSyncExternalStore, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useSyncExternalStore, Suspense, lazy } from 'react';
 import { runV4PostMigrationIfNeeded } from '../program/services/decayService';
 import { initConsolidation } from '../program/kernel/consolidation';
 import {
@@ -11,6 +11,7 @@ import {
   updateNodeColor,
   updateNodeContent,
   updateNodeWidgetType,
+  updateNodeWidgetConfig,
 } from './bento';
 import type { BentoTree, LeafNode, WidgetType } from './bento/types';
 import { workspaceStore } from '../stores/workspaceStore';
@@ -27,6 +28,9 @@ import {
   SettingsWidget,
   PlaceholderWidget,
   LearnedCorrectionsWidget,
+  KnowledgeTreeWidget,
+  TimelineWidget,
+  TreeDevToolsWidget,
 } from '../widgets';
 import { QuestionWidget, SuggestionWidget, SpeakBetterWidget, MeetingTranscriptionWidget } from '../widgets/on-demand';
 import { MetaQueryLensWidget } from '../widgets/lens';
@@ -68,6 +72,8 @@ export const BentoApp: React.FC = () => {
   // Workspace-aware tree state
   const wsState = useSyncExternalStore(workspaceStore.subscribe, workspaceStore.getState);
   const [tree, setTree] = useState<BentoTree>(() => workspaceStore.getActiveTree());
+  const setTreeRef = useRef(setTree);
+  setTreeRef.current = setTree;
   const [editMode, setEditMode] = useState(false);
 
   // Space bar toggles pause on the currently-hovered widget (scoped to leaf node ID)
@@ -162,7 +168,10 @@ export const BentoApp: React.FC = () => {
   }, [wsState.activeId]);
 
   const renderWidget = useCallback((node: LeafNode): React.ReactNode => {
-    const props = { nodeId: node.id, config: node.widgetConfig };
+    const onConfigChange = (config: Record<string, unknown>) => {
+      setTreeRef.current(prev => updateNodeWidgetConfig(prev, node.id, config));
+    };
+    const props = { nodeId: node.id, config: node.widgetConfig, onConfigChange };
 
     switch (node.widgetType) {
       case 'empty':
@@ -208,6 +217,13 @@ export const BentoApp: React.FC = () => {
         );
       case 'meeting-transcription':
         return <MeetingTranscriptionWidget nodeId={node.id} />;
+      // Knowledge tree widgets (v9)
+      case 'knowledge-tree':
+        return <KnowledgeTreeWidget {...props} />;
+      case 'timeline':
+        return <TimelineWidget {...props} />;
+      case 'tree-dev-tools':
+        return <TreeDevToolsWidget {...props} />;
       // Lens Widgets - intercept input on hover, bypass core pipeline
       case 'meta-query':
         return <MetaQueryLensWidget />;

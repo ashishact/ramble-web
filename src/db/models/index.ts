@@ -34,6 +34,11 @@ export { default as WidgetRecord } from './WidgetRecord'
 export { default as Recording } from './Recording'
 export { default as UploadedFile } from './UploadedFile'
 
+// Knowledge tree (v9)
+export { default as KnowledgeNode } from './KnowledgeNode'
+export { default as EntityCooccurrence } from './EntityCooccurrence'
+export { default as TimelineEvent } from './TimelineEvent'
+
 // Re-export types
 export type { ConversationSource, Speaker } from './Conversation'
 export type { TaskStatus } from './Task'
@@ -41,3 +46,4 @@ export type { GoalStatus } from './Goal'
 export type { PluginType, PluginTriggers, PluginLLMConfig } from './Plugin'
 export type { DataType, OnboardingData, UserProfileData } from './Data'
 export type { UploadedFileStatus } from './UploadedFile'
+export type { NodeType, NodeSource, NodeVerification } from './KnowledgeNode'

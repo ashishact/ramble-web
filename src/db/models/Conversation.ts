@@ -26,6 +26,8 @@ export default class Conversation extends Model {
   @field('sentences') sentences?: string             // JSON array of NormalizedSentence
   // v8: Recording linkage for intermediate chunk grouping
   @field('recordingId') recordingId?: string          // Links to recording that created this conv
+  // v10: Intent classification from normalization
+  @field('intent') intent?: string                    // inform | correct | retract | update | instruct | narrate | query | elaborate
 
   get sentencesParsed(): NormalizedSentence[] {
     try {
