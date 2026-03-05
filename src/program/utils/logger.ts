@@ -57,8 +57,15 @@ export type LogModule =
   | 'MemoryDedup'
   // Knowledge tree
   | 'TreeCuration'
+  | 'TreeEditor'
+  | 'TreeEditorCtx'
   // Timeline extraction
-  | 'TimelineExtractor';
+  | 'TimelineExtractor'
+  // Entity resolution
+  | 'EntityResolver'
+  | 'EntityMerge'
+  // DB stores
+  | 'KnowledgeNodeStore';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -122,7 +129,14 @@ const MODULE_COLORS: Record<LogModule, string> = {
   FileUpload: '#795548',
   MemoryDedup: '#FF5722',
   TreeCuration: '#4DB6AC',
+  TreeEditor: '#26A69A',
+  TreeEditorCtx: '#26A69A',
   TimelineExtractor: '#FF7043',
+  // Entity resolution
+  EntityResolver: '#AB47BC',
+  EntityMerge: '#AB47BC',
+  // DB stores
+  KnowledgeNodeStore: '#78909C',
 };
 
 interface LogConfig {

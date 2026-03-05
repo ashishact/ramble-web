@@ -194,6 +194,18 @@ export interface EventPayloads {
 	'navigate:entity': { entityId: string };
 	'highlight:node': { nodeId: string };
 
+	// Knowledge tree activity events (pipeline visibility)
+	'tree:activity': {
+		type: 'entity-created' | 'entity-resolved' | 'curation-start' | 'curation-llm-call'
+			| 'curation-llm-response' | 'curation-llm-error' | 'curation-actions-applied'
+			| 'curation-complete' | 'tree-created' | 'curation-action';
+		entityName?: string;
+		entityId?: string;
+		message: string;
+		detail?: string;
+		timestamp: number;
+	};
+
 	// Generic fallback for custom events
 	[key: string]: unknown;
 }

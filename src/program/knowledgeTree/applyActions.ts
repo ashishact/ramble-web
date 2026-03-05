@@ -74,8 +74,9 @@ async function handleEdit(
     updates.memoryIds = merged
   }
 
-  await knowledgeNodeStore.update(action.node, updates)
-  return true
+  const ok = await knowledgeNodeStore.update(action.node, updates)
+  if (!ok) logger.warn('Edit: DB write failed', { nodeId: action.node })
+  return ok
 }
 
 async function handleCreate(
@@ -137,7 +138,11 @@ async function handleDelete(
   await knowledgeNodeStore.reparentChildren(action.node, node.parentId)
 
   // Soft-delete
-  await knowledgeNodeStore.softDelete(action.node)
+  const ok = await knowledgeNodeStore.softDelete(action.node)
+  if (!ok) {
+    logger.warn('Delete: DB soft-delete failed', { nodeId: action.node })
+    return false
+  }
   logger.info('Deleted node', { nodeId: action.node, reason: action.reason })
   return true
 }
@@ -168,11 +173,15 @@ async function handleMove(
     if (sibling) sortOrder = sibling.sortOrder + 1
   }
 
-  await knowledgeNodeStore.update(action.node, {
+  const ok = await knowledgeNodeStore.update(action.node, {
     parentId: action.newParent,
     depth: newDepth,
     sortOrder,
   })
+  if (!ok) {
+    logger.warn('Move: DB write failed', { nodeId: action.node })
+    return false
+  }
 
   // Recursively update descendant depths
   if (depthDiff !== 0) {
@@ -206,17 +215,22 @@ async function handleMerge(
   const sourceMemoryIds = source.memoryIdsParsed
   const mergedMemoryIds = [...new Set([...existingMemoryIds, ...sourceMemoryIds])]
 
-  await knowledgeNodeStore.update(action.target, {
+  const okUpdate = await knowledgeNodeStore.update(action.target, {
     content: action.mergedContent,
     summary: action.mergedSummary,
     memoryIds: mergedMemoryIds,
   })
+  if (!okUpdate) {
+    logger.warn('Merge: DB update of target failed', { target: action.target })
+    return false
+  }
 
   // Re-parent source's children to target
   await knowledgeNodeStore.reparentChildren(action.source, action.target)
 
   // Soft-delete source
-  await knowledgeNodeStore.softDelete(action.source)
+  const okDelete = await knowledgeNodeStore.softDelete(action.source)
+  if (!okDelete) logger.warn('Merge: DB soft-delete of source failed', { source: action.source })
 
   return true
 }
@@ -235,8 +249,9 @@ async function handleRename(
     return false
   }
 
-  await knowledgeNodeStore.update(action.node, { label: action.label })
-  return true
+  const ok = await knowledgeNodeStore.update(action.node, { label: action.label })
+  if (!ok) logger.warn('Rename: DB write failed', { nodeId: action.node })
+  return ok
 }
 
 async function handleSplit(
@@ -254,11 +269,15 @@ async function handleSplit(
   }
 
   // Convert original node to group, clear its content
-  await knowledgeNodeStore.update(action.node, {
+  const ok = await knowledgeNodeStore.update(action.node, {
     nodeType: 'group',
     content: null,
     summary: null,
   })
+  if (!ok) {
+    logger.warn('Split: DB write failed converting to group', { nodeId: action.node })
+    return false
+  }
 
   // Create new children from "into" array
   for (let i = 0; i < action.into.length; i++) {

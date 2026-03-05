@@ -56,12 +56,13 @@ import type { ConversationSource } from '../../db/models/Conversation';
 import type { ProcessingMode, NormalizationHints } from '../types/recording';
 import { runPlugins, type PluginOutput } from '../plugins';
 import { createLogger } from '../utils/logger';
-import { checkMemoryDuplicate } from './memoryDedup';
 import { resolveTemporalExpression } from './temporalResolver';
-import { soundex, stringSimilarity } from '../services/phoneticMatcher';
-import { database } from '../../db/database';
 import { filterEligibleEntities } from '../knowledgeTree/entityFilter';
 import { buildExtractionSystemPrompt, buildMeetingExtractionSystemPrompt } from './extractionPrompt';
+import { resolveEntity } from '../entityResolution/entityResolver';
+import { fullEntityMerge } from '../entityResolution/entityMerge';
+import type { SessionContext } from '../entityResolution/types';
+import { telemetry } from '../telemetry';
 
 const logger = createLogger('Pipeline');
 
@@ -378,6 +379,11 @@ export async function processInput(
   // ── Phase 1: Normalize input ─────────────────────────────────────────────
   // If hints are pre-computed (e.g. submitChunk already ran normalization),
   // skip normalization to avoid duplicate LLM calls.
+  telemetry.emit('normalize', 'phase1-normalize', 'start', {
+    mode,
+    hasPrecomputedHints: !!options?.hints,
+    inputText: inputText,
+  });
   let normalizedText: string
   let sentences: NormalizeResult['sentences']
   let hints: NormalizationHints
@@ -424,6 +430,14 @@ export async function processInput(
     );
   }
 
+  telemetry.emit('normalize', 'phase1-normalize', 'end', {
+    intent: hints.intent,
+    normalizedText: normalizedText,
+    entityHints: hints.entityHints.map(h => h.name),
+    topicHints: hints.topicHints.map(h => h.name),
+    corrections: hints.correctionsApplied.map(c => `${c.from} → ${c.to}`),
+  }, { status: 'success' });
+
   const intent = hints.intent
   logger.info('Intent classified', { intent, conversationId });
 
@@ -438,10 +452,18 @@ export async function processInput(
   // ── Phase 2: Build context + extract ─────────────────────────────────────
   // Two-pass context retrieval: use hints to find relevant DB records,
   // then merge them into WorkingMemory for the extraction LLM call.
+  telemetry.emit('context', 'phase2-context', 'start', { mode });
   const wmSize = mode === 'system-i' ? 'small' : 'medium';
   const retrieved = await retrieveContext(hints, wmSize);
   const wmData = await workingMemory.fetchWithHints({ size: wmSize }, retrieved);
   const contextPrompt = workingMemory.formatForLLM(wmData);
+  telemetry.emit('context', 'phase2-context', 'end', {
+    entities: wmData.entities.length,
+    entityNames: wmData.entities.slice(0, 8).map((e: { name: string }) => e.name),
+    memories: wmData.memories.length,
+    topics: wmData.topics?.length ?? 0,
+    contextChars: contextPrompt.length,
+  }, { status: 'success' });
 
   // Use normalizedText for Phase 2 if available (fallback: original inputText)
   const extractionText = normalizedText || inputText;
@@ -479,19 +501,39 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
     : buildExtractionSystemPrompt(intent);
   const maxTokens = options?.isMeeting ? 4000 : 3000;
 
+  telemetry.emit('extraction', 'phase3-llm-extraction', 'start', {
+    promptLength: userPrompt.length,
+    extractionText,
+    promptPreview: userPrompt,
+    systemPromptPreview: systemPrompt,
+    tier: 'small',
+  }, { isLLM: true });
   let llmResponse: string;
   try {
     const response = await callLLM({
       tier: 'small', // Use cheap tier for extraction
       prompt: userPrompt,
       systemPrompt,
+      category: 'extraction',
       options: {
         temperature: 0.3, // Low temperature for structured output
         max_tokens: maxTokens,
       },
     });
     llmResponse = response.content;
+    telemetry.emit('extraction', 'phase3-llm-extraction', 'end', {
+      responseLength: llmResponse.length,
+      tokensUsed: response.tokens_used.total,
+      responsePreview: llmResponse,
+      durationMs: response.processing_time_ms,
+      model: response.model,
+      inputTokens: response.tokens_used.prompt,
+      outputTokens: response.tokens_used.completion,
+    }, { status: 'success', isLLM: true });
   } catch (error) {
+    telemetry.emit('extraction', 'phase3-llm-extraction', 'end', {
+      error: error instanceof Error ? error.message : 'Unknown',
+    }, { status: 'error' });
     logger.error('LLM call failed', { error });
     throw error;
   }
@@ -534,8 +576,22 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
   });
 
   // 5. Save to DB (extraction is now normalized and validated)
+  telemetry.emit('save', 'phase4-save-extraction', 'start');
   const origin = sourceToOrigin(source);
   const result = await saveExtraction(sessionId, conversationId, extraction, wmData, origin);
+  telemetry.emit('save', 'phase4-save-extraction', 'end', {
+    entities: result.entities.length,
+    entityNames: result.entities.slice(0, 10).map(e => `${e.name} [${e.type}]${e.isNew ? ' NEW' : ''}`),
+    memories: result.memories.length,
+    memoryPreviews: result.memories.map(m => `[${m.type}] ${m.content}`),
+    topics: result.topics.length,
+    topicNames: result.topics.slice(0, 10).map(t => t.name),
+    goals: result.goalUpdates.length,
+    goalDetails: result.goalUpdates.slice(0, 5).map(g => `${g.id} (${g.type})`),
+    corrections: extraction.corrections.map(c => `${c.wrong} → ${c.correct}`),
+    retractions: extraction.retractions,
+    summary: extraction.summary,
+  }, { status: 'success' });
 
   // 5.1 Save summary if generated
   if (needsSummary && extraction.summary) {
@@ -544,6 +600,7 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
 
   // 5.2 Deterministic auto-reinforce: boost existing memories that share entities/topics
   // with the newly created memories. Zero LLM calls — pure DB operations.
+  telemetry.emit('reinforce', 'phase5-auto-reinforce', 'start');
   if (result.memories.length > 0) {
     const newMemoryIds = new Set(result.memories.map(m => m.id));
     const allEntityIds = result.entities.map(e => e.id);
@@ -560,22 +617,24 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
     }
   }
 
+  telemetry.emit('reinforce', 'phase5-auto-reinforce', 'end', undefined, { status: 'success' });
+
   // 5.3 Queue tree curation for eligible entities
   // Only System II (deep processing) triggers tree curation — skip for System I chunks.
   if (mode !== 'system-i' && result.entities.length > 0 && result.memories.length > 0) {
     // Look up entities from DB to get mentionCount, then run eligibility filter
-    // (user's entity always qualifies, generics filtered, others need mentionCount >= 3)
-    const nonNewEntities = result.entities.filter(e => !e.isNew)
+    // (user's entity always qualifies, generics filtered, others need mentionCount >= 2)
     const dbEntities = (await Promise.all(
-      nonNewEntities.map(e => entityStore.getById(e.id))
+      result.entities.map(e => entityStore.getById(e.id))
     )).filter((e): e is NonNullable<typeof e> => e !== null)
     const eligible = await filterEligibleEntities(dbEntities)
 
     if (eligible.length > 0) {
       await taskStore.create({
-        taskType: 'curate-trees',
+        taskType: 'edit-trees',
         payload: {
           entityIds: eligible.map(e => e.id),
+          topicIds: result.topics.map(t => t.id),
           memoryIds: result.memories.map(m => m.id),
           conversationId,
           intent,
@@ -585,6 +644,8 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
       })
     }
   }
+
+  telemetry.emit('follow-up', 'phase6-queue-tasks', 'start');
 
   // 5.4 Queue timeline extraction (parallel to tree curation — independent task)
   // Timeline extracts real-world events from memories (meetings, trips, deadlines).
@@ -602,6 +663,8 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
       sessionId,
     })
   }
+
+  telemetry.emit('follow-up', 'phase6-queue-tasks', 'end', undefined, { status: 'success' });
 
   // 6. Log success
   await extractionLogStore.create({
@@ -676,95 +739,9 @@ async function handlePluginOutputs(outputs: PluginOutput[]): Promise<void> {
   }
 }
 
-/**
- * Find an existing entity that fuzzy-matches the given name.
- * Checks: exact name (case-insensitive), Levenshtein distance ≤ 2, or soundex match.
- * Returns the matched entity or null.
- */
-async function findFuzzyEntity(name: string): Promise<{ id: string; name: string; type: string } | null> {
-  const all = await entityStore.getAll();
-  const nameLower = name.toLowerCase();
-  const nameWords = name.split(/\s+/).filter(w => w.length > 1);
-  const nameSoundexCodes = nameWords.map(w => soundex(w)).filter(Boolean);
-
-  let bestMatch: { entity: typeof all[0]; score: number } | null = null;
-
-  for (const entity of all) {
-    const entityLower = entity.name.toLowerCase();
-
-    // Exact case-insensitive match — findOrCreate handles this, but just in case
-    if (entityLower === nameLower) {
-      return { id: entity.id, name: entity.name, type: entity.type };
-    }
-
-    // Levenshtein distance: if the names are close enough (distance ≤ 2)
-    const sim = stringSimilarity(nameLower, entityLower);
-    const maxLen = Math.max(nameLower.length, entityLower.length);
-    const distance = Math.round((1 - sim) * maxLen);
-
-    if (distance <= 2 && distance > 0) {
-      const score = sim;
-      if (!bestMatch || score > bestMatch.score) {
-        bestMatch = { entity, score };
-      }
-      continue;
-    }
-
-    // Soundex match on individual words
-    const entityWords = entity.name.split(/\s+/).filter(w => w.length > 1);
-    const entitySoundexCodes = entityWords.map(w => soundex(w)).filter(Boolean);
-    const soundexOverlap = nameSoundexCodes.some(code => entitySoundexCodes.includes(code));
-
-    if (soundexOverlap && sim > 0.5) {
-      const score = sim * 0.9; // Slight penalty for soundex-only match
-      if (!bestMatch || score > bestMatch.score) {
-        bestMatch = { entity, score };
-      }
-    }
-  }
-
-  if (bestMatch) {
-    return { id: bestMatch.entity.id, name: bestMatch.entity.name, type: bestMatch.entity.type };
-  }
-  return null;
-}
-
-/**
- * Re-link all memories and goals that reference sourceEntityId to use targetEntityId instead.
- * Used when merging duplicate entities after correction.
- */
-async function relinkEntityReferences(sourceEntityId: string, targetEntityId: string): Promise<void> {
-  // Re-link memories
-  const allMemories = await memoryStore.getAll();
-  for (const memory of allMemories) {
-    const entityIds = memory.entityIdsParsed;
-    if (entityIds.includes(sourceEntityId)) {
-      const updated = entityIds.map(id => id === sourceEntityId ? targetEntityId : id);
-      // Deduplicate in case target was already linked
-      const deduped = [...new Set(updated)];
-      await database.write(async () => {
-        await memory.update((m) => {
-          m.entityIds = JSON.stringify(deduped);
-        });
-      });
-    }
-  }
-
-  // Re-link goals
-  const allGoals = await goalStore.getAll();
-  for (const goal of allGoals) {
-    const entityIds = goal.entityIdsParsed;
-    if (entityIds.includes(sourceEntityId)) {
-      const updated = entityIds.map(id => id === sourceEntityId ? targetEntityId : id);
-      const deduped = [...new Set(updated)];
-      await database.write(async () => {
-        await goal.update((g) => {
-          g.entityIds = JSON.stringify(deduped);
-        });
-      });
-    }
-  }
-}
+// findFuzzyEntity() and relinkEntityReferences() removed — replaced by:
+//   resolveEntity() from entityResolution/entityResolver.ts (multi-signal resolution)
+//   fullEntityMerge() from entityResolution/entityMerge.ts (full cross-DB merge)
 
 /**
  * Save extraction results to DB
@@ -786,27 +763,62 @@ async function saveExtraction(
   };
 
   // Save entities (already normalized)
+  // Build session context incrementally as entities are resolved
+  const sessionContext: SessionContext = {
+    resolvedEntityIds: [],
+    resolvedTopicIds: [],
+  }
+
   for (const e of extraction.entities) {
-    // Skip entities with type "unknown" — too ambiguous to be useful
+    // If the LLM returned a bare string entity (type defaults to "unknown"),
+    // try to inherit type from an existing entity in the DB before giving up.
     if (e.type === 'unknown') {
-      logger.debug('Skipping unknown-type entity', { name: e.name });
-      continue;
+      const existing = await entityStore.getByName(e.name);
+      if (existing) {
+        e.type = existing.type;
+      } else {
+        // Default to 'other' so it still gets saved — better than dropping it
+        e.type = 'other';
+      }
     }
 
-    // Fuzzy match: check if a similar entity already exists before creating
-    const fuzzyMatch = await findFuzzyEntity(e.name);
-    if (fuzzyMatch) {
+    // Multi-signal entity resolution: Jaro-Winkler + co-occurrence + topic + temporal + type
+    // Wrapped in try-catch so resolution failures fall back to findOrCreate() (old behavior)
+    let resolved: Awaited<ReturnType<typeof resolveEntity>> = null;
+    try {
+      resolved = await resolveEntity(e.name, e.type, sessionContext);
+    } catch (err) {
+      logger.error('Entity resolution failed, falling back to findOrCreate', {
+        name: e.name,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    if (resolved) {
       // Use existing entity instead of creating a near-duplicate
-      await entityStore.recordMention(fuzzyMatch.id);
+      await entityStore.recordMention(resolved.entityId);
       result.entities.push({
-        id: fuzzyMatch.id,
-        name: fuzzyMatch.name,
-        type: fuzzyMatch.type,
+        id: resolved.entityId,
+        name: resolved.entityName,
+        type: resolved.entityType,
         isNew: false,
       });
-      if (fuzzyMatch.name !== e.name) {
-        logger.debug('Fuzzy-matched entity', { input: e.name, matched: fuzzyMatch.name });
+      sessionContext.resolvedEntityIds.push(resolved.entityId);
+      if (resolved.entityName !== e.name) {
+        logger.debug('Resolved entity', {
+          input: e.name,
+          matched: resolved.entityName,
+          composite: resolved.score.composite.toFixed(3),
+          decision: resolved.score.decision,
+        });
       }
+      eventBus.emit('tree:activity', {
+        type: 'entity-resolved',
+        entityName: resolved.entityName,
+        entityId: resolved.entityId,
+        message: `Entity resolved: "${e.name}" → "${resolved.entityName}" [${resolved.entityType}]`,
+        detail: `composite: ${resolved.score.composite.toFixed(3)}, decision: ${resolved.score.decision}`,
+        timestamp: Date.now(),
+      });
       continue;
     }
 
@@ -821,6 +833,16 @@ async function saveExtraction(
       type: entity.type,
       isNew,
     });
+    sessionContext.resolvedEntityIds.push(entity.id);
+    if (isNew) {
+      eventBus.emit('tree:activity', {
+        type: 'entity-created',
+        entityName: entity.name,
+        entityId: entity.id,
+        message: `Entity created: "${entity.name}" [${entity.type}]`,
+        timestamp: Date.now(),
+      });
+    }
   }
 
   // Co-occurrence increment: track which entities appear together in this extraction.
@@ -849,18 +871,30 @@ async function saveExtraction(
     });
   }
 
-  // Save memories (already normalized)
-  for (const m of extraction.memories) {
-    // ── Memory dedup gate ────────────────────────────────────────────
-    const dupCheck = await checkMemoryDuplicate(m.content);
-
-    if (dupCheck.action === 'reinforce') {
-      // Near-identical: just boost the existing one, skip creation
-      await memoryStore.reinforce(dupCheck.existingId);
-      result.memories.push({ id: dupCheck.existingId, content: m.content, type: m.type });
-      continue;
+  // Link entities to topics for tree editor discovery
+  // topicStore.addEntity() is idempotent — safe to call even if already linked
+  for (const topic of result.topics) {
+    for (const entity of result.entities) {
+      await topicStore.addEntity(topic.id, entity.id);
     }
+  }
 
+  // Save memories (already normalized)
+  //
+  // NOTE: Memory dedup gate is intentionally bypassed. Previously, we used
+  // bigram Dice similarity to reinforce (>=0.95) or supersede (0.80-0.94)
+  // existing memories. This caused problems:
+  //   - "reinforce" reused the OLD memory ID, so curation loaded stale content
+  //   - Naive character-level similarity missed semantic differences
+  //     (e.g. "Supermarket" vs "Superatom" scored ~0.82 = supersede, but
+  //     "works on X project" vs "works on Y project" could score high enough
+  //     to reinforce and lose the correction)
+  // Now every extraction creates a fresh memory. The curation LLM sees ALL
+  // memories with timestamps and decides what's current. Old memories remain
+  // in the DB for history / contradiction tracking.
+  //
+  // Original dedup code lives in memoryDedup.ts (checkMemoryDuplicate).
+  for (const m of extraction.memories) {
     // ── Resolve temporal expressions to absolute timestamps ──────────
     let validFrom: number | undefined;
     let validUntil: number | undefined;
@@ -891,11 +925,6 @@ async function saveExtraction(
       origin,
       extractionVersion: EXTRACTION_VERSION,
     });
-
-    // ── Supersede old memory if dedup detected an updated version ─────
-    if (dupCheck.action === 'supersede') {
-      await memoryStore.supersede(dupCheck.existingId, memory.id);
-    }
 
     result.memories.push({
       id: memory.id,
@@ -983,10 +1012,9 @@ async function saveExtraction(
           orphan: orphanEntity.name,
           target: targetEntity.name,
         });
-        // Re-link all memories and goals that reference the orphan
-        await relinkEntityReferences(orphanEntity.id, targetEntity.id);
-        // Merge mention counts, aliases, etc. and delete the orphan
-        await entityStore.merge(targetEntity.id, orphanEntity.id);
+        // Full cross-DB merge: relinks memories, goals, topics, co-occurrences,
+        // knowledge nodes, timeline events, then merges entity records
+        await fullEntityMerge(targetEntity.id, orphanEntity.id);
       }
     }
   }

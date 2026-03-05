@@ -3,8 +3,10 @@ import { database } from '../database'
 import KnowledgeNode from '../models/KnowledgeNode'
 import type { NodeType, NodeSource, NodeVerification } from '../models/KnowledgeNode'
 import type { TreeTemplate, TemplateNode } from '../../program/knowledgeTree/types'
+import { createLogger } from '../../program/utils/logger'
 
 const knowledgeNodes = database.get<KnowledgeNode>('knowledge_nodes')
+const logger = createLogger('KnowledgeNodeStore')
 
 export interface NodeOutline {
   id: string
@@ -118,11 +120,12 @@ export const knowledgeNodeStore = {
     verification?: NodeVerification
     memoryIds?: string[]
     parentId?: string | null
+    entityId?: string
     depth?: number
     sortOrder?: number
     childCount?: number
     metadata?: Record<string, unknown>
-  }): Promise<void> {
+  }): Promise<boolean> {
     try {
       const node = await knowledgeNodes.find(id)
       await database.write(async () => {
@@ -135,6 +138,7 @@ export const knowledgeNodeStore = {
           if (data.verification !== undefined) n.verification = data.verification
           if (data.memoryIds !== undefined) n.memoryIds = JSON.stringify(data.memoryIds)
           if (data.parentId !== undefined) n.parentId = data.parentId
+          if (data.entityId !== undefined) n.entityId = data.entityId
           if (data.depth !== undefined) n.depth = data.depth
           if (data.sortOrder !== undefined) n.sortOrder = data.sortOrder
           if (data.childCount !== undefined) n.childCount = data.childCount
@@ -142,12 +146,18 @@ export const knowledgeNodeStore = {
           n.modifiedAt = Date.now()
         })
       })
-    } catch {
-      // Not found
+      return true
+    } catch (error) {
+      logger.error('Failed to update node', {
+        id,
+        fields: Object.keys(data),
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return false
     }
   },
 
-  async softDelete(id: string): Promise<void> {
+  async softDelete(id: string): Promise<boolean> {
     try {
       const node = await knowledgeNodes.find(id)
       const meta = node.metadataParsed
@@ -157,8 +167,13 @@ export const knowledgeNodeStore = {
           n.modifiedAt = Date.now()
         })
       })
-    } catch {
-      // Not found
+      return true
+    } catch (error) {
+      logger.error('Failed to soft-delete node', {
+        id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return false
     }
   },
 

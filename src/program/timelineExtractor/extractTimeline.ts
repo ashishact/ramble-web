@@ -19,6 +19,7 @@ import { applyTimelineActions } from './applyActions'
 import type { TimelineAction, TimelineResponse } from './types'
 import type { Intent } from '../types/recording'
 import { createLogger } from '../utils/logger'
+import { telemetry } from '../telemetry'
 
 const logger = createLogger('TimelineExtractor')
 
@@ -35,6 +36,7 @@ export async function extractTimeline(params: {
   intent: Intent
 }): Promise<TimelineAction[]> {
   const { memoryIds, entityIds, conversationContext, intent } = params
+  telemetry.emit('timeline', 'load-context', 'start', { memoryCount: memoryIds.length, entityCount: entityIds.length })
 
   // Step 1: Load memories
   const memories = (await Promise.all(
@@ -84,6 +86,14 @@ export async function extractTimeline(params: {
     addMapping(idMap, event.id, 't')
   }
 
+  telemetry.emit('timeline', 'load-context', 'end', {
+    memories: memories.length,
+    memoryPreviews: memories.map(m => m.content),
+    entities: entities.length,
+    entityNames: entities.map(e => e.name),
+    existingEvents: existingEvents.length,
+  }, { status: 'success' })
+
   // Step 5: Build prompt
   const currentTime = new Date().toISOString()
   const userPrompt = buildTimelineUserPrompt({
@@ -102,16 +112,31 @@ export async function extractTimeline(params: {
   })
 
   // Step 6: Single LLM call
+  telemetry.emit('timeline', 'llm-call', 'start', {
+    promptLength: userPrompt.length,
+    systemPromptPreview: TIMELINE_SYSTEM_PROMPT,
+    promptPreview: userPrompt,
+    tier: 'medium',
+  }, { isLLM: true })
   let response: TimelineResponse
   try {
     const llmResult = await callLLM({
       tier: 'medium',
       prompt: userPrompt,
       systemPrompt: TIMELINE_SYSTEM_PROMPT,
+      category: 'timeline',
       options: {
         temperature: 0.3,
       },
     })
+    telemetry.emit('timeline', 'llm-call', 'end', {
+      responseLength: llmResult.content.length,
+      responsePreview: llmResult.content,
+      durationMs: llmResult.processing_time_ms,
+      model: llmResult.model,
+      inputTokens: llmResult.tokens_used.prompt,
+      outputTokens: llmResult.tokens_used.completion,
+    }, { status: 'success', isLLM: true })
 
     const { data, error } = parseLLMJSON<TimelineResponse>(llmResult.content)
     if (error || !data) {
@@ -138,7 +163,9 @@ export async function extractTimeline(params: {
   const resolvedActions = response.actions.map(action => resolveTimelineShortIds(action, idMap))
 
   // Step 8: Apply actions to DB
+  telemetry.emit('timeline', 'apply-actions', 'start', { actionCount: resolvedActions.length })
   const applied = await applyTimelineActions(resolvedActions)
+  telemetry.emit('timeline', 'apply-actions', 'end', { applied }, { status: 'success' })
 
   logger.info('Timeline extraction complete', {
     actionsReturned: response.actions.length,

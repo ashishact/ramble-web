@@ -11,7 +11,7 @@
 
 import { database } from '../../db/database'
 import { entityStore, cooccurrenceStore } from '../../db/stores'
-import { curateTree } from './curateTree'
+import { editTrees } from './treeEditor'
 import { isEligibleForTree } from './entityFilter'
 import type Conversation from '../../db/models/Conversation'
 import type Memory from '../../db/models/Memory'
@@ -319,36 +319,39 @@ class BackfillService {
           }
         }
 
-        // Curate tree for each eligible entity
-        for (const entity of eligible) {
-          if (!entity || this._aborted) continue
+        // Edit trees for all eligible entities in one pass
+        if (eligible.length > 0 && !this._aborted) {
+          // Derive topicIds from memories
+          const topicIdSet = new Set<string>()
+          for (const mem of memories) {
+            for (const tid of mem.topicIdsParsed) topicIdSet.add(tid)
+          }
 
-          const actions = await curateTree(
-            entity.id,
-            memories.map(m => ({ id: m.id, content: m.content, type: m.type })),
-            conv.summary ?? conv.rawText?.slice(0, 200) ?? ''
-          )
+          const result = await editTrees({
+            entityIds: eligible.filter(Boolean).map(e => e!.id),
+            topicIds: [...topicIdSet],
+            memoryIds: memories.map(m => m.id),
+            conversationId: conv.id,
+            intent: 'inform',
+          })
 
-          // Log actions
+          // Log results
           const newLog = [...this._state.log]
           const newStats = { ...this._state.stats, actionsApplied: { ...this._state.stats.actionsApplied } }
 
-          for (const action of actions) {
-            newLog.push({
-              timestamp: Date.now(),
-              entityName: entity.name,
-              entityId: entity.id,
-              actionType: action.type,
-              nodeLabel: 'node' in action ? (action as { node: string }).node : undefined,
-              detail: action.type === 'skip' ? (action as { reason: string }).reason : undefined,
-            })
+          newLog.push({
+            timestamp: Date.now(),
+            entityName: eligible.map(e => e!.name).join(', '),
+            entityId: eligible[0]!.id,
+            actionType: 'edit-trees',
+            detail: `proposed: ${result.actionsProposed}, applied: ${result.actionsApplied}`,
+          })
 
-            newStats.actionsApplied[action.type] = (newStats.actionsApplied[action.type] ?? 0) + 1
-            if (action.type === 'create') newStats.nodesCreated++
+          for (const eid of eligible) {
+            if (eid) this._treesUpdatedSet.add(eid.id)
           }
-
-          this._treesUpdatedSet.add(entity.id)
           newStats.treesUpdated = this._treesUpdatedSet.size
+          newStats.nodesCreated += result.actionsApplied
 
           this.updateState({ stats: newStats, log: newLog })
         }

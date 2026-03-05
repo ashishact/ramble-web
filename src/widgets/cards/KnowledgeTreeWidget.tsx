@@ -5,7 +5,7 @@ import KnowledgeNode from '../../db/models/KnowledgeNode';
 import Entity from '../../db/models/Entity';
 import { formatRelativeTime } from '../../program/utils';
 import { eventBus } from '../../lib/eventBus';
-import { GitBranch, ChevronRight, ChevronDown } from 'lucide-react';
+import { GitBranch, ChevronRight, ChevronDown, Activity, Search, ArrowUpDown } from 'lucide-react';
 
 // ============================================================================
 // Tree Structure Builder
@@ -95,7 +95,19 @@ const NodeDetail: React.FC<{ node: KnowledgeNode }> = ({ node }) => (
 // Tree Node Row (recursive)
 // ============================================================================
 
-type HighlightType = 'new' | 'updated';
+type HighlightType = 'new' | 'updated' | 'search';
+
+interface CurationStatus {
+  phase: 'idle' | 'thinking' | 'searching' | 'verifying' | 'applying' | 'complete' | 'error';
+  entityName?: string;
+  entityIds: string[];
+  activeEntityId?: string;
+  message?: string;
+  startedAt?: number;
+  elapsedMs?: number;
+}
+
+const CURATION_IDLE: CurationStatus = { phase: 'idle', entityIds: [] };
 
 const TreeNodeRow: React.FC<{
   item: TreeItem;
@@ -118,6 +130,8 @@ const TreeNodeRow: React.FC<{
     ? 'bg-green-50/80 ring-1 ring-green-300 animate-pulse'
     : highlightType === 'updated'
     ? 'bg-blue-50/80 ring-1 ring-blue-300 animate-pulse'
+    : highlightType === 'search'
+    ? 'bg-amber-50/80 ring-1 ring-amber-300'
     : '';
 
   return (
@@ -197,6 +211,7 @@ interface EntityOption {
   type: string;
   nodeCount: number;
   lastModified: number;
+  createdAt: number;
 }
 
 // ============================================================================
@@ -210,11 +225,12 @@ const EntitySection: React.FC<{
   expandedIds: Set<string>;
   detailNodeId: string | null;
   highlightedNodeIds: Map<string, HighlightType>;
+  curationStatus: CurationStatus;
   onToggleEntity: () => void;
   onToggleNode: (id: string) => void;
   onDetail: (id: string) => void;
   sectionRef: (el: HTMLDivElement | null) => void;
-}> = ({ entity, nodes, isExpanded, expandedIds, detailNodeId, highlightedNodeIds, onToggleEntity, onToggleNode, onDetail, sectionRef }) => {
+}> = ({ entity, nodes, isExpanded, expandedIds, detailNodeId, highlightedNodeIds, curationStatus, onToggleEntity, onToggleNode, onDetail, sectionRef }) => {
   const tree = useMemo(() => buildTreeFromFlatNodes(nodes), [nodes]);
 
   // Count highlighted nodes in this entity
@@ -238,6 +254,15 @@ const EntitySection: React.FC<{
         </span>
         <span className="text-[11px] font-semibold text-slate-700 truncate">{entity.name}</span>
         <span className="text-[8px] px-1 rounded bg-slate-100 text-slate-500 shrink-0">{entity.type}</span>
+        {curationStatus.phase !== 'idle' && (
+          curationStatus.activeEntityId === entity.id && curationStatus.phase === 'applying' ? (
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" title="Applying actions" />
+          ) : curationStatus.entityIds.includes(entity.id) && ['thinking', 'searching', 'verifying'].includes(curationStatus.phase) ? (
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shrink-0" title="Curating" />
+          ) : curationStatus.entityIds.includes(entity.id) && curationStatus.phase === 'complete' ? (
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" title="Complete" />
+          ) : null
+        )}
         <span className="text-[9px] text-slate-400 shrink-0">{entity.nodeCount}</span>
         {highlightCount > 0 && (
           <span className="text-[8px] px-1 rounded-full bg-green-100 text-green-600 shrink-0 animate-pulse">
@@ -275,6 +300,145 @@ const EntitySection: React.FC<{
 };
 
 // ============================================================================
+// Activity Log
+// ============================================================================
+
+interface ActivityEntry {
+  id: number;
+  type: string;
+  message: string;
+  detail?: string;
+  timestamp: number;
+}
+
+const ACTIVITY_COLORS: Record<string, string> = {
+  'entity-created': 'text-green-500',
+  'tree-created': 'text-green-500',
+  'curation-complete': 'text-green-500',
+  'curation-start': 'text-blue-500',
+  'curation-llm-call': 'text-blue-500',
+  'curation-llm-response': 'text-blue-500',
+  'entity-resolved': 'text-blue-500',
+  'curation-actions-applied': 'text-amber-500',
+  'curation-action': 'text-slate-500',
+  'curation-llm-error': 'text-red-500',
+};
+
+const ACTIVITY_ICONS: Record<string, string> = {
+  'entity-created': '●',
+  'tree-created': '●',
+  'curation-complete': '✓',
+  'curation-start': '◌',
+  'curation-llm-call': '↗',
+  'curation-llm-response': '↙',
+  'entity-resolved': '●',
+  'curation-actions-applied': '◆',
+  'curation-action': '·',
+  'curation-llm-error': '✗',
+};
+
+function formatLogTime(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+const ActivityLog: React.FC<{
+  entries: ActivityEntry[];
+  isExpanded: boolean;
+  onToggle: () => void;
+}> = ({ entries, isExpanded, onToggle }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isExpanded && scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [entries.length, isExpanded]);
+
+  return (
+    <div className="flex-shrink-0 border-b border-slate-100">
+      <div
+        onClick={onToggle}
+        className="flex items-center gap-1.5 px-2 py-1 cursor-pointer hover:bg-slate-50 transition-colors"
+      >
+        <Activity size={10} className="text-slate-400 shrink-0" />
+        <span className="text-[10px] font-medium text-slate-500">Activity</span>
+        {entries.length > 0 && (
+          <span className="text-[9px] px-1 rounded-full bg-slate-100 text-slate-400">{entries.length}</span>
+        )}
+        <span className="text-slate-400 ml-auto shrink-0">
+          {isExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        </span>
+      </div>
+      {isExpanded && (
+        <div ref={scrollRef} className="max-h-[140px] overflow-auto px-1 pb-1">
+          {entries.length === 0 ? (
+            <div className="text-[9px] text-slate-300 text-center py-2">No activity yet</div>
+          ) : (
+            entries.map(entry => (
+              <div key={entry.id} className="py-0.5 px-1">
+                <div className="flex items-start gap-1">
+                  <span className="text-[8px] text-slate-300 shrink-0 w-[52px] tabular-nums">
+                    {formatLogTime(entry.timestamp)}
+                  </span>
+                  <span className={`text-[9px] shrink-0 w-3 text-center ${ACTIVITY_COLORS[entry.type] ?? 'text-slate-400'}`}>
+                    {ACTIVITY_ICONS[entry.type] ?? '·'}
+                  </span>
+                  <span className="text-[9px] text-slate-600 truncate" title={entry.detail ?? entry.message}>
+                    {entry.message}
+                  </span>
+                </div>
+                {entry.detail && (
+                  <div className="text-[8px] text-slate-400 ml-[68px] truncate">
+                    {entry.detail}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
+// Curation Status Bar
+// ============================================================================
+
+const PHASE_CONFIG = {
+  thinking:  { icon: '◌', label: 'Thinking...',         border: 'border-blue-400',  text: 'text-blue-600',  bg: 'bg-blue-50/50',  pulse: true },
+  searching: { icon: '◌', label: 'Searching trees...',  border: 'border-blue-400',  text: 'text-blue-600',  bg: 'bg-blue-50/50',  pulse: true },
+  verifying: { icon: '◌', label: 'Verifying creates...', border: 'border-blue-400', text: 'text-blue-600',  bg: 'bg-blue-50/50',  pulse: true },
+  applying:  { icon: '◆', label: 'Applying actions...',  border: 'border-amber-400', text: 'text-amber-600', bg: 'bg-amber-50/50', pulse: false },
+  complete:  { icon: '✓', label: 'Done',                 border: 'border-green-400', text: 'text-green-600', bg: 'bg-green-50/50', pulse: false },
+  error:     { icon: '✗', label: 'Failed',               border: 'border-red-400',   text: 'text-red-600',   bg: 'bg-red-50/50',   pulse: false },
+} as const;
+
+const CurationStatusBar: React.FC<{ status: CurationStatus }> = ({ status }) => {
+  if (status.phase === 'idle') return null;
+
+  const cfg = PHASE_CONFIG[status.phase];
+  const elapsed = status.elapsedMs != null ? (status.elapsedMs / 1000).toFixed(1) : null;
+
+  return (
+    <div className={`flex-shrink-0 flex items-center gap-1.5 px-2 py-1 border-l-2 ${cfg.border} ${cfg.bg} ${cfg.pulse ? 'animate-pulse' : ''}`}>
+      <span className={`text-[10px] ${cfg.text}`}>{cfg.icon}</span>
+      <span className={`text-[10px] font-medium ${cfg.text}`}>{cfg.label}</span>
+      {status.entityName && !['complete', 'error'].includes(status.phase) && (
+        <span className="text-[9px] text-slate-500 truncate">· {status.entityName}</span>
+      )}
+      {status.phase === 'complete' && elapsed && (
+        <span className="text-[9px] text-green-500">· {elapsed}s</span>
+      )}
+      {status.phase === 'error' && status.message && (
+        <span className="text-[9px] text-red-400 truncate">· {status.message}</span>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
 // Main Widget
 // ============================================================================
 
@@ -288,13 +452,22 @@ export const KnowledgeTreeWidget: React.FC<WidgetProps> = ({ config, onConfigCha
   const [filterEntityId, setFilterEntityId] = useState<string | null>(
     (config?.filterEntityId as string) ?? null
   );
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortMode, setSortMode] = useState<'updated' | 'name' | 'created'>(
+    (config?.sortMode as 'updated' | 'name' | 'created') ?? 'updated'
+  );
+  const [activityLog, setActivityLog] = useState<ActivityEntry[]>([]);
+  const [activityExpanded, setActivityExpanded] = useState(true);
+  const [curationStatus, setCurationStatus] = useState<CurationStatus>(CURATION_IDLE);
+  const activityIdRef = useRef(0);
+  const curationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const entityOptionsRef = useRef<EntityOption[]>([]);
 
   const prevNodeMapRef = useRef<Map<string, number>>(new Map());
-  const entityCacheRef = useRef<Map<string, { name: string; type: string }>>(new Map());
+  const entityCacheRef = useRef<Map<string, { name: string; type: string; createdAt: number }>>(new Map());
   const sectionRefsRef = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const allNodesRef = useRef<KnowledgeNode[]>([]);
   const initialLoadRef = useRef(true);
-  const initializedEntitiesRef = useRef<Set<string>>(new Set());
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Group nodes by entity
@@ -387,12 +560,13 @@ export const KnowledgeTreeWidget: React.FC<WidgetProps> = ({ config, onConfigCha
           for (const [entityId, stats] of entityMap) {
             const cached = entityCacheRef.current.get(entityId);
             if (cached) {
-              options.push({ id: entityId, name: cached.name, type: cached.type, nodeCount: stats.count, lastModified: stats.lastModified });
+              options.push({ id: entityId, name: cached.name, type: cached.type, nodeCount: stats.count, lastModified: stats.lastModified, createdAt: cached.createdAt });
             } else {
               try {
                 const entity = await database.get<Entity>('entities').find(entityId);
-                entityCacheRef.current.set(entityId, { name: entity.name, type: entity.type });
-                options.push({ id: entityId, name: entity.name, type: entity.type, nodeCount: stats.count, lastModified: stats.lastModified });
+                const createdAt = entity.createdAt ?? 0;
+                entityCacheRef.current.set(entityId, { name: entity.name, type: entity.type, createdAt });
+                options.push({ id: entityId, name: entity.name, type: entity.type, nodeCount: stats.count, lastModified: stats.lastModified, createdAt });
               } catch {
                 // Entity not found, skip
               }
@@ -400,11 +574,7 @@ export const KnowledgeTreeWidget: React.FC<WidgetProps> = ({ config, onConfigCha
           }
           options.sort((a, b) => b.lastModified - a.lastModified);
           setEntityOptions(options);
-
-          // On initial load, expand all entity sections
-          if (isInitialLoad && options.length > 0) {
-            setExpandedEntities(new Set(options.map(o => o.id)));
-          }
+          entityOptionsRef.current = options;
         };
         loadEntityNames();
       });
@@ -414,30 +584,6 @@ export const KnowledgeTreeWidget: React.FC<WidgetProps> = ({ config, onConfigCha
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-expand top-level tree nodes for newly seen entities
-  useEffect(() => {
-    for (const [entityId, nodes] of nodesByEntity) {
-      if (!initializedEntitiesRef.current.has(entityId)) {
-        initializedEntitiesRef.current.add(entityId);
-        const tree = buildTreeFromFlatNodes(nodes);
-        const topLevel = new Set<string>();
-        for (const root of tree.roots) {
-          topLevel.add(root.node.id);
-          for (const child of root.children) {
-            topLevel.add(child.node.id);
-          }
-        }
-        if (topLevel.size > 0) {
-          setExpandedIds(prev => {
-            const next = new Set(prev);
-            for (const id of topLevel) next.add(id);
-            return next;
-          });
-        }
-      }
-    }
-  }, [nodesByEntity]);
 
   // Listen for navigate:entity events
   useEffect(() => {
@@ -492,12 +638,101 @@ export const KnowledgeTreeWidget: React.FC<WidgetProps> = ({ config, onConfigCha
     return unsub;
   }, []);
 
-  // Persist filter to widget config
+  // Subscribe to tree:activity events for activity log + curation status
+  useEffect(() => {
+    const unsub = eventBus.on('tree:activity', (payload) => {
+      // Activity log entry (existing behaviour)
+      const entry: ActivityEntry = {
+        id: ++activityIdRef.current,
+        type: payload.type,
+        message: payload.message,
+        detail: payload.detail,
+        timestamp: payload.timestamp,
+      };
+      setActivityLog(prev => [entry, ...prev].slice(0, 50));
+
+      // Derive curation status from event type
+      switch (payload.type) {
+        case 'curation-start': {
+          if (curationTimerRef.current) clearTimeout(curationTimerRef.current);
+          // Parse entity names from detail → match to IDs via entityOptionsRef
+          const names = payload.detail?.split(', ') ?? [];
+          const ids = names
+            .map(name => entityOptionsRef.current.find(e => e.name === name)?.id)
+            .filter((id): id is string => !!id);
+          setCurationStatus({
+            phase: 'thinking',
+            entityName: payload.detail,
+            entityIds: ids,
+            startedAt: Date.now(),
+          });
+          break;
+        }
+        case 'curation-llm-call': {
+          const msg = payload.message.toLowerCase();
+          const phase: CurationStatus['phase'] =
+            msg.includes('search loop') ? 'searching' :
+            msg.includes('verification') ? 'verifying' : 'thinking';
+          setCurationStatus(prev => ({ ...prev, phase, message: payload.message }));
+          break;
+        }
+        case 'curation-action': {
+          setCurationStatus(prev => {
+            // Accumulate entityIds from action events
+            const ids = payload.entityId && !prev.entityIds.includes(payload.entityId)
+              ? [...prev.entityIds, payload.entityId]
+              : prev.entityIds;
+            return {
+              ...prev,
+              phase: 'applying',
+              activeEntityId: payload.entityId,
+              entityName: payload.entityName,
+              entityIds: ids,
+            };
+          });
+          break;
+        }
+        case 'curation-actions-applied': {
+          setCurationStatus(prev => ({ ...prev, phase: 'applying', message: payload.message }));
+          break;
+        }
+        case 'curation-complete': {
+          setCurationStatus(prev => ({
+            ...prev,
+            phase: 'complete',
+            message: payload.message,
+            activeEntityId: undefined,
+            elapsedMs: prev.startedAt ? Date.now() - prev.startedAt : undefined,
+          }));
+          curationTimerRef.current = setTimeout(() => {
+            setCurationStatus(CURATION_IDLE);
+          }, 3000);
+          break;
+        }
+        case 'curation-llm-error': {
+          if (curationTimerRef.current) clearTimeout(curationTimerRef.current);
+          setCurationStatus(prev => ({
+            ...prev,
+            phase: 'error',
+            message: payload.detail ?? payload.message,
+            activeEntityId: undefined,
+          }));
+          break;
+        }
+      }
+    });
+    return () => {
+      unsub();
+      if (curationTimerRef.current) clearTimeout(curationTimerRef.current);
+    };
+  }, []);
+
+  // Persist filter + sort to widget config
   useEffect(() => {
     if (onConfigChange) {
-      onConfigChange({ ...config, filterEntityId });
+      onConfigChange({ ...config, filterEntityId, sortMode });
     }
-  }, [filterEntityId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filterEntityId, sortMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleEntity = useCallback((entityId: string) => {
     setExpandedEntities(prev => {
@@ -526,11 +761,94 @@ export const KnowledgeTreeWidget: React.FC<WidgetProps> = ({ config, onConfigCha
     else sectionRefsRef.current.delete(entityId);
   }, []);
 
-  // Filter entities to display
+  // Filter + search + sort entities to display
   const displayEntities = useMemo(() => {
-    if (!filterEntityId) return entityOptions;
-    return entityOptions.filter(e => e.id === filterEntityId);
-  }, [entityOptions, filterEntityId]);
+    let list = entityOptions;
+
+    // Narrow to single entity if filterEntityId set
+    if (filterEntityId) {
+      list = list.filter(e => e.id === filterEntityId);
+    }
+
+    // Search: match entity name OR node label/summary/content
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(entity => {
+        if (entity.name.toLowerCase().includes(q)) return true;
+        // Check nodes for this entity
+        const nodes = nodesByEntity.get(entity.id);
+        if (nodes) {
+          return nodes.some(n =>
+            n.label.toLowerCase().includes(q) ||
+            (n.summary && n.summary.toLowerCase().includes(q)) ||
+            (n.content && n.content.toLowerCase().includes(q))
+          );
+        }
+        return false;
+      });
+    }
+
+    // Sort
+    const sorted = [...list];
+    switch (sortMode) {
+      case 'name':
+        sorted.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'created':
+        sorted.sort((a, b) => b.createdAt - a.createdAt);
+        break;
+      case 'updated':
+      default:
+        sorted.sort((a, b) => b.lastModified - a.lastModified);
+        break;
+    }
+    return sorted;
+  }, [entityOptions, filterEntityId, searchQuery, sortMode, nodesByEntity]);
+
+  // Search highlight: when search matches nodes, highlight them and auto-expand entity
+  useEffect(() => {
+    if (!searchQuery.trim()) return;
+    const q = searchQuery.trim().toLowerCase();
+    const matches = new Map<string, HighlightType>();
+    const entitiesToExpand = new Set<string>();
+    const nodesToExpand = new Set<string>();
+
+    for (const [entityId, nodes] of nodesByEntity) {
+      const byId = new Map(nodes.map(n => [n.id, n]));
+      for (const node of nodes) {
+        const matchesNode =
+          node.label.toLowerCase().includes(q) ||
+          (node.summary && node.summary.toLowerCase().includes(q)) ||
+          (node.content && node.content.toLowerCase().includes(q));
+        if (matchesNode) {
+          matches.set(node.id, 'search');
+          entitiesToExpand.add(entityId);
+          // Walk ancestor chain to auto-expand
+          let current: KnowledgeNode | undefined = node;
+          while (current?.parentId) {
+            nodesToExpand.add(current.parentId);
+            current = byId.get(current.parentId);
+          }
+        }
+      }
+    }
+
+    if (matches.size > 0) {
+      setExpandedEntities(prev => {
+        const next = new Set(prev);
+        for (const id of entitiesToExpand) next.add(id);
+        return next;
+      });
+      setExpandedIds(prev => {
+        const next = new Set(prev);
+        for (const id of nodesToExpand) next.add(id);
+        return next;
+      });
+      setHighlightedNodeIds(matches);
+    } else {
+      setHighlightedNodeIds(new Map());
+    }
+  }, [searchQuery, nodesByEntity]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Global stats
   const stats = useMemo(() => {
@@ -545,11 +863,11 @@ export const KnowledgeTreeWidget: React.FC<WidgetProps> = ({ config, onConfigCha
     return (
       <div
         className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-4"
-        data-doc='{"icon":"mdi:file-tree","title":"Knowledge Tree","desc":"Per-entity structured knowledge trees. Trees are created when entities have been mentioned 3+ times."}'
+        data-doc='{"icon":"mdi:file-tree","title":"Knowledge Tree","desc":"Per-entity structured knowledge trees. Trees are created when entities have been mentioned 2+ times."}'
       >
         <GitBranch className="w-8 h-8 mb-2 opacity-50" />
         <span className="text-sm">No knowledge trees yet</span>
-        <span className="text-xs opacity-50 mt-1">Trees appear after entities are mentioned 3+ times</span>
+        <span className="text-xs opacity-50 mt-1">Trees appear after entities are mentioned 2+ times</span>
       </div>
     );
   }
@@ -559,22 +877,48 @@ export const KnowledgeTreeWidget: React.FC<WidgetProps> = ({ config, onConfigCha
       className="w-full h-full flex flex-col overflow-hidden"
       data-doc='{"icon":"mdi:file-tree","title":"Knowledge Tree","desc":"Multi-entity knowledge trees with live updates. All entity trees shown simultaneously."}'
     >
-      {/* Header with filter */}
+      {/* Header with search + sort */}
       <div className="flex-shrink-0 px-2 py-1 border-b border-slate-100 flex items-center gap-1.5">
         <GitBranch size={12} className="text-slate-400 shrink-0" />
-        <select
-          value={filterEntityId ?? ''}
-          onChange={(e) => setFilterEntityId(e.target.value || null)}
-          className="text-[10px] text-slate-600 bg-transparent border-none outline-none flex-1 cursor-pointer"
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          <Search size={10} className="text-slate-400 shrink-0" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search entities & nodes..."
+            className="text-[10px] text-slate-600 bg-transparent border-none outline-none flex-1 min-w-0 placeholder:text-slate-300"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="text-[9px] text-slate-400 hover:text-slate-600 shrink-0"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => setSortMode(prev =>
+            prev === 'updated' ? 'name' : prev === 'name' ? 'created' : 'updated'
+          )}
+          className="flex items-center gap-0.5 text-[9px] text-slate-500 hover:text-slate-700 shrink-0 px-1 py-0.5 rounded hover:bg-slate-100 transition-colors"
+          title={`Sort by: ${sortMode}`}
         >
-          <option value="">All entities ({entityOptions.length})</option>
-          {entityOptions.map(opt => (
-            <option key={opt.id} value={opt.id}>
-              {opt.name} ({opt.type})
-            </option>
-          ))}
-        </select>
+          <ArrowUpDown size={9} />
+          <span className="capitalize">{sortMode}</span>
+        </button>
       </div>
+
+      {/* Curation status bar */}
+      <CurationStatusBar status={curationStatus} />
+
+      {/* Activity log */}
+      <ActivityLog
+        entries={activityLog}
+        isExpanded={activityExpanded}
+        onToggle={() => setActivityExpanded(p => !p)}
+      />
 
       {/* Entity sections */}
       <div className="flex-1 overflow-auto p-1">
@@ -587,6 +931,7 @@ export const KnowledgeTreeWidget: React.FC<WidgetProps> = ({ config, onConfigCha
             expandedIds={expandedIds}
             detailNodeId={detailNodeId}
             highlightedNodeIds={highlightedNodeIds}
+            curationStatus={curationStatus}
             onToggleEntity={() => handleToggleEntity(entity.id)}
             onToggleNode={handleToggleNode}
             onDetail={handleDetail}

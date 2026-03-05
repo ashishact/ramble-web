@@ -17,3 +17,5 @@ export { TTSWidget } from './cards/TTSWidget';
 export { KnowledgeTreeWidget } from './cards/KnowledgeTreeWidget';
 export { TimelineWidget } from './cards/TimelineWidget';
 export { TreeDevToolsWidget } from './cards/TreeDevToolsWidget';
+export { PipelineMonitorWidget } from './cards/PipelineMonitorWidget';
+export { LLMCostDashboardWidget } from './cards/LLMCostDashboardWidget';

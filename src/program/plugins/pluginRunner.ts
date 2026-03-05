@@ -104,6 +104,7 @@ async function runPlugin(
       tier,
       prompt,
       systemPrompt: plugin.systemPrompt,
+      category: `plugin:${plugin.name}`,
       options: {
         temperature: config.temperature ?? 0.3,
         max_tokens: config.maxTokens ?? 500,

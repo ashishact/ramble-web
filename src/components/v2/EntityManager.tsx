@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import { entityStore } from '../../db/stores';
+import { fullEntityMerge } from '../../program/entityResolution/entityMerge';
 import { SortIcon } from './SortIcon';
 import { formatRelativeTime } from '../../program/utils/time';
 import type Entity from '../../db/models/Entity';
@@ -194,11 +195,11 @@ export function EntityManager({ onClose }: EntityManagerProps) {
     loadData();
   };
 
-  // Merge handler
+  // Merge handler — full cross-DB relink (memories, goals, topics, co-occurrences, knowledge nodes, timeline events)
   const handleMerge = async (targetId: string) => {
     const sourceIds = [...selectedIds].filter(id => id !== targetId);
     for (const sourceId of sourceIds) {
-      await entityStore.merge(targetId, sourceId);
+      await fullEntityMerge(targetId, sourceId);
     }
     setSelectedIds(new Set());
     setShowMergeModal(false);

@@ -36,13 +36,22 @@ export function resolveActionIds<T extends Record<string, unknown>>(
   const resolved = { ...action }
   for (const field of fields) {
     const value = resolved[field]
-    if (typeof value === 'string' && map.toReal.has(value)) {
-      (resolved as Record<string, unknown>)[field] = map.toReal.get(value)!
+    if (typeof value === 'string') {
+      if (map.toReal.has(value)) {
+        (resolved as Record<string, unknown>)[field] = map.toReal.get(value)!
+      } else if (/^[a-z]\d+$/.test(value)) {
+        // Looks like a short ID (e.g. "n5", "m3") but wasn't in the map
+        console.warn(`[ShortIdMap] Unresolved short ID "${value}" in field "${field}" for action type "${(action as Record<string, unknown>).type}"`)
+      }
     }
     if (Array.isArray(value)) {
-      (resolved as Record<string, unknown>)[field] = value.map((v: unknown) =>
-        typeof v === 'string' && map.toReal.has(v) ? map.toReal.get(v)! : v
-      )
+      (resolved as Record<string, unknown>)[field] = value.map((v: unknown) => {
+        if (typeof v === 'string' && map.toReal.has(v)) return map.toReal.get(v)!
+        if (typeof v === 'string' && /^[a-z]\d+$/.test(v)) {
+          console.warn(`[ShortIdMap] Unresolved short ID "${v}" in array field "${field}" for action type "${(action as Record<string, unknown>).type}"`)
+        }
+        return v
+      })
     }
   }
   return resolved

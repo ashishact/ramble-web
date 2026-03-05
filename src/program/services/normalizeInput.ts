@@ -30,6 +30,7 @@ import { parseLLMJSON } from '../utils/jsonUtils'
 import { correctionStore, learnedCorrectionStore } from '../../db/stores'
 import { findPhoneticMatches, findSpellingMatches, formatMatchesForLLM } from './phoneticMatcher'
 import type { NormalizationHints, Intent } from '../types/recording'
+import { telemetry } from '../telemetry'
 
 const VALID_INTENTS: Intent[] = ['inform', 'correct', 'retract', 'update', 'instruct', 'narrate', 'query', 'elaborate']
 
@@ -191,17 +192,29 @@ export async function normalizeInput(
 
   try {
     // ── Step 1: Dictionary corrections ──────────────────────────────────
+    telemetry.emit('normalize', 'dictionary-corrections', 'start', { inputText: rawText })
     const dictResult = await applyDictionaryCorrections(rawText)
     let currentText = dictResult.text
     allCorrections.push(...dictResult.corrections)
+    telemetry.emit('normalize', 'dictionary-corrections', 'end', {
+      applied: dictResult.corrections.length,
+      corrections: dictResult.corrections.map(c => `${c.from} → ${c.to}`),
+    }, { status: 'success' })
 
     // ── Step 2: Phonetic hints (for LLM, not auto-applied) ─────────────
+    telemetry.emit('normalize', 'phonetic-hints', 'start')
     const phoneticSection = await buildPhoneticHints(currentText, source)
+    telemetry.emit('normalize', 'phonetic-hints', 'end', { hasHints: phoneticSection.length > 0 }, { status: 'success' })
 
     // ── Step 3: Learned corrections ────────────────────────────────────
+    telemetry.emit('normalize', 'learned-corrections', 'start')
     const learnedResult = await applyLearnedCorrections(currentText)
     currentText = learnedResult.text
     allCorrections.push(...learnedResult.corrections)
+    telemetry.emit('normalize', 'learned-corrections', 'end', {
+      applied: learnedResult.corrections.length,
+      corrections: learnedResult.corrections.map(c => `${c.from} → ${c.to}`),
+    }, { status: 'success' })
 
     // ── Step 4: LLM normalization + hint extraction ────────────────────
     const contextBlock = recentSentences.length > 0
@@ -228,15 +241,29 @@ Respond with JSON:
   "intent": "inform"
 }`
 
+    telemetry.emit('normalize', 'llm-normalize', 'start', {
+      promptLength: prompt.length,
+      inputText: currentText,
+      systemPromptPreview: SYSTEM_PROMPT,
+      promptPreview: prompt,
+      tier: 'small',
+    }, { isLLM: true })
     const response = await callLLM({
       tier: 'small',
       prompt,
       systemPrompt: SYSTEM_PROMPT,
+      category: 'normalize',
       options: {
         temperature: 0.1,
         max_tokens: 800,
       },
     })
+    telemetry.emit('normalize', 'llm-normalize', 'end', {
+      responseLength: response.content.length,
+      responsePreview: response.content,
+      durationMs: response.processing_time_ms,
+      model: response.model,
+    }, { status: 'success', isLLM: true })
 
     const { data, error } = parseLLMJSON<{
       normalizedText?: unknown

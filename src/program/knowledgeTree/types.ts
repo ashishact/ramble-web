@@ -1,11 +1,11 @@
 // === Node Types (re-export from model for convenience) ===
 export type { NodeType, NodeSource, NodeVerification } from '../../db/models/KnowledgeNode'
 
-// === Curation Protocol ===
+// === Tree Editor Response ===
 
-export interface CurationResponse {
+export interface TreeEditorResponse {
   actions: CurationAction[]
-  needsMore: NeedsMoreRequest | null
+  searchTerms: string[] | null  // LLM requests deeper tree exploration
 }
 
 // --- Content Actions ---
@@ -112,30 +112,6 @@ export type CurationAction =
   | LinkAction       // Phase 4 — stub (log + skip)
   | VerifyAction     // Phase 4 — stub (log + skip)
   | SkipAction       // Phase 2 — implement
-
-// === Context Requests ===
-
-export interface ExpandRequest {
-  type: 'expand'
-  node: string
-}
-
-export interface SearchRequest {
-  type: 'search'
-  terms: string[]
-  scope?: 'related' | 'all'      // default: 'related'
-}
-
-export interface AskUserRequest {
-  type: 'ask_user'
-  question: string
-  context: string
-}
-
-export type NeedsMoreRequest =
-  | ExpandRequest
-  | SearchRequest
-  | AskUserRequest   // Phase 4 — stub (log + break loop)
 
 // === Templates ===
 

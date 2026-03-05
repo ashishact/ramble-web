@@ -31,6 +31,8 @@ import {
   KnowledgeTreeWidget,
   TimelineWidget,
   TreeDevToolsWidget,
+  PipelineMonitorWidget,
+  LLMCostDashboardWidget,
 } from '../widgets';
 import { QuestionWidget, SuggestionWidget, SpeakBetterWidget, MeetingTranscriptionWidget } from '../widgets/on-demand';
 import { MetaQueryLensWidget } from '../widgets/lens';
@@ -224,6 +226,11 @@ export const BentoApp: React.FC = () => {
         return <TimelineWidget {...props} />;
       case 'tree-dev-tools':
         return <TreeDevToolsWidget {...props} />;
+      // Observability widgets (v10)
+      case 'pipeline-monitor':
+        return <PipelineMonitorWidget {...props} />;
+      case 'llm-dashboard':
+        return <LLMCostDashboardWidget {...props} />;
       // Lens Widgets - intercept input on hover, bypass core pipeline
       case 'meta-query':
         return <MetaQueryLensWidget />;

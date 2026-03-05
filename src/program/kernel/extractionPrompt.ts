@@ -26,6 +26,7 @@ Context items (entities, topics, memories, goals) are annotated with their age (
 Given the user's latest input and the context, extract:
 
 1. **entities**: People, places, organizations, projects, or named concepts.
+   Each entity must be an object: {"name": "Entity Name", "type": "person|company|place|project|product|concept|other"}.
    Do NOT include: dates, times, numbers, or temporal expressions.
    Prefer matching against existing Known Entities rather than creating duplicates.
 
@@ -201,6 +202,7 @@ Context items are annotated with their age (e.g., [2 min ago], [7 days ago]). Us
 Given the meeting transcript and context, extract:
 
 1. **entities**: People, places, organizations, projects, or named concepts mentioned in the meeting.
+   Each entity must be an object: {"name": "Entity Name", "type": "person|company|place|project|product|concept|other"}.
    Extract all meeting participants as entities (type: "person").
    Prefer matching against existing Known Entities rather than creating duplicates.
 

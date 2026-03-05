@@ -10,6 +10,8 @@ import { settingsHelpers } from '../stores/settingsStore';
 import type { LLMTier, LLMProvider as ConcreteProvider } from './types/llmTiers';
 import { resolveLLMTier } from './llmResolver';
 import { createLogger } from './utils/logger';
+import { telemetry } from './telemetry';
+import { llmTracker } from './telemetry';
 
 const logger = createLogger('Pipeline');
 
@@ -22,6 +24,8 @@ export interface LLMRequest {
   tier: LLMTier;
   prompt: string;
   systemPrompt?: string;
+  /** Identifies the caller for telemetry (e.g. 'extraction', 'normalize', 'tree-editor') */
+  category?: string;
   options?: {
     temperature?: number;
     max_tokens?: number;
@@ -107,6 +111,32 @@ export async function callLLM(request: LLMRequest): Promise<LLMResponse> {
       response_length: content.length,
     });
 
+    // Record telemetry
+    const llmCategory = request.category ?? 'unknown';
+    try {
+      telemetry.emit('llm', `${llmCategory}`, 'end', {
+        tier: request.tier,
+        model: resolved.model,
+        provider: resolved.provider,
+        durationMs: processingTimeMs,
+        inputTokens: estimatedPromptTokens,
+        outputTokens: estimatedCompletionTokens,
+      }, { status: 'success' });
+      llmTracker.recordLLMCall({
+        ts: Date.now(),
+        category: llmCategory,
+        tier: request.tier,
+        model: resolved.model,
+        provider: resolved.provider,
+        inputTokens: estimatedPromptTokens,
+        outputTokens: estimatedCompletionTokens,
+        durationMs: processingTimeMs,
+        status: 'success',
+        promptLength: request.prompt.length + (request.systemPrompt?.length ?? 0),
+        responseLength: content.length,
+      });
+    } catch { /* telemetry should never break LLM calls */ }
+
     return {
       content,
       model: resolved.model,
@@ -124,6 +154,34 @@ export async function callLLM(request: LLMRequest): Promise<LLMResponse> {
       provider: resolved.provider,
       error: error instanceof Error ? error.message : 'Unknown error',
     });
+
+    // Record failed LLM call
+    const llmCategory = request.category ?? 'unknown';
+    try {
+      telemetry.emit('llm', `${llmCategory}`, 'end', {
+        tier: request.tier,
+        model: resolved.model,
+        provider: resolved.provider,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        promptPreview: request.prompt,
+        systemPromptPreview: request.systemPrompt,
+        durationMs: Date.now() - startTime,
+      }, { status: 'error', isLLM: true });
+      llmTracker.recordLLMCall({
+        ts: Date.now(),
+        category: llmCategory,
+        tier: request.tier,
+        model: resolved.model,
+        provider: resolved.provider,
+        inputTokens: 0,
+        outputTokens: 0,
+        durationMs: Date.now() - startTime,
+        status: 'error',
+        promptLength: request.prompt.length + (request.systemPrompt?.length ?? 0),
+        responseLength: 0,
+      });
+    } catch { /* telemetry should never break LLM calls */ }
+
     throw error;
   }
 }

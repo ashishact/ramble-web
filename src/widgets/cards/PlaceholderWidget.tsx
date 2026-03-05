@@ -1,6 +1,6 @@
 import type { WidgetProps } from '../types';
 import type { WidgetType } from '../../components/bento/types';
-import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio, GitBranch, Clock, FlaskConical } from 'lucide-react';
+import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio, GitBranch, Clock, FlaskConical, Activity, DollarSign } from 'lucide-react';
 
 const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'empty': null,
@@ -26,6 +26,9 @@ const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'knowledge-tree': <GitBranch className="w-8 h-8" />,
   'timeline': <Clock className="w-8 h-8" />,
   'tree-dev-tools': <FlaskConical className="w-8 h-8" />,
+  // Observability widgets (v10)
+  'pipeline-monitor': <Activity className="w-8 h-8" />,
+  'llm-dashboard': <DollarSign className="w-8 h-8" />,
 };
 
 const WIDGET_LABELS: Record<WidgetType, string> = {
@@ -52,6 +55,9 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   'knowledge-tree': 'Knowledge Tree',
   'timeline': 'Timeline',
   'tree-dev-tools': 'Tree Dev Tools',
+  // Observability widgets (v10)
+  'pipeline-monitor': 'Pipeline Monitor',
+  'llm-dashboard': 'LLM Dashboard',
 };
 
 interface PlaceholderWidgetProps extends WidgetProps {

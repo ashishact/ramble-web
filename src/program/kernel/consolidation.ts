@@ -25,6 +25,7 @@
 
 import { database } from '../../db/database'
 import { entityStore, memoryStore, dataStore } from '../../db/stores'
+import { fullEntityMerge } from '../entityResolution/entityMerge'
 import { eventBus } from '../../lib/eventBus'
 import { createLogger } from '../utils/logger'
 import type Entity from '../../db/models/Entity'
@@ -87,8 +88,9 @@ function stringSimilarity(a: string, b: string): number {
 
 /**
  * Merge entities that have the same name but different casing.
- * Keeps the entity with the highest mentionCount as the primary,
- * adds others as aliases, then deletes duplicates.
+ * Keeps the entity with the highest mentionCount as the primary.
+ * Uses fullEntityMerge() to relink ALL downstream references
+ * (memories, goals, topics, co-occurrences, knowledge nodes, timeline events).
  */
 async function deduplicateEntities(): Promise<number> {
   const all = await entityStore.getAll()
@@ -112,28 +114,9 @@ async function deduplicateEntities(): Promise<number> {
     const primary = group[0]
     const duplicates = group.slice(1)
 
-    // Merge aliases from duplicates into primary
-    const existingAliases = primary.aliasesParsed
-    const newAliases = new Set(existingAliases)
+    // Full cross-DB merge: relinks all downstream references then merges entity records
     for (const dup of duplicates) {
-      // Add the duplicate's name as an alias
-      newAliases.add(dup.name)
-      // Add its existing aliases too
-      for (const alias of dup.aliasesParsed) {
-        newAliases.add(alias)
-      }
-    }
-    // Remove the primary's own name from aliases
-    newAliases.delete(primary.name)
-
-    // Update primary with merged aliases
-    await entityStore.update(primary.id, {
-      aliases: [...newAliases],
-    })
-
-    // Delete duplicates
-    for (const dup of duplicates) {
-      await entityStore.delete(dup.id)
+      await fullEntityMerge(primary.id, dup.id)
       merged++
     }
 

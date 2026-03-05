@@ -5,7 +5,7 @@
  *
  * Rules:
  * 1. User's own entity always qualifies (no mention threshold)
- * 2. Other entities need mentionCount >= 3
+ * 2. Other entities need mentionCount >= 2
  * 3. Generic single-word nouns are excluded (customer, ambassador, etc.)
  */
 
@@ -92,8 +92,8 @@ export async function isEligibleForTree(entity: {
   const userName = await getUserName()
   if (userName && isUserEntity(entity.name, userName)) return true
 
-  // Other entities need mentionCount >= 3
-  return entity.mentionCount >= 3
+  // Other entities need mentionCount >= 2
+  return entity.mentionCount >= 2
 }
 
 /**

@@ -10,11 +10,11 @@
  * [userinput] → [search/surface] → LLM → [update] → save → wait
  */
 
-import { sessionStore, conversationStore, taskStore, recordingStore, memoryStore } from '../../db/stores';
+import { sessionStore, conversationStore, taskStore, recordingStore } from '../../db/stores';
 import { processInput, type ProcessingResult } from './processor';
 import { normalizeInput } from '../services/normalizeInput';
 import { splitText } from './textSplitter';
-import { curateTree } from '../knowledgeTree/curateTree';
+import { editTrees } from '../knowledgeTree/treeEditor';
 import { extractTimeline } from '../timelineExtractor';
 import { seedCorePlugins } from '../plugins';
 import { createLogger } from '../utils/logger';
@@ -23,6 +23,7 @@ import { recordingManager } from './recordingManager';
 import { eventBus } from '../../lib/eventBus';
 import { systemPause } from '../../lib/systemPause';
 import { simpleHash } from '../utils/id';
+import { telemetry } from '../telemetry';
 import type Session from '../../db/models/Session';
 
 const logger = createLogger('Kernel');
@@ -417,6 +418,11 @@ class Kernel {
     // Start pipeline tracking
     pipelineStatus.start();
     pipelineStatus.step('input', 'running');
+    telemetry.emit('kernel', 'processInputItem', 'start', {
+      source,
+      chars: text.length,
+      inputText: text,
+    });
 
     // ── Phase 1: Normalize the full text FIRST ───────────────────────────
     // Normalization adds proper punctuation/sentence boundaries and extracts
@@ -517,8 +523,12 @@ class Kernel {
 
       pipelineStatus.step('process', 'success');
       pipelineStatus.step('done', 'success');
+      telemetry.emit('kernel', 'processInputItem', 'end', {
+        entities: processingResult.entities.length,
+        memories: processingResult.memories.length,
+      }, { status: 'success' });
 
-      // Drain any follow-up tasks (e.g. curate-trees) that processInput() queued
+      // Drain any follow-up tasks (e.g. edit-trees) that processInput() queued
       this.resumePendingTasks().catch(err =>
         logger.error('Follow-up task processing failed (non-fatal)', { error: err })
       );
@@ -533,6 +543,7 @@ class Kernel {
 
       pipelineStatus.step('process', 'error');
       pipelineStatus.step('done', 'error');
+      telemetry.emit('kernel', 'processInputItem', 'end', { error: errorMessage }, { status: 'error' });
 
       return {
         conversationId: conversation.id,
@@ -652,7 +663,7 @@ class Kernel {
         });
 
         // IMPORTANT: Do NOT continue to next chunk until this one's follow-up
-        // tasks (curate-trees, etc.) have drained — so the next chunk's context
+        // tasks (edit-trees, etc.) have drained — so the next chunk's context
         // retrieval picks up the freshest data.
         await this.resumePendingTasks();
       } catch (error) {
@@ -850,9 +861,10 @@ class Kernel {
           await taskStore.fail(task.id, errorMessage);
           logger.error('Failed to resume task', { taskId: task.id, error: errorMessage });
         }
-      } else if (task.taskType === 'curate-trees') {
+      } else if (task.taskType === 'edit-trees') {
         const payload = task.payloadParsed as {
           entityIds: string[];
+          topicIds: string[];
           memoryIds: string[];
           conversationId: string;
           intent?: string;
@@ -861,31 +873,39 @@ class Kernel {
         try {
           await taskStore.start(task.id);
 
-          // Load memories for curation context
-          const memories = (await Promise.all(
-            payload.memoryIds.map(id => memoryStore.getById(id))
-          )).filter((m): m is NonNullable<typeof m> => m !== null);
-
-          const conversation = await conversationStore.getById(payload.conversationId);
-          const contextSummary = conversation?.summary ?? conversation?.rawText?.slice(0, 200) ?? '';
           const intent = (payload.intent ?? 'inform') as import('../types/recording').Intent;
 
-          // Curate each entity's tree
-          for (const entityId of payload.entityIds) {
-            await curateTree(
-              entityId,
-              memories.map(m => ({ id: m.id, content: m.content, type: m.type })),
-              contextSummary,
-              intent
-            );
-          }
+          const result = await editTrees({
+            entityIds: payload.entityIds,
+            topicIds: payload.topicIds,
+            memoryIds: payload.memoryIds,
+            conversationId: payload.conversationId,
+            intent,
+          });
 
-          await taskStore.complete(task.id);
-          logger.info('Tree curation task completed', { taskId: task.id, entityCount: payload.entityIds.length });
+          await taskStore.complete(task.id, {
+            actionsProposed: result.actionsProposed,
+            actionsApplied: result.actionsApplied,
+            entitiesAffected: result.entitiesAffected,
+            searchLoops: result.searchLoops,
+          });
+          logger.info('Tree editor task completed', {
+            taskId: task.id,
+            proposed: result.actionsProposed,
+            applied: result.actionsApplied,
+            entities: result.entitiesAffected,
+          });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           await taskStore.fail(task.id, errorMessage);
-          logger.error('Tree curation task failed', { taskId: task.id, error: errorMessage });
+          logger.error('Tree editor task failed', { taskId: task.id, error: errorMessage });
+
+          eventBus.emit('tree:activity', {
+            type: 'curation-llm-error',
+            message: `Tree editor failed`,
+            detail: errorMessage,
+            timestamp: Date.now(),
+          });
         }
       } else if (task.taskType === 'curate-timeline') {
         const payload = task.payloadParsed as {
