@@ -16,7 +16,9 @@ import type { Intent } from '../types/recording'
 // ============================================================================
 
 const BASE_PROMPT = `You are analyzing a conversation to extract structured knowledge.
-The input is from speech-to-text and may contain residual transcription errors. Use the Known Entities and Working Memory context to interpret what was likely meant — if a word sounds like a known entity, use the known entity name in your extractions. Do not output corrections; just use the correct form directly in entities, memories, and goals.
+The input is from speech-to-text and may contain residual transcription errors. Use the Known Entities and Working Memory context to interpret what was likely meant — if a word sounds like a known entity, use the known entity name in your extractions.
+
+IMPORTANT: Do NOT include a "corrections" array in your output unless the intent is explicitly "correct". Corrections are ONLY for entity name fixes (e.g. {"wrong": "Asha", "correct": "Ashish"}) — never for sentence rewrites, punctuation fixes, or general text cleanup. Just use the correct form directly in entities, memories, and goals.
 
 Context items (entities, topics, memories, goals) are annotated with their age (e.g., [2 min ago], [7 days ago]). Use this to reason temporally:
 - Do NOT associate old entities or memories with new input unless the user explicitly names them.
@@ -110,7 +112,9 @@ INTENT: CORRECT
 The user is correcting a mistake — a name, spelling, entity type, or fact.
 
 Focus on:
-- Use the "corrections" array for any spelling/name fixes: {"wrong": "...", "correct": "..."}.
+- Use the "corrections" array ONLY for entity name/spelling fixes: {"wrong": "Asha", "correct": "Ashish"}.
+  Each correction must be a short name or term (max ~5 words). Do NOT use corrections for sentence rewrites,
+  punctuation fixes, or general text cleanup. Do NOT include corrections where wrong === correct.
 - If the correction changes a fact (not just spelling), create a new memory that states the
   correct version and use "contradicts" to reference the short IDs of the wrong memories.
 - IMPORTANT: Boost the importance of correction memories (0.8-1.0) — the user explicitly
@@ -193,7 +197,9 @@ The transcript contains interleaved speech from multiple participants, labeled w
 - "mic:" = the user (the person running Ramble)
 - "system:" = remote participant(s) (other people on the call)
 
-The transcript may contain residual speech-to-text errors. Use the Known Entities and Working Memory context to interpret what was likely meant — if a word sounds like a known entity, use the known entity name.
+The transcript may contain residual speech-to-text errors. Use the Known Entities and Working Memory context to interpret what was likely meant — if a word sounds like a known entity, use the known entity name directly in your extractions.
+
+IMPORTANT: Do NOT include a "corrections" array. Just use the correct form directly in entities, memories, and goals. Do not attempt to fix or rewrite transcript text.
 
 Context items are annotated with their age (e.g., [2 min ago], [7 days ago]). Use this temporally:
 - Do NOT associate old entities or memories with new input unless explicitly referenced.

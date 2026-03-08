@@ -14,3 +14,5 @@ export {
   settingsHelpers,
   type AppSettings,
 } from './settingsStore';
+
+export { authStore, type AuthState, type AuthTokens } from './authStore';

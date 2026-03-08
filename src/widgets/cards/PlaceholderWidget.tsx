@@ -29,6 +29,7 @@ const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   // Observability widgets (v10)
   'pipeline-monitor': <Activity className="w-8 h-8" />,
   'llm-dashboard': <DollarSign className="w-8 h-8" />,
+  'google-search': <Search className="w-8 h-8" />,
 };
 
 const WIDGET_LABELS: Record<WidgetType, string> = {
@@ -58,6 +59,7 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   // Observability widgets (v10)
   'pipeline-monitor': 'Pipeline Monitor',
   'llm-dashboard': 'LLM Dashboard',
+  'google-search': 'Google Search',
 };
 
 interface PlaceholderWidgetProps extends WidgetProps {

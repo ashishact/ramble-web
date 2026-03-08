@@ -36,13 +36,15 @@ export function FeedEntryRow({ entry }: { entry: FeedEntry }) {
   const isMic = entry.audioType === 'mic';
   return (
     <div className={`flex items-start gap-1.5 py-[3px] px-1 rounded ${isMic ? 'bg-blue-400/[0.06]' : ''}`}>
-      <span className="text-[9px] text-base-content/25 font-mono flex-shrink-0 tabular-nums leading-[1.4]">
-        {formatTime(entry.ts)}
-      </span>
-      <span className="flex items-center gap-[3px] flex-shrink-0 leading-[1.4]">
-        <span className={`w-[5px] h-[5px] rounded-full flex-shrink-0 ${isMic ? 'bg-blue-400/70' : 'bg-purple-400/70'}`} />
-        <span className={`text-[8px] font-semibold ${isMic ? 'text-blue-500/60' : 'text-purple-500/60'}`}>
-          {isMic ? 'mic' : 'sys'}
+      <span className="flex items-center gap-1.5 flex-shrink-0 leading-[1.4]">
+        <span className="text-[9px] text-base-content/25 font-mono tabular-nums">
+          {formatTime(entry.ts)}
+        </span>
+        <span className="flex items-center gap-[3px]">
+          <span className={`w-[5px] h-[5px] rounded-full flex-shrink-0 ${isMic ? 'bg-blue-400/70' : 'bg-purple-400/70'}`} />
+          <span className={`text-[8px] font-semibold ${isMic ? 'text-blue-500/60' : 'text-purple-500/60'}`}>
+            {isMic ? 'mic' : 'sys'}
+          </span>
         </span>
       </span>
       <span className="text-[10px] font-mono text-base-content/70 leading-[1.4] break-words min-w-0 flex-1">

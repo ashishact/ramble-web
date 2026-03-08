@@ -47,6 +47,7 @@ const WIDGET_OPTIONS: { type: WidgetType; label: string; icon: React.ReactNode }
     // Observability widgets (v10)
     { type: 'pipeline-monitor', label: 'Pipeline Monitor', icon: <Activity size={18} /> },
     { type: 'llm-dashboard', label: 'LLM Dashboard', icon: <DollarSign size={18} /> },
+    { type: 'google-search', label: 'Google Search', icon: <Search size={18} /> },
 ];
 
 export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, onRemove, onSwap, onColorChange, onContentChange, onWidgetChange, renderWidget, isRoot }) => {

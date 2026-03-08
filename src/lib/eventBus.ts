@@ -190,6 +190,22 @@ export interface EventPayloads {
 	// Widget data events
 	'questions:updated': { questions: Array<{ id: string; text: string; topic: string; category: string; priority: string }> };
 
+	// Meeting companion cards streamed from ChatGPT via Chrome extension
+	'ext:meeting-cards': {
+		status: 'active' | 'waiting' | 'summary';
+		cards: Array<{
+			type: 'question' | 'insight' | 'decision' | 'action_item' | 'summary_point';
+			text: string;
+			category?: string;
+			reasoning?: string;
+		}>;
+	};
+
+	// Google Search via Chrome extension
+	'ext:google-search': { query: string; requestId: string };
+	'ext:google-search-result': { query: string; result: string; requestId: string };
+	'ext:google-search-error': { query: string; error: string; requestId: string };
+
 	// Knowledge tree navigation events
 	'navigate:entity': { entityId: string };
 	'highlight:node': { nodeId: string };

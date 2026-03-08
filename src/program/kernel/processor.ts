@@ -255,7 +255,10 @@ function normalizeGoal(g: unknown): { statement: string; type: string; status?: 
 }
 
 /**
- * Normalize a single correction
+ * Normalize a single correction.
+ *
+ * Corrections are for ENTITY NAME fixes only (e.g. "Asha" → "Ashish").
+ * Reject: identical pairs (no-ops), long sentence rewrites, single-char diffs.
  */
 function normalizeCorrection(c: unknown): { wrong: string; correct: string } | null {
   if (c && typeof c === 'object') {
@@ -263,6 +266,12 @@ function normalizeCorrection(c: unknown): { wrong: string; correct: string } | n
     const wrong = typeof obj.wrong === 'string' ? obj.wrong.trim() : null;
     const correct = typeof obj.correct === 'string' ? obj.correct.trim() : null;
     if (wrong && correct) {
+      // Skip no-ops (wrong === correct)
+      if (wrong === correct) return null;
+      // Entity names are short — reject anything longer than 3 words
+      const wrongWords = wrong.split(/\s+/).length;
+      const correctWords = correct.split(/\s+/).length;
+      if (wrongWords > 3 || correctWords > 3) return null;
       return { wrong, correct };
     }
   }

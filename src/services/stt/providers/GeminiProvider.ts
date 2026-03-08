@@ -5,6 +5,7 @@
  * Supports VAD-based chunking (same as Groq Whisper)
  */
 
+import { getWorkerHeaders } from '../../cfGateway';
 import type {
   ISTTProvider,
   STTConfig,
@@ -314,9 +315,7 @@ export class GeminiProvider implements ISTTProvider {
       // Call worker API (using simple format that gets transformed to Gemini native)
       const response = await fetch(`${WORKER_URL}/api/cf-gateway`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getWorkerHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           apiKey: this.config.apiKey,
           model: `google/${this.config.model || 'gemini-2.5-flash'}`,

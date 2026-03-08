@@ -1,8 +1,10 @@
 import { Icon } from '@iconify/react';
-import { ChevronLeft, Clock, Copy, Check, Printer } from 'lucide-react';
-import { useState, useRef } from 'react';
+import { ChevronLeft, Clock, Copy, Check, ExternalLink, Share2 } from 'lucide-react';
+import { useState, useRef, useSyncExternalStore } from 'react';
 import { type ArchivedMeeting } from './process';
 import { FeedEntryRow, formatTime, formatShortDate, formatDurationBetween } from './shared';
+import { authStore } from '../../../stores/authStore';
+import { storePut } from '../../../services/rambleApi';
 
 function formatTalkTime(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -73,7 +75,89 @@ interface Props {
 
 export function MeetingDetailView({ meeting, onBack }: Props) {
   const [copied, setCopied] = useState(false);
+  const [shareState, setShareState] = useState<'idle' | 'sharing' | 'shared'>('idle');
   const containerRef = useRef<HTMLDivElement>(null);
+  const authState = useSyncExternalStore(authStore.subscribe, authStore.getState);
+
+  async function handleShare() {
+    const el = containerRef.current;
+    if (!el) return;
+
+    setShareState('sharing');
+    try {
+      // Build the same HTML as handleOpenExport
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.style.cssText = 'width:100%;height:auto;overflow:visible;display:block;';
+      // Remove interactive buttons — they're dead in static HTML
+      clone.querySelectorAll('button').forEach((btn) => btn.remove());
+      clone.querySelectorAll<HTMLElement>('*').forEach((child) => {
+        child.style.maxHeight = 'none';
+        // Only unclip non-inline elements; leave flex children alone so min-w-0 works
+        if (!child.classList.contains('min-w-0')) {
+          child.style.overflow = 'visible';
+        }
+      });
+      // Expand scrollable regions but NOT inline flex children (transcript rows)
+      clone.querySelectorAll<HTMLElement>('[class*="overflow-auto"]').forEach((child) => {
+        child.style.flex = 'none';
+        child.style.height = 'auto';
+        child.style.overflow = 'visible';
+      });
+
+      const headStyles = Array.from(
+        document.head.querySelectorAll<HTMLElement>('style, link[rel="stylesheet"]')
+      ).map((n) => n.outerHTML).join('\n');
+      const theme = document.documentElement.getAttribute('data-theme') ?? '';
+
+      const html = `<!DOCTYPE html>
+<html data-theme="${theme}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${meeting.title || 'Meeting'}</title>
+  ${headStyles}
+  <style>
+    html, body { margin: 0; padding: 12px 16px; max-width: 100vw; overflow-x: hidden; }
+    @page { margin: 1.5cm; size: A4; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+        overflow-wrap: break-word; word-wrap: break-word; word-break: break-word; }
+    p, span, div { max-width: 100%; }
+    @media (max-width: 640px) {
+      html, body { padding: 4px 6px; }
+      .items-start { flex-wrap: wrap; }
+      /* Transcript rows only: timestamp+label above, text below */
+      .items-start.gap-1\.5:has(> .min-w-0) { flex-wrap: wrap; gap: 0 !important; padding-bottom: 6px; }
+      .min-w-0 { width: 100%; min-width: 100%; }
+      /* Overview list: keep number and text inline */
+      ol .items-start { flex-wrap: nowrap !important; gap: 4px !important; padding-bottom: 0 !important; }
+      /* Tighten card sections */
+      .rounded-xl { border-radius: 8px; padding: 6px 8px !important; }
+      .space-y-1\.5 > * + * { margin-top: 4px !important; }
+      .space-y-1 > * + * { margin-top: 2px !important; }
+      /* Reduce content padding */
+      .px-3 { padding-left: 8px !important; padding-right: 8px !important; }
+      .px-2 { padding-left: 4px !important; padding-right: 4px !important; }
+      /* Smaller text for summary/overview on mobile */
+      .text-\[10px\] { font-size: 11px; }
+      .leading-relaxed { line-height: 1.4; }
+    }
+  </style>
+</head>
+<body>${clone.outerHTML}</body>
+</html>`;
+
+      const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
+      const result = await storePut('meeting-reports', meeting.id, html, 'text/html');
+      const publicUrl = `${WORKER_URL}${result.publicUrl}`;
+
+      await navigator.clipboard.writeText(publicUrl);
+      setShareState('shared');
+      setTimeout(() => setShareState('idle'), 3000);
+    } catch (err) {
+      console.error('[Share] Failed:', err);
+      setShareState('idle');
+    }
+  }
 
   function handleExport() {
     const text = buildExportText(meeting);
@@ -83,7 +167,7 @@ export function MeetingDetailView({ meeting, onBack }: Props) {
     });
   }
 
-  function handlePrint() {
+  function handleOpenExport() {
     const el = containerRef.current;
     if (!el) return;
 
@@ -93,17 +177,23 @@ export function MeetingDetailView({ meeting, onBack }: Props) {
     // Root: switch from fixed-height flex column to auto-height block
     clone.style.cssText = 'width:100%;height:auto;overflow:visible;display:block;';
 
+    // Remove interactive buttons — they're dead in static HTML
+    clone.querySelectorAll('button').forEach((btn) => btn.remove());
+
     // All descendants: remove overflow clips and max-height caps
     clone.querySelectorAll<HTMLElement>('*').forEach((child) => {
-      child.style.overflow = 'visible';
       child.style.maxHeight = 'none';
+      // Only unclip non-inline elements; leave flex children alone so min-w-0 works
+      if (!child.classList.contains('min-w-0')) {
+        child.style.overflow = 'visible';
+      }
     });
 
-    // Flex-1 / overflow-auto regions collapse without an explicit height —
-    // switch them to block so they expand to their full content
-    clone.querySelectorAll<HTMLElement>('[class*="flex-1"],[class*="overflow-auto"]').forEach((child) => {
+    // Expand scrollable regions but NOT inline flex children (transcript rows)
+    clone.querySelectorAll<HTMLElement>('[class*="overflow-auto"]').forEach((child) => {
       child.style.flex = 'none';
       child.style.height = 'auto';
+      child.style.overflow = 'visible';
     });
 
     // Bring over all styles (Tailwind bundle + any injected <style> tags)
@@ -114,31 +204,34 @@ export function MeetingDetailView({ meeting, onBack }: Props) {
     // Preserve the DaisyUI theme (set on <html data-theme="...">)
     const theme = document.documentElement.getAttribute('data-theme') ?? '';
 
-    const printWin = window.open('', '_blank');
-    if (!printWin) return;
+    const exportWin = window.open('', '_blank');
+    if (!exportWin) return;
 
-    printWin.document.write(`<!DOCTYPE html>
+    exportWin.document.write(`<!DOCTYPE html>
 <html data-theme="${theme}">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${meeting.title || 'Meeting'}</title>
   ${headStyles}
   <style>
-    html, body { margin: 0; padding: 12px 16px; }
+    html, body { margin: 0; padding: 12px 16px; max-width: 100vw; overflow-x: hidden; }
     @page { margin: 1.5cm; size: A4; }
-    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+        overflow-wrap: break-word; word-wrap: break-word; word-break: break-word; }
+    p, span, div { max-width: 100%; }
+    @media (max-width: 640px) {
+      html, body { padding: 4px 6px; }
+      .items-start { flex-wrap: wrap; }
+      .min-w-0 { width: 100%; min-width: 100%; padding-top: 2px; }
+    }
   </style>
 </head>
 <body>${clone.outerHTML}</body>
 </html>`);
 
-    printWin.document.close();
-    printWin.focus();
-    // Give the browser time to parse and apply the transferred stylesheets
-    setTimeout(() => {
-      printWin.print();
-      printWin.close();
-    }, 600);
+    exportWin.document.close();
+    exportWin.focus();
   }
 
   const openActions = meeting.actionItems.filter((a) => !a.done);
@@ -179,13 +272,28 @@ export function MeetingDetailView({ meeting, onBack }: Props) {
           {copied ? 'Copied' : 'Copy'}
         </button>
         <button
-          onClick={handlePrint}
+          onClick={handleOpenExport}
           className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] text-base-content/40 hover:text-base-content/70 hover:bg-base-200 rounded transition-colors"
-          title="Print"
+          title="Export to new tab"
         >
-          <Printer size={10} />
-          Print
+          <ExternalLink size={10} />
+          Export
         </button>
+        {authState.isAuthenticated && (
+          <button
+            onClick={handleShare}
+            disabled={shareState === 'sharing'}
+            className={`flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded transition-colors ${
+              shareState === 'shared'
+                ? 'text-emerald-500 bg-emerald-500/10'
+                : 'text-primary/60 hover:text-primary hover:bg-primary/10'
+            }`}
+            title="Share via public link"
+          >
+            {shareState === 'shared' ? <Check size={10} /> : <Share2 size={10} />}
+            {shareState === 'sharing' ? 'Sharing...' : shareState === 'shared' ? 'Link copied' : 'Share'}
+          </button>
+        )}
       </div>
 
       {/* Content */}

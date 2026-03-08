@@ -5,7 +5,25 @@
  * Cloudflare's AI Gateway with streaming and non-streaming support.
  */
 
+import { authStore } from '../stores/authStore';
+
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
+
+/**
+ * Build headers for all worker requests.
+ * Always includes X-Device-ID; adds Authorization if authenticated.
+ */
+export function getWorkerHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = {
+    'X-Device-ID': authStore.deviceId,
+    ...extra,
+  };
+  const state = authStore.getState();
+  if (state.isAuthenticated && state.tokens) {
+    headers['Authorization'] = `Bearer ${state.tokens.accessToken}`;
+  }
+  return headers;
+}
 
 export type Provider = 'gemini' | 'openai' | 'anthropic' | 'groq';
 
@@ -73,9 +91,7 @@ export async function streamChat(
   try {
     const response = await fetch(`${WORKER_URL}/api/cf-gateway`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getWorkerHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         apiKey,
         model,

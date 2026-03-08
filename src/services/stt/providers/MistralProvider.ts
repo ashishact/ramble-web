@@ -6,6 +6,7 @@
  * Supports same chunking strategies as GroqWhisperProvider
  */
 
+import { getWorkerHeaders } from '../../cfGateway';
 import type {
   ISTTProvider,
   STTConfig,
@@ -441,6 +442,7 @@ export class MistralProvider implements ISTTProvider {
 
       const response = await fetch(`${WORKER_URL}/api/ramble/mistral-stt`, {
         method: 'POST',
+        headers: getWorkerHeaders(),
         body: formData,
       });
 

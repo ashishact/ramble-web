@@ -46,7 +46,8 @@ export type WidgetType =
   | 'tree-dev-tools'      // Testing panel: backfill, curation log, stats
   // Observability widgets (v10)
   | 'pipeline-monitor'    // Real-time pipeline telemetry event stream
-  | 'llm-dashboard';      // LLM token usage and cost tracking
+  | 'llm-dashboard'       // LLM token usage and cost tracking
+  | 'google-search';      // Google Search via Chrome extension
 
 export interface LeafNode extends BaseNode {
   type: 'leaf';

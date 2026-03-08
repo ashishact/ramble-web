@@ -34,10 +34,12 @@ import {
   PipelineMonitorWidget,
   LLMCostDashboardWidget,
 } from '../widgets';
-import { QuestionWidget, SuggestionWidget, SpeakBetterWidget, MeetingTranscriptionWidget } from '../widgets/on-demand';
+import { QuestionWidget, SuggestionWidget, SpeakBetterWidget, MeetingTranscriptionWidget, GoogleSearchWidget } from '../widgets/on-demand';
 import { MetaQueryLensWidget } from '../widgets/lens';
-import { RotateCcw, PencilRuler, Loader2, Settings, Pause } from 'lucide-react';
+import { RotateCcw, PencilRuler, Loader2, Settings, Pause, User, Sparkles } from 'lucide-react';
 import { systemPause } from '../lib/systemPause';
+import { authStore } from '../stores/authStore';
+import { SignupModal } from './auth/SignupModal';
 import { useShortcut } from '../hooks/useShortcut';
 import { hoveredWidgetStore } from '../stores/hoveredWidgetStore';
 import { toggleWidgetPauseExternal, removeWidgetState } from '../widgets/on-demand/useWidgetPause';
@@ -70,6 +72,10 @@ export const BentoApp: React.FC = () => {
     systemPause.subscribe,
     () => systemPause.isPaused,
   );
+
+  // Auth state — reactive via useSyncExternalStore
+  const authState = useSyncExternalStore(authStore.subscribe, authStore.getState);
+  const [showSignup, setShowSignup] = useState(false);
 
   // Workspace-aware tree state
   const wsState = useSyncExternalStore(workspaceStore.subscribe, workspaceStore.getState);
@@ -231,6 +237,8 @@ export const BentoApp: React.FC = () => {
         return <PipelineMonitorWidget {...props} />;
       case 'llm-dashboard':
         return <LLMCostDashboardWidget {...props} />;
+      case 'google-search':
+        return <GoogleSearchWidget nodeId={node.id} />;
       // Lens Widgets - intercept input on hover, bypass core pipeline
       case 'meta-query':
         return <MetaQueryLensWidget />;
@@ -280,6 +288,21 @@ export const BentoApp: React.FC = () => {
           <CloudSTTStatus />
           <WorkspaceSwitcher onTreeChange={setTree} />
           <SpotlightBar />
+          {/* Auth indicator */}
+          {authState.isAuthenticated ? (
+            <div className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-base-content/40 flex-shrink-0" title={authState.email || ''}>
+              <User size={10} />
+              <span className="max-w-[100px] truncate">{authState.email}</span>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowSignup(true)}
+              className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded transition-colors flex-shrink-0"
+            >
+              <Sparkles size={10} />
+              Sign up for more
+            </button>
+          )}
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={() => setEditMode((prev) => !prev)}
@@ -339,6 +362,7 @@ export const BentoApp: React.FC = () => {
         {/* Help Strip */}
         <HelpStrip />
       </div>
+      <SignupModal isOpen={showSignup} onClose={() => setShowSignup(false)} />
     </GlobalSTTController>
   );
 };

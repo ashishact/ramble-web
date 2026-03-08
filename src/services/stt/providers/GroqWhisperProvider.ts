@@ -12,6 +12,7 @@
  *   - Never cut during speech
  */
 
+import { getWorkerHeaders } from '../../cfGateway';
 import type {
   ISTTProvider,
   STTConfig,
@@ -448,6 +449,7 @@ export class GroqWhisperProvider implements ISTTProvider {
 
       const response = await fetch(`${WORKER_URL}/api/groq-whisper`, {
         method: 'POST',
+        headers: getWorkerHeaders(),
         body: formData,
       });
 
