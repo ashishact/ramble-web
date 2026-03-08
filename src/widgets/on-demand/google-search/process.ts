@@ -58,7 +58,7 @@ Should we Google search something based on this conversation? JSON only.`;
       },
     });
 
-    const { data, error } = parseLLMJSON(response.content);
+    const { data, error } = parseLLMJSON(response.content) as { data: any; error: any };
     if (error || !data) return { search: false };
 
     if (data.search && data.query && typeof data.query === 'string' && data.query.trim().length > 0) {

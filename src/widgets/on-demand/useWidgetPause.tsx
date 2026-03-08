@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Pause, Play } from 'lucide-react';
-import { getWidgetState, getWidgetValue, updateWidgetState, removeWidgetState } from './widgetState';
+import { getWidgetValue, updateWidgetState } from './widgetState';
 
 // Re-export widgetState functions for convenience
 export { getWidgetState, getWidgetValue, updateWidgetState, removeWidgetState } from './widgetState';

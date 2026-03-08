@@ -7,6 +7,7 @@ import { detectSearchNeed } from './process';
 import { Search, Loader2, AlertCircle, Globe, Zap, Mic, Monitor, Radio } from 'lucide-react';
 
 const STORAGE_KEY = 'google-search-results';
+const MAX_RESULTS = 30;
 const TRIM_THRESHOLD = 30;
 const TRIM_TO = 25;
 
