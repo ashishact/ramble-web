@@ -124,8 +124,8 @@ export interface EventPayloads {
 		recordingId?: string;
 		duration?: number;
 		ts: number;
-		segments: Array<{ source: 'mic' | 'system'; text: string; startMs: number; endMs: number }>;
-		transcript: string;  // Pre-formatted "source: text\n..." string
+		segments: Array<{ source: 'mic' | 'system'; text: string; startMs: number; endMs: number; speakerIndex?: number }>;
+		transcript: string;  // Pre-formatted "Speaker N: text\n..." or "source: text\n..." string
 	};
 
 	// Native transcription events (from Ramble native app via rambleNative.ts)
@@ -141,6 +141,8 @@ export interface EventPayloads {
 		speechEndMs?: number;
 		/** Same for all chunks in this recording (optional — older native versions omit) */
 		recordingId?: string;
+		/** Speaker index in meeting mode (0, 1, 2...). Omitted in solo or when attribution fails. */
+		speakerIndex?: number;
 	};
 	// Async entity extraction results (sent independently of text segments)
 	'native:intermediate-entities': {

@@ -310,6 +310,7 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
 
   const pendingTextRef = useRef('');
   const latestAudioTypeRef = useRef<'mic' | 'system'>('mic');
+  const latestSpeakerIndexRef = useRef<number | undefined>(undefined);
   const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLLMRunningRef = useRef(false);
   // Gate: only accept transcription events when in meeting mode.
@@ -354,6 +355,7 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
 
     pendingTextRef.current = '';
     const audioType = latestAudioTypeRef.current;
+    const spkIdx = latestSpeakerIndexRef.current;
 
     isLLMRunningRef.current = true;
     setIsLLMRunning(true);
@@ -363,7 +365,8 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
         pendingText,
         audioType,
         settingsRef.current,
-        forceImmediate
+        forceImmediate,
+        spkIdx,
       );
       if (llmRan) {
         const merged: MeetingState = {
@@ -392,7 +395,8 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
       text: string,
       audioType: 'mic' | 'system',
       segmentStartMs?: number,
-      speechDurationMs?: number
+      speechDurationMs?: number,
+      speakerIndex?: number,
     ) => {
       if (isPausedRef.current) return;
 
@@ -402,6 +406,7 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
         text,
         audioType,
         ts: segmentStartMs ?? now,
+        speakerIndex,
       };
 
       const currentState = stateRef.current;
@@ -435,6 +440,7 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
         ? `${pendingTextRef.current} ${text}`
         : text;
       latestAudioTypeRef.current = audioType;
+      latestSpeakerIndexRef.current = speakerIndex;
 
       if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
       staleTimerRef.current = setTimeout(() => {
@@ -487,6 +493,7 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
         if (latest) {
           pendingTextRef.current = latest.text;
           latestAudioTypeRef.current = latest.audioType;
+          latestSpeakerIndexRef.current = latest.speakerIndex;
           await triggerLLM(true);
         }
       }
@@ -583,7 +590,8 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
         payload.text,
         payload.audioType,
         payload.speechStartMs ?? payload.ts,
-        speechDurationMs
+        speechDurationMs,
+        payload.speakerIndex,
       );
     });
 
@@ -691,6 +699,7 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
     const lastEntries = state.displayFeed.slice(-3);
     pendingTextRef.current = lastEntries.map((e) => e.text).join(' ');
     latestAudioTypeRef.current = lastEntries[lastEntries.length - 1].audioType;
+    latestSpeakerIndexRef.current = lastEntries[lastEntries.length - 1].speakerIndex;
     await triggerLLM(true);
   }, [triggerLLM]);
 

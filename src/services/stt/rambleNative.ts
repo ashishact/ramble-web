@@ -79,6 +79,8 @@ interface RambleIntermediateTextEvent {
     speechEndMs?: number;
     /** Same for all chunks in this recording (optional — older native versions omit) */
     recordingId?: string;
+    /** Speaker index in meeting mode (0, 1, 2...). Omitted in solo mode or when attribution fails. */
+    speakerIndex?: number;
   };
 }
 
@@ -142,7 +144,7 @@ interface RambleMeetingTranscriptCompleteEvent {
     recordingId?: string;
     duration?: number;
     ts?: number;
-    segments: Array<{ source: 'mic' | 'system'; text: string; startMs: number; endMs: number }>;
+    segments: Array<{ source: 'mic' | 'system'; text: string; startMs: number; endMs: number; speakerIndex?: number }>;
     transcript: string;
   };
 }
@@ -387,6 +389,7 @@ class RambleNative {
             speechStartMs: event.payload.speechStartMs,
             speechEndMs: event.payload.speechEndMs,
             recordingId: event.payload.recordingId,
+            speakerIndex: event.payload.speakerIndex,
           });
           break;
         }
@@ -450,7 +453,10 @@ class RambleNative {
             recordingId: event.payload.recordingId,
             duration: event.payload.duration,
             ts: event.payload.ts ?? Date.now(),
-            segments: event.payload.segments,
+            segments: event.payload.segments.map(s => ({
+              ...s,
+              speakerIndex: (s as any).speakerIndex,
+            })),
             transcript: event.payload.transcript,
           });
           break;

@@ -152,12 +152,15 @@ export interface FeedEntry {
   text: string;
   audioType: 'mic' | 'system';
   ts: number;
+  /** Speaker index from native diarization (0, 1, 2...). Undefined when not available. */
+  speakerIndex?: number;
 }
 
 export interface HistorySegment {
   text: string;
   audioType: 'mic' | 'system';
   ts: number;
+  speakerIndex?: number;
 }
 
 export interface MeetingSettings {
@@ -233,12 +236,14 @@ const FeedEntrySchema = z.object({
   text: z.string(),
   audioType: z.enum(['mic', 'system']),
   ts: z.number(),
+  speakerIndex: z.number().optional(),
 });
 
 const HistorySegmentSchema = z.object({
   text: z.string(),
   audioType: z.enum(['mic', 'system']),
   ts: z.number(),
+  speakerIndex: z.number().optional(),
 });
 
 const OverviewItemSchema = z.object({
@@ -622,7 +627,10 @@ function buildUserPrompt(
 
   const recentHistory = state.history
     .slice(-LLM_HISTORY_WINDOW)
-    .map((s) => `[${s.audioType === 'mic' ? 'MIC' : 'SYSTEM'}] ${truncate(s.text, MAX_HISTORY_SEGMENT_CHARS)}`)
+    .map((s) => {
+      const label = s.speakerIndex != null ? `Speaker ${s.speakerIndex}` : (s.audioType === 'mic' ? 'MIC' : 'SYSTEM');
+      return `[${label}] ${truncate(s.text, MAX_HISTORY_SEGMENT_CHARS)}`;
+    })
     .join('\n');
 
   const participantsLine = state.participants.length > 0
@@ -666,7 +674,8 @@ export async function processMeetingUpdate(
   accumulatedText: string,
   latestAudioType: 'mic' | 'system',
   settings: MeetingSettings,
-  forceImmediate = false
+  forceImmediate = false,
+  latestSpeakerIndex?: number,
 ): Promise<MeetingUpdateResult> {
   const now = Date.now();
   const timeSinceLast = now - state.lastLLMCallAt;
@@ -781,6 +790,7 @@ export async function processMeetingUpdate(
       text: truncate(accumulatedText, MAX_HISTORY_SEGMENT_CHARS),
       audioType: latestAudioType,
       ts: now,
+      speakerIndex: latestSpeakerIndex,
     };
     const updatedHistory = [...state.history, historyEntry];
     if (updatedHistory.length > MAX_HISTORY) {
@@ -853,12 +863,13 @@ export async function generateMeetingEndSummary(
   const contextLine = settings.meetingContext ? `Meeting context: ${settings.meetingContext}\n` : '';
   const participantNames = state.participants.map(p => `${p.name} (${p.audioType})`).join(', ');
 
-  // Build transcript with timestamps
+  // Build transcript with timestamps — use speaker labels when available
   const transcript = state.fullFeed.length > 0 ? state.fullFeed : state.displayFeed;
   const transcriptText = transcript
     .map(e => {
       const t = new Date(e.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      return `[${t}] [${e.audioType.toUpperCase()}] ${e.text}`;
+      const label = e.speakerIndex != null ? `Speaker ${e.speakerIndex}` : e.audioType.toUpperCase();
+      return `[${t}] [${label}] ${e.text}`;
     })
     .join('\n');
 

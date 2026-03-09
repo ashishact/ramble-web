@@ -57,7 +57,8 @@ function buildExportText(meeting: ArchivedMeeting): string {
   if (transcript.length > 0) {
     lines.push('TRANSCRIPT');
     transcript.forEach((e) => {
-      lines.push(`[${formatTime(e.ts)}] [${e.audioType.toUpperCase()}] ${e.text}`);
+      const label = e.speakerIndex != null ? `Speaker ${e.speakerIndex}` : e.audioType.toUpperCase();
+      lines.push(`[${formatTime(e.ts)}] [${label}] ${e.text}`);
     });
   }
 
