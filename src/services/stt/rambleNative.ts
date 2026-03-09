@@ -72,12 +72,25 @@ interface RambleIntermediateTextEvent {
     text: string;
     ts?: number;
     audioType?: string;
+    mode?: 'solo' | 'meeting';
     /** VAD segment start time (Unix ms) */
     speechStartMs?: number;
     /** VAD segment end time (Unix ms) */
     speechEndMs?: number;
     /** Same for all chunks in this recording (optional — older native versions omit) */
     recordingId?: string;
+  };
+}
+
+interface RambleIntermediateEntitiesEvent {
+  type: 'intermediate_entities';
+  id: string;
+  payload: {
+    ts?: number;
+    recordingId?: string;
+    entities?: Record<string, string[]>;
+    nlTaggerEntities?: Record<string, string[]>;
+    sessionEntities?: Record<string, string[]>;
   };
 }
 
@@ -89,8 +102,11 @@ interface RambleTranscriptionCompleteEvent {
     duration?: number;
     ts?: number;
     audioType?: string;
+    mode?: 'solo' | 'meeting';
     /** Matches the intermediate_text chunks (optional — older native versions omit) */
     recordingId?: string;
+    /** Accumulated session entities */
+    entities?: Record<string, string[]>;
   };
 }
 
@@ -134,6 +150,7 @@ interface RambleMeetingTranscriptCompleteEvent {
 type RambleNativeEvent =
   | RambleStateChangedEvent
   | RambleIntermediateTextEvent
+  | RambleIntermediateEntitiesEvent
   | RambleTranscriptionCompleteEvent
   | RambleDurationUpdateEvent
   | RambleModeChangedEvent
@@ -365,10 +382,22 @@ class RambleNative {
           eventBus.emit('native:transcription-intermediate', {
             text: event.payload.text,
             audioType,
+            mode: event.payload.mode,
             ts: event.payload.ts ?? Date.now(),
             speechStartMs: event.payload.speechStartMs,
             speechEndMs: event.payload.speechEndMs,
             recordingId: event.payload.recordingId,
+          });
+          break;
+        }
+
+        case 'intermediate_entities': {
+          eventBus.emit('native:intermediate-entities', {
+            ts: event.payload.ts ?? Date.now(),
+            recordingId: event.payload.recordingId,
+            entities: event.payload.entities,
+            nlTaggerEntities: event.payload.nlTaggerEntities,
+            sessionEntities: event.payload.sessionEntities,
           });
           break;
         }
@@ -384,9 +413,11 @@ class RambleNative {
           eventBus.emit('native:transcription-final', {
             text: event.payload.text,
             audioType,
+            mode: event.payload.mode,
             ts: event.payload.ts ?? Date.now(),
             duration: event.payload.duration,
             recordingId: event.payload.recordingId,
+            entities: event.payload.entities,
           });
           break;
         }

@@ -4,7 +4,8 @@ import { profileStorage } from '../../../lib/profileStorage';
 import { useWidgetPause } from '../useWidgetPause';
 import { getWidgetValue, updateWidgetState } from '../widgetState';
 import { detectSearchNeed } from './process';
-import { Search, Loader2, AlertCircle, Globe, Zap, Mic, Monitor, Radio } from 'lucide-react';
+import type { DetectionResult } from './process';
+import { Search, Loader2, AlertCircle, Globe, Zap, Mic, Monitor, Radio, BrainCircuit } from 'lucide-react';
 
 const STORAGE_KEY = 'google-search-results';
 const MAX_RESULTS = 30;
@@ -26,6 +27,9 @@ type SearchResult = {
   excerpt: string | null;
   timestamp: number;
   auto?: boolean; // true if triggered by auto-detection
+  llmQuestion?: string | null;
+  llmAnswer?: string | null;
+  type?: 'search' | 'llm-only'; // 'llm-only' when no search was triggered
 };
 
 function loadResults(): SearchResult[] {
@@ -83,7 +87,10 @@ export function GoogleSearchWidget({ nodeId }: { nodeId: string }) {
   const recentAutoQueriesRef = useRef<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
 
-  const queries = results.map(r => r.query);
+  // Pending detection result — holds LLM answer while Google search is in flight
+  const pendingDetectionRef = useRef<DetectionResult | null>(null);
+
+  const queries = results.filter(r => r.type !== 'llm-only').map(r => r.query);
 
   // Fire a search (manual or auto)
   const fireSearch = useCallback((q: string, auto = false) => {
@@ -105,6 +112,7 @@ export function GoogleSearchWidget({ nodeId }: { nodeId: string }) {
   const handleSearch = useCallback(() => {
     if (!query.trim() || loading) return;
     historyIndexRef.current = -1;
+    pendingDetectionRef.current = null; // manual search, no LLM answer
     fireSearch(query);
     setQuery('');
   }, [query, loading, fireSearch]);
@@ -147,12 +155,42 @@ export function GoogleSearchWidget({ nodeId }: { nodeId: string }) {
       const isAuto = !!(window as any).__rambleAutoSearchFlag;
       delete (window as any).__rambleAutoSearchFlag;
 
+      // Attach LLM answer from pending detection
+      const detection = pendingDetectionRef.current;
+      pendingDetectionRef.current = null;
+
       let parsed: SearchResult;
       try {
         const data = JSON.parse(result);
-        parsed = { query: q, readability: data.readability, raw: data.raw, source: data.source || null, cardImage: data.cardImage || null, title: data.title, excerpt: data.excerpt, timestamp: Date.now(), auto: isAuto };
+        parsed = {
+          query: q,
+          readability: data.readability,
+          raw: data.raw,
+          source: data.source || null,
+          cardImage: data.cardImage || null,
+          title: data.title,
+          excerpt: data.excerpt,
+          timestamp: Date.now(),
+          auto: isAuto,
+          type: 'search',
+          llmQuestion: detection?.llm?.question ?? null,
+          llmAnswer: detection?.llm?.answer ?? null,
+        };
       } catch {
-        parsed = { query: q, readability: null, raw: result, source: null, cardImage: null, title: null, excerpt: null, timestamp: Date.now(), auto: isAuto };
+        parsed = {
+          query: q,
+          readability: null,
+          raw: result,
+          source: null,
+          cardImage: null,
+          title: null,
+          excerpt: null,
+          timestamp: Date.now(),
+          auto: isAuto,
+          type: 'search',
+          llmQuestion: detection?.llm?.question ?? null,
+          llmAnswer: detection?.llm?.answer ?? null,
+        };
       }
       setResults(prev => {
         const updated = trimResults([parsed, ...prev]);
@@ -168,6 +206,7 @@ export function GoogleSearchWidget({ nodeId }: { nodeId: string }) {
       setLoading(false);
       pendingRequestRef.current = null;
       delete (window as any).__rambleAutoSearchFlag;
+      pendingDetectionRef.current = null;
       setError(err);
     };
 
@@ -176,7 +215,7 @@ export function GoogleSearchWidget({ nodeId }: { nodeId: string }) {
     if (stored) {
       try {
         const data = JSON.parse(stored.result);
-        const parsed: SearchResult = { query: stored.query, readability: data.readability, raw: data.raw, source: data.source || null, cardImage: data.cardImage || null, title: data.title, excerpt: data.excerpt, timestamp: Date.now() };
+        const parsed: SearchResult = { query: stored.query, readability: data.readability, raw: data.raw, source: data.source || null, cardImage: data.cardImage || null, title: data.title, excerpt: data.excerpt, timestamp: Date.now(), type: 'search' };
         setResults(prev => {
           const updated = [parsed, ...prev].slice(0, MAX_RESULTS);
           saveResults(updated);
@@ -229,20 +268,43 @@ export function GoogleSearchWidget({ nodeId }: { nodeId: string }) {
         detectingRef.current = false;
         setDetecting(false);
 
-        if (result.search && result.query) {
+        // Always add LLM answer as a result if present
+        if (result.llm?.question && result.llm?.answer) {
+          if (result.search && result.query) {
+            // Search will happen — store detection for when search result arrives
+            const q = result.query.toLowerCase();
+            if (recentAutoQueriesRef.current.includes(q)) {
+              // Duplicate search — still show LLM answer
+              setStatus(`skip duplicate: ${result.query}`);
+              console.log('[GoogleSearch] skip duplicate search, showing LLM answer');
+              addLLMOnlyResult(result);
+              return;
+            }
+            recentAutoQueriesRef.current = [...recentAutoQueriesRef.current.slice(-10), q];
+            pendingDetectionRef.current = result;
+            setStatus(`searching: ${result.query}`);
+            console.log('[GoogleSearch] auto-search:', result.query);
+            fireSearch(result.query, true);
+          } else {
+            // No search needed — show LLM answer on its own
+            setStatus('answered by LLM');
+            console.log('[GoogleSearch] LLM answered, no search needed');
+            addLLMOnlyResult(result);
+          }
+        } else if (result.search && result.query) {
+          // Search without LLM answer (shouldn't happen often)
           const q = result.query.toLowerCase();
           if (recentAutoQueriesRef.current.includes(q)) {
             setStatus(`skip duplicate: ${result.query}`);
-            console.log('[GoogleSearch] skip duplicate:', result.query);
             return;
           }
           recentAutoQueriesRef.current = [...recentAutoQueriesRef.current.slice(-10), q];
+          pendingDetectionRef.current = result;
           setStatus(`searching: ${result.query}`);
-          console.log('[GoogleSearch] auto-search:', result.query);
           fireSearch(result.query, true);
         } else {
           setStatus('no search needed');
-          console.log('[GoogleSearch] LLM said no search needed');
+          console.log('[GoogleSearch] LLM said no search needed, no answer');
         }
       }).catch((err) => {
         detectingRef.current = false;
@@ -258,6 +320,28 @@ export function GoogleSearchWidget({ nodeId }: { nodeId: string }) {
     };
   }, [isPaused, fireSearch]);
 
+  function addLLMOnlyResult(result: DetectionResult) {
+    const entry: SearchResult = {
+      query: result.llm!.question,
+      readability: null,
+      raw: null,
+      source: null,
+      cardImage: null,
+      title: null,
+      excerpt: null,
+      timestamp: Date.now(),
+      auto: true,
+      type: 'llm-only',
+      llmQuestion: result.llm!.question,
+      llmAnswer: result.llm!.answer,
+    };
+    setResults(prev => {
+      const updated = trimResults([entry, ...prev]);
+      saveResults(updated);
+      return updated;
+    });
+  }
+
   return (
     <div
       className="w-full h-full flex flex-col overflow-hidden"
@@ -271,6 +355,7 @@ export function GoogleSearchWidget({ nodeId }: { nodeId: string }) {
           <span className={`text-[8px] truncate flex items-center gap-0.5 ${
             detecting ? 'text-amber-500/70' :
             status.startsWith('searching') ? 'text-primary/70' :
+            status === 'answered by LLM' ? 'text-violet-500/70' :
             'text-base-content/30'
           }`}>
             {detecting && <Zap size={7} />}
@@ -339,24 +424,48 @@ export function GoogleSearchWidget({ nodeId }: { nodeId: string }) {
         {results.map((r, i) => (
           <div
             key={`${r.timestamp}-${i}`}
-            className={`mb-3 rounded-lg ${i === 0 ? 'bg-primary/5 border border-primary/10' : 'bg-base-200/40'}`}
+            className={`mb-3 rounded-lg ${
+              r.type === 'llm-only'
+                ? 'bg-violet-500/5 border border-violet-500/10'
+                : i === 0 ? 'bg-primary/5 border border-primary/10' : 'bg-base-200/40'
+            }`}
           >
             <div className="px-2 pt-2 pb-1 flex items-start justify-between gap-1">
               <div className="min-w-0">
                 <div className="text-[10px] font-medium text-primary/70 truncate flex items-center gap-1">
-                  {r.auto && <Zap size={8} className="text-amber-500 flex-shrink-0" />}
-                  {r.query}
+                  {r.type === 'llm-only' && <BrainCircuit size={9} className="text-violet-500 flex-shrink-0" />}
+                  {r.auto && r.type !== 'llm-only' && <Zap size={8} className="text-amber-500 flex-shrink-0" />}
+                  {r.type === 'llm-only' ? r.llmQuestion : r.query}
                 </div>
-                {r.title && (
+                {r.title && r.type !== 'llm-only' && (
                   <div className="text-[9px] text-base-content/40 truncate">{r.title}</div>
                 )}
               </div>
-              {r.source && (
+              {r.type === 'llm-only' ? (
+                <span className="flex-shrink-0 text-[8px] px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-500/70 font-medium whitespace-nowrap">
+                  LLM
+                </span>
+              ) : r.source ? (
                 <span className="flex-shrink-0 text-[8px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary/60 font-medium whitespace-nowrap">
                   {r.source}
                 </span>
-              )}
+              ) : null}
             </div>
+
+            {/* LLM Answer — shown for both llm-only and search results that have it */}
+            {r.llmAnswer && (
+              <div className="px-2 pb-1.5">
+                <div className="bg-violet-500/5 border border-violet-500/10 rounded-md px-2.5 py-2">
+                  <div className="flex items-center gap-1 mb-1">
+                    <BrainCircuit size={8} className="text-violet-500/60" />
+                    <span className="text-[8px] font-medium text-violet-500/60 uppercase tracking-wider">LLM Answer</span>
+                  </div>
+                  <div className="text-xs text-base-content/70 leading-snug whitespace-pre-wrap break-words">
+                    {r.llmAnswer}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Card screenshot */}
             {r.cardImage && (
@@ -367,16 +476,18 @@ export function GoogleSearchWidget({ nodeId }: { nodeId: string }) {
               </div>
             )}
 
-            {/* Text content */}
-            {(r.raw || r.readability) ? (
-              <div className="px-2 pb-2 overflow-hidden">
-                <div className="text-xs text-base-content/70 leading-snug whitespace-pre-wrap break-words">
-                  {r.raw || r.readability}
+            {/* Text content (Google search results) */}
+            {r.type !== 'llm-only' && (
+              (r.raw || r.readability) ? (
+                <div className="px-2 pb-2 overflow-hidden">
+                  <div className="text-xs text-base-content/70 leading-snug whitespace-pre-wrap break-words">
+                    {r.raw || r.readability}
+                  </div>
                 </div>
-              </div>
-            ) : !r.cardImage ? (
-              <div className="px-2 pb-2 text-xs text-base-content/40 italic">No results</div>
-            ) : null}
+              ) : !r.cardImage ? (
+                <div className="px-2 pb-2 text-xs text-base-content/40 italic">No results</div>
+              ) : null
+            )}
           </div>
         ))}
       </div>

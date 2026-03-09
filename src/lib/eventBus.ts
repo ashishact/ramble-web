@@ -133,6 +133,7 @@ export interface EventPayloads {
 	'native:transcription-intermediate': {
 		text: string;
 		audioType: 'mic' | 'system';
+		mode?: 'solo' | 'meeting';
 		ts: number;
 		/** VAD segment start time (Unix ms), present when native app provides timing */
 		speechStartMs?: number;
@@ -141,7 +142,24 @@ export interface EventPayloads {
 		/** Same for all chunks in this recording (optional — older native versions omit) */
 		recordingId?: string;
 	};
-	'native:transcription-final': { text: string; audioType: 'mic' | 'system'; ts: number; duration?: number; recordingId?: string };
+	// Async entity extraction results (sent independently of text segments)
+	'native:intermediate-entities': {
+		ts: number;
+		recordingId?: string;
+		entities?: Record<string, string[]>;
+		nlTaggerEntities?: Record<string, string[]>;
+		sessionEntities?: Record<string, string[]>;
+	};
+	'native:transcription-final': {
+		text: string;
+		audioType: 'mic' | 'system';
+		mode?: 'solo' | 'meeting';
+		ts: number;
+		duration?: number;
+		recordingId?: string;
+		/** Accumulated session entities at end of recording */
+		entities?: Record<string, string[]>;
+	};
 
 	// Text-to-Speech / Narrator events
 	// mode: 'replace' = stop current speech and speak immediately (default)

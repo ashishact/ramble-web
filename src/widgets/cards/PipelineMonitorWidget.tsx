@@ -8,8 +8,9 @@
  */
 
 import React, { useState, useSyncExternalStore, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Activity, Trash2, Pause, Play, ChevronDown, ChevronRight, Zap, Database, Cpu } from 'lucide-react'
+import { Activity, Trash2, Pause, Play, ChevronDown, ChevronRight, Zap, Database, Cpu, Radio } from 'lucide-react'
 import { telemetry } from '../../program/telemetry'
+import { eventBus } from '../../lib/eventBus'
 import type { TelemetryEvent, PipelineRun } from '../../program/telemetry'
 import type { WidgetProps } from '../types'
 
@@ -171,6 +172,157 @@ const TagList: React.FC<{ label: string; items: string[]; color?: string }> = ({
           <span key={i} className={`text-[9px] px-1 py-0 rounded border ${cls}`}>{item}</span>
         ))}
       </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// Native Feed — Real-time entity & transcription display
+// ============================================================================
+
+type NativeFeedItem =
+  | { type: 'text'; ts: number; text: string; audioType: string; mode?: string; recordingId?: string }
+  | { type: 'entities'; ts: number; entities?: Record<string, string[]>; nlTaggerEntities?: Record<string, string[]>; sessionEntities?: Record<string, string[]>; recordingId?: string }
+  | { type: 'final'; ts: number; text: string; audioType: string; entities?: Record<string, string[]>; duration?: number; mode?: string; recordingId?: string }
+
+const MAX_FEED_ITEMS = 60
+
+const entityMapColorClasses: Record<string, { label: string; tag: string }> = {
+  blue:   { label: 'text-blue-500',   tag: 'bg-blue-50 text-blue-700 border-blue-200' },
+  purple: { label: 'text-purple-500', tag: 'bg-purple-50 text-purple-700 border-purple-200' },
+  green:  { label: 'text-emerald-500', tag: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+}
+
+/** Render a categorized entity map (e.g. { PersonalName: ["John"], PlaceName: ["SF"] }) */
+const EntityMapDisplay: React.FC<{ label: string; entityMap: Record<string, string[]>; color: string }> = ({ label, entityMap, color }) => {
+  const entries = Object.entries(entityMap).filter(([, v]) => v.length > 0)
+  if (entries.length === 0) return null
+
+  const cls = entityMapColorClasses[color] ?? entityMapColorClasses.blue
+  return (
+    <div className="mt-0.5">
+      <span className={`text-[9px] uppercase tracking-wider ${cls.label}`}>{label}</span>
+      {entries.map(([category, names]) => (
+        <div key={category} className="flex flex-wrap items-center gap-0.5 mt-0.5">
+          <span className="text-[9px] text-slate-400 mr-0.5 font-medium">{category}:</span>
+          {names.map((name, i) => (
+            <span key={i} className={`text-[9px] px-1 py-0 rounded border ${cls.tag}`}>{name}</span>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Count total entities across a map */
+function countEntities(map?: Record<string, string[]>): number {
+  if (!map) return 0
+  return Object.values(map).reduce((sum, arr) => sum + arr.length, 0)
+}
+
+const NativeFeedRow: React.FC<{ item: NativeFeedItem }> = ({ item }) => {
+  const [expanded, setExpanded] = useState(false)
+
+  if (item.type === 'text') {
+    return (
+      <div className="px-1.5 py-[3px] text-[11px] font-mono hover:bg-black/[0.03] cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <div className="flex items-center gap-1">
+          <span className="text-slate-400 flex-shrink-0 w-[52px] text-[10px]">{formatTime(item.ts)}</span>
+          <span className="text-[9px] px-1 rounded bg-sky-100 text-sky-600">{item.audioType}</span>
+          {item.mode && <span className="text-[9px] px-1 rounded bg-slate-100 text-slate-500">{item.mode}</span>}
+          <span className="text-slate-700 truncate flex-1">{item.text.slice(0, 100)}{item.text.length > 100 ? '...' : ''}</span>
+          {item.text.length > 100 && (expanded ? <ChevronDown size={10} className="text-slate-300 flex-shrink-0" /> : <ChevronRight size={10} className="text-slate-300 flex-shrink-0" />)}
+        </div>
+        {expanded && <TextPreview label="Full Text" text={item.text} />}
+      </div>
+    )
+  }
+
+  if (item.type === 'entities') {
+    const totalCount = countEntities(item.entities) + countEntities(item.nlTaggerEntities) + countEntities(item.sessionEntities)
+    return (
+      <div className="px-1.5 py-[3px] border-l-2 border-l-purple-300 bg-purple-50/30">
+        <div className="flex items-center gap-1 text-[11px] font-mono cursor-pointer hover:bg-black/[0.03]" onClick={() => setExpanded(!expanded)}>
+          <span className="text-slate-400 flex-shrink-0 w-[52px] text-[10px]">{formatTime(item.ts)}</span>
+          <span className="text-[9px] px-1 rounded bg-purple-100 text-purple-600">entities</span>
+          <span className="text-[9px] text-purple-400">{totalCount} detected</span>
+          <div className="flex-1" />
+          {expanded ? <ChevronDown size={10} className="text-slate-300" /> : <ChevronRight size={10} className="text-slate-300" />}
+        </div>
+        {expanded && (
+          <div className="mt-0.5">
+            {item.entities && <EntityMapDisplay label="Entities" entityMap={item.entities} color="blue" />}
+            {item.nlTaggerEntities && <EntityMapDisplay label="NLTagger" entityMap={item.nlTaggerEntities} color="purple" />}
+            {item.sessionEntities && <EntityMapDisplay label="Session (cumulative)" entityMap={item.sessionEntities} color="green" />}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (item.type === 'final') {
+    const entityCount = countEntities(item.entities)
+    return (
+      <div className="px-1.5 py-[3px] border-l-2 border-l-emerald-400 bg-emerald-50/40">
+        <div className="flex items-center gap-1 text-[11px] font-mono cursor-pointer hover:bg-black/[0.03]" onClick={() => setExpanded(!expanded)}>
+          <span className="text-slate-400 flex-shrink-0 w-[52px] text-[10px]">{formatTime(item.ts)}</span>
+          <span className="text-[9px] px-1 rounded bg-emerald-100 text-emerald-700 font-medium">final</span>
+          <span className="text-[9px] px-1 rounded bg-sky-100 text-sky-600">{item.audioType}</span>
+          {item.mode && <span className="text-[9px] px-1 rounded bg-slate-100 text-slate-500">{item.mode}</span>}
+          {item.duration != null && <span className="text-[9px] text-slate-400">{item.duration.toFixed(1)}s</span>}
+          {entityCount > 0 && <span className="text-[9px] text-emerald-500">{entityCount}E</span>}
+          <span className="text-slate-700 truncate flex-1">{item.text.slice(0, 80)}{item.text.length > 80 ? '...' : ''}</span>
+          {expanded ? <ChevronDown size={10} className="text-slate-300 flex-shrink-0" /> : <ChevronRight size={10} className="text-slate-300 flex-shrink-0" />}
+        </div>
+        {expanded && (
+          <div className="mt-0.5">
+            <TextPreview label="Final Text" text={item.text} />
+            {item.entities && <EntityMapDisplay label="Accumulated Entities" entityMap={item.entities} color="blue" />}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return null
+}
+
+const NativeFeedSection: React.FC<{ items: NativeFeedItem[]; onClear: () => void }> = ({ items, onClear }) => {
+  const [collapsed, setCollapsed] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom on new items
+  useEffect(() => {
+    if (!collapsed && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [items.length, collapsed])
+
+  if (items.length === 0) return null
+
+  return (
+    <div className="border rounded-md mb-2 border-orange-300 bg-orange-50/30">
+      <div className="flex items-center gap-1.5 px-2 py-1 cursor-pointer" onClick={() => setCollapsed(!collapsed)}>
+        <Radio size={12} className="text-orange-500" />
+        <span className="text-[11px] font-medium text-slate-700">Native Input</span>
+        <span className="text-[9px] text-slate-400">{items.length} events</span>
+        <div className="flex-1" />
+        <button
+          onClick={(e) => { e.stopPropagation(); onClear() }}
+          className="p-0.5 rounded hover:bg-orange-100 text-slate-400 hover:text-red-500"
+          title="Clear native feed"
+        >
+          <Trash2 size={10} />
+        </button>
+        {collapsed ? <ChevronRight size={12} className="text-slate-400" /> : <ChevronDown size={12} className="text-slate-400" />}
+      </div>
+      {!collapsed && (
+        <div ref={scrollRef} className="border-t border-orange-200/50 max-h-[300px] overflow-y-auto">
+          {items.map((item, i) => (
+            <NativeFeedRow key={`${item.type}-${item.ts}-${i}`} item={item} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -530,8 +682,34 @@ export const PipelineMonitorWidget: React.FC<WidgetProps> = () => {
   const [paused, setPaused] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [pausedSnapshot, setPausedSnapshot] = useState(snapshot)
+  const [nativeFeed, setNativeFeed] = useState<NativeFeedItem[]>([])
 
   const displaySnapshot = paused ? pausedSnapshot : snapshot
+
+  // Subscribe to native input events (text, entities, final)
+  useEffect(() => {
+    const unsubs = [
+      eventBus.on('native:transcription-intermediate', (p) => {
+        if (paused) return
+        setNativeFeed(prev => [...prev.slice(-(MAX_FEED_ITEMS - 1)), {
+          type: 'text', ts: p.ts, text: p.text, audioType: p.audioType, mode: p.mode, recordingId: p.recordingId,
+        }])
+      }),
+      eventBus.on('native:intermediate-entities', (p) => {
+        if (paused) return
+        setNativeFeed(prev => [...prev.slice(-(MAX_FEED_ITEMS - 1)), {
+          type: 'entities', ts: p.ts, entities: p.entities, nlTaggerEntities: p.nlTaggerEntities, sessionEntities: p.sessionEntities, recordingId: p.recordingId,
+        }])
+      }),
+      eventBus.on('native:transcription-final', (p) => {
+        if (paused) return
+        setNativeFeed(prev => [...prev.slice(-(MAX_FEED_ITEMS - 1)), {
+          type: 'final', ts: p.ts, text: p.text, audioType: p.audioType, entities: p.entities, duration: p.duration, mode: p.mode, recordingId: p.recordingId,
+        }])
+      }),
+    ]
+    return () => unsubs.forEach(u => u())
+  }, [paused])
 
   useEffect(() => {
     if (!paused && scrollRef.current) {
@@ -546,6 +724,11 @@ export const PipelineMonitorWidget: React.FC<WidgetProps> = () => {
 
   const handleClear = useCallback(() => {
     telemetry.clearEvents()
+    setNativeFeed([])
+  }, [])
+
+  const handleClearNativeFeed = useCallback(() => {
+    setNativeFeed([])
   }, [])
 
   const runs = useMemo(() => [...displaySnapshot.runs].reverse(), [displaySnapshot.runs])
@@ -600,12 +783,15 @@ export const PipelineMonitorWidget: React.FC<WidgetProps> = () => {
 
       {/* Event Stream */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-1.5">
-        {displaySnapshot.events.length === 0 ? (
+        {displaySnapshot.events.length === 0 && nativeFeed.length === 0 ? (
           <div className="flex items-center justify-center h-full text-xs text-slate-400">
             No events yet. Speak or type something to see pipeline activity.
           </div>
         ) : (
           <>
+            {/* Native Input Feed — entities & transcription from native app */}
+            <NativeFeedSection items={nativeFeed} onClear={handleClearNativeFeed} />
+
             {runs.map((run, i) => (
               <RunGroup key={run.correlationId} run={run} index={i} />
             ))}
