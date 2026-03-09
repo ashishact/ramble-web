@@ -75,6 +75,60 @@ export async function refreshToken(): Promise<boolean> {
   }
 }
 
+// ── Proactive token refresh ──────────────────────────────────────────
+
+const REFRESH_BUFFER_MS = 2 * 60 * 1000; // refresh 2 min before expiry
+let refreshPromise: Promise<boolean> | null = null;
+
+function getTokenExpiry(): number | null {
+  const state = authStore.getState();
+  if (!state.tokens?.accessToken) return null;
+  try {
+    const payload = JSON.parse(atob(state.tokens.accessToken.split('.')[1]));
+    return payload.exp * 1000; // convert to ms
+  } catch {
+    return null;
+  }
+}
+
+async function ensureFreshToken(): Promise<void> {
+  if (!authStore.isAuthenticated) return;
+
+  const expiry = getTokenExpiry();
+  if (!expiry) return;
+
+  if (Date.now() + REFRESH_BUFFER_MS < expiry) return; // still fresh
+
+  // Deduplicate concurrent refresh calls
+  if (!refreshPromise) {
+    refreshPromise = refreshToken().finally(() => { refreshPromise = null; });
+  }
+  await refreshPromise;
+}
+
+// ── Auth fetch wrapper ───────────────────────────────────────────────
+
+async function authFetch(url: string, init: RequestInit): Promise<Response> {
+  // Proactively refresh before it expires
+  await ensureFreshToken();
+
+  const res = await fetch(url, {
+    ...init,
+    headers: getWorkerHeaders(init.headers as Record<string, string> | undefined),
+  });
+
+  // Safety net: if we still got 401 (clock skew, race), try one refresh + retry
+  if (res.status !== 401 || !authStore.isAuthenticated) return res;
+
+  const refreshed = await refreshToken();
+  if (!refreshed) return res;
+
+  return fetch(url, {
+    ...init,
+    headers: getWorkerHeaders(init.headers as Record<string, string> | undefined),
+  });
+}
+
 // ── Store ────────────────────────────────────────────────────────────
 
 export async function storePut(
@@ -83,9 +137,9 @@ export async function storePut(
   body: string | ArrayBuffer,
   contentType = 'text/html',
 ): Promise<{ ok: boolean; publicUrl: string; size: number }> {
-  const res = await fetch(`${WORKER_URL}/api/v1/store/${namespace}/${key}`, {
+  const res = await authFetch(`${WORKER_URL}/api/v1/store/${namespace}/${key}`, {
     method: 'PUT',
-    headers: getWorkerHeaders({ 'Content-Type': contentType }),
+    headers: { 'Content-Type': contentType },
     body,
   });
 
@@ -98,16 +152,14 @@ export async function storePut(
 }
 
 export async function storeGet(namespace: string, key: string): Promise<Response> {
-  return fetch(`${WORKER_URL}/api/v1/store/${namespace}/${key}`, {
+  return authFetch(`${WORKER_URL}/api/v1/store/${namespace}/${key}`, {
     method: 'GET',
-    headers: getWorkerHeaders(),
   });
 }
 
 export async function storeDelete(namespace: string, key: string): Promise<void> {
-  const res = await fetch(`${WORKER_URL}/api/v1/store/${namespace}/${key}`, {
+  const res = await authFetch(`${WORKER_URL}/api/v1/store/${namespace}/${key}`, {
     method: 'DELETE',
-    headers: getWorkerHeaders(),
   });
 
   if (!res.ok) {
@@ -121,9 +173,8 @@ export async function storeList(namespace?: string): Promise<any[]> {
     ? `${WORKER_URL}/api/v1/store?namespace=${encodeURIComponent(namespace)}`
     : `${WORKER_URL}/api/v1/store`;
 
-  const res = await fetch(url, {
+  const res = await authFetch(url, {
     method: 'GET',
-    headers: getWorkerHeaders(),
   });
 
   if (!res.ok) {
