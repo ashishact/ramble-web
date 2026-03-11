@@ -184,7 +184,7 @@ class Kernel {
    *
    * Flow:
    *   native:recording-started  → recordingManager.start('voice')
-   *   native:transcription-intermediate → recordingManager.addChunk() → submitChunk() (System I)
+   *   native:transcription-intermediate → recordingManager.addChunk() (tracking only, no LLM processing)
    *   native:recording-ended    → recordingManager.end() → submitInput() (System II)
    *
    * Text/paste input: called directly via submitInput() — no recording lifecycle needed.
@@ -202,20 +202,20 @@ class Kernel {
       })
     );
 
-    // ── Intermediate chunk → System I processing ──
+    // ── Intermediate chunk → track in recording only (no System I processing) ──
+    // Chunks are added to recordingManager so recording:chunk events fire for
+    // on-demand widgets that want real-time intermediate text. The kernel does
+    // NOT run LLM extraction here — all extraction happens once on the final
+    // transcript via System II (which already includes all intermediate text).
     this.recordingUnsubscribers.push(
       eventBus.on('native:transcription-intermediate', (payload) => {
         if (!recordingManager.isRecording) return;
 
-        const chunk = recordingManager.addChunk(
+        recordingManager.addChunk(
           payload.text,
           payload.audioType,
           { speechStartMs: payload.speechStartMs, speechEndMs: payload.speechEndMs }
         );
-
-        // Fire-and-forget System I processing
-        this.submitChunk(chunk.text, chunk.chunkIndex, chunk.recordingId)
-          .catch(err => logger.error('System I chunk failed (non-fatal)', { error: err }));
       })
     );
 
@@ -686,72 +686,6 @@ class Kernel {
       conversationId: lastConversationId,
       processingResult: lastResult,
     };
-  }
-
-  // ==========================================================================
-  // System I — Fast Processing (per-chunk)
-  // ==========================================================================
-
-  /**
-   * Submit a single recording chunk for System I (fast/shallow) processing.
-   *
-   * System I processes each intermediate chunk with small context.
-   * Results are saved to DB for time travel but without durability guarantees.
-   * Fire-and-forget — if it fails, the chunk is skipped silently.
-   *
-   * @param chunkText - The text of the chunk to process
-   * @param chunkIndex - Sequential index within the recording
-   * @param recordingId - ID of the active recording
-   * @returns ProcessingResult if successful, null if failed
-   */
-  async submitChunk(
-    chunkText: string,
-    chunkIndex: number,
-    recordingId: string
-  ): Promise<ProcessingResult | null> {
-    if (systemPause.isPaused) return null;
-
-    if (!this.initialized || !this.currentSession) {
-      return null;
-    }
-
-    const sessionId = this.currentSession.id;
-
-    try {
-      // Save as conversation record (for time travel)
-      const conversation = await conversationStore.create({
-        sessionId,
-        rawText: chunkText,
-        sanitizedText: chunkText,
-        source: 'speech',
-        speaker: 'user',
-        recordingId,
-      });
-
-      // Run System I processing — fire-and-forget, no durable task
-      const result = await processInput(
-        sessionId,
-        conversation.id,
-        chunkText,
-        'speech',
-        {
-          mode: 'system-i',
-          recordingId,
-          chunkIndex,
-        }
-      );
-
-      await conversationStore.markProcessed(conversation.id);
-
-      return result;
-    } catch (error) {
-      logger.error('System I chunk processing failed (non-fatal)', {
-        chunkIndex,
-        recordingId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
   }
 
   // ==========================================================================
