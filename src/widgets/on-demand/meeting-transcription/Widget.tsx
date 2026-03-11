@@ -44,7 +44,7 @@ import { MeetingDetailView } from './MeetingDetailView';
 // Helpers
 // ============================================================================
 
-import { FeedEntryRow, formatShortDate, formatDurationBetween } from './shared';
+import { FeedTable, SpeakerLabels, type SpeakerKey, formatShortDate, formatDurationBetween } from './shared';
 
 function formatLiveDuration(startedAt: number): string {
   const ms = Date.now() - startedAt;
@@ -714,6 +714,20 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
     saveMeetingState(updated);
   }, []);
 
+  const handleRenameSpeaker = useCallback((key: string, name: string) => {
+    const state = stateRef.current;
+    const newNames = { ...state.speakerNames };
+    if (name) {
+      newNames[key] = name;
+    } else {
+      delete newNames[key];
+    }
+    const updated: MeetingState = { ...state, speakerNames: newNames };
+    stateRef.current = updated;
+    setMeetingState(updated);
+    saveMeetingState(updated);
+  }, []);
+
   // -------------------------------------------------------------------------
   // Routing
   // -------------------------------------------------------------------------
@@ -1018,6 +1032,28 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
             ))}
           </div>
         )}
+
+        {/* Speaker labels — rename mic/S0, sys/S1 to real names */}
+        {(() => {
+          const seen = new Set<string>();
+          const speakers: SpeakerKey[] = [];
+          for (const e of meetingState.displayFeed) {
+            if (e.speakerIndex == null) continue;
+            const key = `${e.audioType === 'mic' ? 'mic' : 'sys'}:${e.speakerIndex}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              speakers.push({ audioType: e.audioType, speakerIndex: e.speakerIndex });
+            }
+          }
+          if (speakers.length === 0) return null;
+          return (
+            <SpeakerLabels
+              speakers={speakers}
+              speakerNames={meetingState.speakerNames}
+              onRename={handleRenameSpeaker}
+            />
+          );
+        })()}
       </div>
 
       {/* ── Live Feed ── */}
@@ -1026,12 +1062,8 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
           <span className="w-1.5 h-1.5 rounded-full bg-red-400/70 animate-pulse inline-block" />
           Live
         </div>
-        <div className="space-y-0">
-          {meetingState.displayFeed.map((entry) => (
-            <FeedEntryRow key={entry.id} entry={entry} />
-          ))}
-          <div ref={feedBottomRef} />
-        </div>
+        <FeedTable entries={meetingState.displayFeed} speakerNames={meetingState.speakerNames} />
+        <div ref={feedBottomRef} />
       </div>
 
       {/* ── Footer ── */}

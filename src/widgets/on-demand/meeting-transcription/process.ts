@@ -188,6 +188,8 @@ export interface MeetingState {
   title: string;
   /** Detailed end-of-meeting summary — decisions, outcomes, key discussion points */
   summary: string;
+  /** User-assigned speaker names keyed by "mic:0", "sys:1" etc. — per meeting */
+  speakerNames: Record<string, string>;
 }
 
 export interface ArchivedMeeting {
@@ -208,6 +210,8 @@ export interface ArchivedMeeting {
   title: string;
   /** Detailed end-of-meeting summary — decisions, outcomes, key discussion points */
   summary: string;
+  /** User-assigned speaker names keyed by "mic:0", "sys:1" etc. — per meeting */
+  speakerNames: Record<string, string>;
 }
 
 export interface MeetingUpdateResult {
@@ -291,6 +295,7 @@ const MeetingStateSchema = z.object({
   // default('') so existing stored data without this field migrates instead of being wiped
   title: z.string().default(''),
   summary: z.string().default(''),
+  speakerNames: z.record(z.string(), z.string()).default({}),
 });
 
 const ArchivedMeetingSchema = z.object({
@@ -309,6 +314,7 @@ const ArchivedMeetingSchema = z.object({
   // default('') so existing archived meetings without this field migrate instead of being wiped
   title: z.string().default(''),
   summary: z.string().default(''),
+  speakerNames: z.record(z.string(), z.string()).default({}),
 });
 
 const MeetingSettingsSchema = z.object({
@@ -409,6 +415,7 @@ export async function archiveCurrentMeeting(state: MeetingState): Promise<Archiv
     segmentCount: state.segmentCount,
     title: state.title,
     summary: state.summary,
+    speakerNames: state.speakerNames,
   };
 
   // Get ALL active records — fire-and-forget saveMeetingState can create duplicates
@@ -507,6 +514,7 @@ export function createInitialMeetingState(): MeetingState {
     startedAt: Date.now(),
     title: '',
     summary: '',
+    speakerNames: {},
   };
 }
 
@@ -628,7 +636,10 @@ function buildUserPrompt(
   const recentHistory = state.history
     .slice(-LLM_HISTORY_WINDOW)
     .map((s) => {
-      const label = s.speakerIndex != null ? `Speaker ${s.speakerIndex}` : (s.audioType === 'mic' ? 'MIC' : 'SYSTEM');
+      const speakerKey = s.speakerIndex != null ? `${s.audioType === 'mic' ? 'mic' : 'sys'}:${s.speakerIndex}` : null;
+      const label = speakerKey
+        ? (state.speakerNames[speakerKey] || `${s.audioType === 'mic' ? 'MIC' : 'SYS'} Speaker ${s.speakerIndex}`)
+        : (s.audioType === 'mic' ? 'MIC' : 'SYSTEM');
       return `[${label}] ${truncate(s.text, MAX_HISTORY_SEGMENT_CHARS)}`;
     })
     .join('\n');
@@ -868,7 +879,10 @@ export async function generateMeetingEndSummary(
   const transcriptText = transcript
     .map(e => {
       const t = new Date(e.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      const label = e.speakerIndex != null ? `Speaker ${e.speakerIndex}` : e.audioType.toUpperCase();
+      const speakerKey = e.speakerIndex != null ? `${e.audioType === 'mic' ? 'mic' : 'sys'}:${e.speakerIndex}` : null;
+      const label = speakerKey
+        ? (state.speakerNames[speakerKey] || `${e.audioType.toUpperCase()} Speaker ${e.speakerIndex}`)
+        : e.audioType.toUpperCase();
       return `[${t}] [${label}] ${e.text}`;
     })
     .join('\n');

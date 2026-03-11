@@ -2,7 +2,7 @@ import { Icon } from '@iconify/react';
 import { ChevronLeft, Clock, Copy, Check, ExternalLink, Share2 } from 'lucide-react';
 import { useState, useRef, useSyncExternalStore } from 'react';
 import { type ArchivedMeeting } from './process';
-import { FeedEntryRow, formatTime, formatShortDate, formatDurationBetween } from './shared';
+import { FeedTable, formatTime, formatShortDate, formatDurationBetween } from './shared';
 import { authStore } from '../../../stores/authStore';
 import { storePut } from '../../../services/rambleApi';
 
@@ -57,7 +57,10 @@ function buildExportText(meeting: ArchivedMeeting): string {
   if (transcript.length > 0) {
     lines.push('TRANSCRIPT');
     transcript.forEach((e) => {
-      const label = e.speakerIndex != null ? `Speaker ${e.speakerIndex}` : e.audioType.toUpperCase();
+      const speakerKey = e.speakerIndex != null ? `${e.audioType === 'mic' ? 'mic' : 'sys'}:${e.speakerIndex}` : null;
+      const label = speakerKey
+        ? (meeting.speakerNames[speakerKey] || `${e.audioType.toUpperCase()} S${e.speakerIndex}`)
+        : e.audioType.toUpperCase();
       lines.push(`[${formatTime(e.ts)}] [${label}] ${e.text}`);
     });
   }
@@ -449,11 +452,7 @@ export function MeetingDetailView({ meeting, onBack }: Props) {
               <div className="text-[8px] uppercase tracking-widest text-base-content/30 mb-1 px-1">
                 Transcript ({transcript.length} segments)
               </div>
-              <div className="space-y-0">
-                {transcript.map((entry) => (
-                  <FeedEntryRow key={entry.id} entry={entry} />
-                ))}
-              </div>
+              <FeedTable entries={transcript} speakerNames={meeting.speakerNames} />
             </div>
           );
         })()}
