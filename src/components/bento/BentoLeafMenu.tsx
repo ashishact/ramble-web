@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { MoreVertical, Columns, Rows, Type, Palette, Trash2 } from 'lucide-react';
+import { MoreVertical, Columns, Rows, Type, Palette, Trash2, RefreshCw } from 'lucide-react';
 
 const COLORS = [
   'bg-white', 'bg-slate-50', 'bg-zinc-50', 'bg-stone-50', 'bg-neutral-50',
@@ -17,6 +17,7 @@ interface BentoLeafMenuProps {
   onSplit: (id: string, direction: 'horizontal' | 'vertical', ratio: number) => void;
   onColorChange: (id: string, color: string) => void;
   onRename: () => void;
+  onSwitchWidget: () => void;
   onDelete: () => void;
 }
 
@@ -28,6 +29,7 @@ export const BentoLeafMenu: React.FC<BentoLeafMenuProps> = ({
   onSplit,
   onColorChange,
   onRename,
+  onSwitchWidget,
   onDelete,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -129,6 +131,12 @@ export const BentoLeafMenu: React.FC<BentoLeafMenuProps> = ({
             className="flex items-center gap-2 px-2.5 py-1.5 text-xs hover:bg-slate-50 rounded text-left whitespace-nowrap border-t border-slate-100 mt-1 pt-2 text-slate-700 font-medium"
           >
             <Type size={14} className="text-slate-400" /> Rename Pane
+          </button>
+          <button
+            onClick={() => handleAction(onSwitchWidget)}
+            className="flex items-center gap-2 px-2.5 py-1.5 text-xs hover:bg-slate-50 rounded text-left whitespace-nowrap text-slate-700 font-medium"
+          >
+            <RefreshCw size={14} className="text-violet-500" /> Switch Widget
           </button>
 
           <div className="pt-2 mt-1 border-t border-slate-100">

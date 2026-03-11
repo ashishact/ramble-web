@@ -21,34 +21,63 @@ interface BentoLeafProps {
   isRoot: boolean;
 }
 
-const WIDGET_OPTIONS: { type: WidgetType; label: string; icon: React.ReactNode }[] = [
-    { type: 'voice-recorder', label: 'Voice', icon: <Mic size={18} /> },
-    { type: 'text-input', label: 'Text Input', icon: <PenTool size={18} /> },
-    { type: 'conversation', label: 'Conversation', icon: <MessageSquare size={18} /> },
-    { type: 'entities', label: 'Entities', icon: <Users size={18} /> },
-    { type: 'topics', label: 'Topics', icon: <Hash size={18} /> },
-    { type: 'memories', label: 'Memories', icon: <Brain size={18} /> },
-    { type: 'goals', label: 'Goals', icon: <Target size={18} /> },
-    { type: 'stats', label: 'Stats', icon: <BarChart3 size={18} /> },
-    { type: 'questions', label: 'Questions', icon: <HelpCircle size={18} /> },
-    { type: 'suggestions', label: 'Suggestions', icon: <Lightbulb size={18} /> },
-    { type: 'speak-better', label: 'Speak Better', icon: <Sparkles size={18} /> },
-    { type: 'settings', label: 'Settings', icon: <Settings size={18} /> },
-    { type: 'working-memory', label: 'Context', icon: <Eye size={18} /> },
-    { type: 'learned-corrections', label: 'Corrections', icon: <Pencil size={18} /> },
-    { type: 'tts', label: 'TTS', icon: <Volume2 size={18} /> },
-    { type: 'meeting-transcription', label: 'Meeting', icon: <Radio size={18} /> },
-    // Lens Widgets - intercept input on hover, bypass core pipeline
-    { type: 'meta-query', label: 'Meta Query', icon: <Search size={18} /> },
-    // Knowledge tree widgets (v9)
-    { type: 'knowledge-tree', label: 'Knowledge Tree', icon: <GitBranch size={18} /> },
-    { type: 'timeline', label: 'Timeline', icon: <Clock size={18} /> },
-    { type: 'tree-dev-tools', label: 'Tree Dev Tools', icon: <FlaskConical size={18} /> },
-    // Observability widgets (v10)
-    { type: 'pipeline-monitor', label: 'Pipeline Monitor', icon: <Activity size={18} /> },
-    { type: 'llm-dashboard', label: 'LLM Dashboard', icon: <DollarSign size={18} /> },
-    { type: 'google-search', label: 'Google Search', icon: <Search size={18} /> },
+type WidgetCategory = 'Input' | 'Display' | 'AI' | 'Knowledge' | 'Tools';
+const WIDGET_CATEGORIES: WidgetCategory[] = ['Input', 'Display', 'AI', 'Knowledge', 'Tools'];
+
+const WIDGET_OPTIONS: { type: WidgetType; label: string; icon: React.ReactNode; color: string; category: WidgetCategory }[] = [
+    // Input
+    { type: 'voice-recorder', label: 'Voice', icon: <Mic size={16} />, color: 'red', category: 'Input' },
+    { type: 'text-input', label: 'Text Input', icon: <PenTool size={16} />, color: 'slate', category: 'Input' },
+    // Display
+    { type: 'conversation', label: 'Conversation', icon: <MessageSquare size={16} />, color: 'blue', category: 'Display' },
+    { type: 'entities', label: 'Entities', icon: <Users size={16} />, color: 'violet', category: 'Display' },
+    { type: 'topics', label: 'Topics', icon: <Hash size={16} />, color: 'indigo', category: 'Display' },
+    { type: 'memories', label: 'Memories', icon: <Brain size={16} />, color: 'pink', category: 'Display' },
+    { type: 'goals', label: 'Goals', icon: <Target size={16} />, color: 'amber', category: 'Display' },
+    { type: 'stats', label: 'Stats', icon: <BarChart3 size={16} />, color: 'cyan', category: 'Display' },
+    { type: 'working-memory', label: 'Context', icon: <Eye size={16} />, color: 'teal', category: 'Display' },
+    { type: 'learned-corrections', label: 'Corrections', icon: <Pencil size={16} />, color: 'orange', category: 'Display' },
+    { type: 'tts', label: 'TTS', icon: <Volume2 size={16} />, color: 'emerald', category: 'Display' },
+    // AI
+    { type: 'questions', label: 'Questions', icon: <HelpCircle size={16} />, color: 'purple', category: 'AI' },
+    { type: 'suggestions', label: 'Suggestions', icon: <Lightbulb size={16} />, color: 'yellow', category: 'AI' },
+    { type: 'speak-better', label: 'Speak Better', icon: <Sparkles size={16} />, color: 'fuchsia', category: 'AI' },
+    { type: 'meeting-transcription', label: 'Meeting', icon: <Radio size={16} />, color: 'rose', category: 'AI' },
+    { type: 'meta-query', label: 'Meta Query', icon: <Search size={16} />, color: 'sky', category: 'AI' },
+    { type: 'google-search', label: 'Google Search', icon: <Search size={16} />, color: 'green', category: 'AI' },
+    // Knowledge
+    { type: 'knowledge-tree', label: 'Knowledge Tree', icon: <GitBranch size={16} />, color: 'lime', category: 'Knowledge' },
+    { type: 'timeline', label: 'Timeline', icon: <Clock size={16} />, color: 'cyan', category: 'Knowledge' },
+    // Tools
+    { type: 'settings', label: 'Settings', icon: <Settings size={16} />, color: 'slate', category: 'Tools' },
+    { type: 'tree-dev-tools', label: 'Tree Dev Tools', icon: <FlaskConical size={16} />, color: 'stone', category: 'Tools' },
+    { type: 'pipeline-monitor', label: 'Pipeline Monitor', icon: <Activity size={16} />, color: 'zinc', category: 'Tools' },
+    { type: 'llm-dashboard', label: 'LLM Dashboard', icon: <DollarSign size={16} />, color: 'neutral', category: 'Tools' },
 ];
+
+const WIDGET_COLOR_MAP: Record<string, { text: string; bg: string }> = {
+    red: { text: 'text-red-500', bg: 'bg-red-50' },
+    slate: { text: 'text-slate-500', bg: 'bg-slate-100' },
+    blue: { text: 'text-blue-500', bg: 'bg-blue-50' },
+    violet: { text: 'text-violet-500', bg: 'bg-violet-50' },
+    indigo: { text: 'text-indigo-500', bg: 'bg-indigo-50' },
+    pink: { text: 'text-pink-500', bg: 'bg-pink-50' },
+    amber: { text: 'text-amber-500', bg: 'bg-amber-50' },
+    cyan: { text: 'text-cyan-500', bg: 'bg-cyan-50' },
+    teal: { text: 'text-teal-500', bg: 'bg-teal-50' },
+    orange: { text: 'text-orange-500', bg: 'bg-orange-50' },
+    emerald: { text: 'text-emerald-500', bg: 'bg-emerald-50' },
+    purple: { text: 'text-purple-500', bg: 'bg-purple-50' },
+    yellow: { text: 'text-yellow-500', bg: 'bg-yellow-50' },
+    fuchsia: { text: 'text-fuchsia-500', bg: 'bg-fuchsia-50' },
+    rose: { text: 'text-rose-500', bg: 'bg-rose-50' },
+    sky: { text: 'text-sky-500', bg: 'bg-sky-50' },
+    green: { text: 'text-green-500', bg: 'bg-green-50' },
+    lime: { text: 'text-lime-500', bg: 'bg-lime-50' },
+    stone: { text: 'text-stone-500', bg: 'bg-stone-100' },
+    zinc: { text: 'text-zinc-500', bg: 'bg-zinc-100' },
+    neutral: { text: 'text-neutral-500', bg: 'bg-neutral-100' },
+};
 
 export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, onRemove, onSwap, onColorChange, onContentChange, onWidgetChange, renderWidget, isRoot }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -61,6 +90,7 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
   const [isDragOver, setIsDragOver] = useState(false);
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isSwitchingWidget, setIsSwitchingWidget] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -77,8 +107,18 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
   }, [isRenaming]);
 
   useEffect(() => {
-    if (!pendingSplit) {
-        splitRatioRef.current = 0.5;
+    splitRatioRef.current = 0.5;
+    if (dividerRef.current) {
+        if (pendingSplit === 'horizontal') {
+            dividerRef.current.style.left = '50%';
+            dividerRef.current.style.top = '';
+        } else if (pendingSplit === 'vertical') {
+            dividerRef.current.style.top = '50%';
+            dividerRef.current.style.left = '';
+        }
+    }
+    if (badgeTextRef.current) {
+        badgeTextRef.current.textContent = '50%';
     }
   }, [pendingSplit]);
 
@@ -94,24 +134,32 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
             setPendingSplit(null);
             setShowDeleteConfirm(false);
             setIsRenaming(false);
+            setIsSwitchingWidget(false);
             return;
         }
 
-        if (showDeleteConfirm || isRenaming || isSetupMode) return;
-        if (pendingSplit) return;
+        if (showDeleteConfirm || isRenaming || isSetupMode || isSwitchingWidget) return;
+        if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
 
-        if (e.key.toLowerCase() === 'h') {
-            setPendingSplit('horizontal');
+        if (e.key.toLowerCase() === 'h' || e.key.toLowerCase() === 'v') {
+            if (pendingSplit) {
+                setPendingSplit(prev => prev === 'horizontal' ? 'vertical' : 'horizontal');
+            } else {
+                setPendingSplit(e.key.toLowerCase() === 'h' ? 'horizontal' : 'vertical');
+            }
             splitRatioRef.current = 0.5;
-        } else if (e.key.toLowerCase() === 'v') {
-            setPendingSplit('vertical');
-            splitRatioRef.current = 0.5;
+            return;
+        }
+
+        if ((e.key === 'Backspace' || e.key === 'Delete') && !isRoot && !pendingSplit) {
+            setShowDeleteConfirm(true);
+            return;
         }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [editMode, isHovered, pendingSplit, showDeleteConfirm, isRenaming, isSetupMode]);
+  }, [editMode, isHovered, pendingSplit, showDeleteConfirm, isRenaming, isSetupMode, isSwitchingWidget, isRoot]);
 
   const handleMouseMoveSplit = (e: React.MouseEvent) => {
       if (!pendingSplit) return;
@@ -210,10 +258,37 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
       }
   }
 
+  const widgetPickerGrid = (onSelect: (type: WidgetType, label: string) => void) => (
+      <div className="flex flex-col gap-0.5 w-full">
+          {WIDGET_CATEGORIES.map(category => {
+              const widgets = WIDGET_OPTIONS.filter(w => w.category === category);
+              if (widgets.length === 0) return null;
+              return (
+                  <div key={category}>
+                      <div className="text-[9px] font-bold uppercase tracking-widest text-slate-300 px-1 mb-0.5 mt-2 first:mt-0">{category}</div>
+                      <div className="grid grid-cols-2 gap-1">
+                          {widgets.map(widget => {
+                              const colors = WIDGET_COLOR_MAP[widget.color];
+                              return (
+                                  <button key={widget.type} onClick={() => onSelect(widget.type, widget.label)}
+                                      className={`flex items-center gap-2 px-2 py-1.5 rounded-lg ${colors.bg} hover:brightness-[0.97] border border-transparent hover:border-slate-200/80 transition-all text-left group/wbtn`}>
+                                      <div className={`${colors.text} shrink-0`}>{widget.icon}</div>
+                                      <span className="text-[11px] text-slate-600 font-semibold truncate group-hover/wbtn:text-slate-900">{widget.label}</span>
+                                  </button>
+                              );
+                          })}
+                      </div>
+                  </div>
+              );
+          })}
+      </div>
+  );
+
   return (
     <div
-      className={`bento-widget relative w-full h-full flex flex-col overflow-hidden rounded ${node.color} text-slate-800 border border-slate-200/50 group transition-all duration-200
-      ${editMode && isHovered && !isDragOver ? 'outline outline-1 -outline-offset-1 outline-blue-500/30' : ''}
+      className={`bento-widget relative w-full h-full flex flex-col overflow-hidden rounded ${node.color} text-slate-800 group transition-all duration-200
+      ${editMode ? 'border border-dashed border-blue-300/60' : 'border border-slate-200/50'}
+      ${editMode && isHovered && !isDragOver ? 'outline outline-2 -outline-offset-1 outline-blue-500/50' : ''}
       ${!editMode && isGloballyHovered ? 'outline outline-1 -outline-offset-1 outline-primary/30' : ''}
       `}
       onMouseEnter={() => { setIsHovered(true); hoveredWidgetStore.set(node.id, node.widgetType); }}
@@ -258,6 +333,28 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
                 >
                     <Check size={14} /> Confirm
                 </button>
+            </div>
+        </div>
+      )}
+
+      {/* Switch Widget Overlay */}
+      {editMode && isSwitchingWidget && !isSetupMode && (
+        <div className="absolute inset-0 z-50 bg-white/95 backdrop-blur-sm animate-in fade-in zoom-in duration-200 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-3 pt-3 pb-1 flex items-center justify-between shrink-0">
+                <div>
+                    <h3 className="text-sm font-bold text-slate-700">Switch Widget</h3>
+                    <p className="text-[10px] text-slate-400 font-medium">Press Esc to cancel</p>
+                </div>
+                <button onClick={() => setIsSwitchingWidget(false)} className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                    <X size={14} />
+                </button>
+            </div>
+            <div className="flex-1 overflow-auto px-3 pb-3">
+                {widgetPickerGrid((type, label) => {
+                    onWidgetChange(node.id, type);
+                    onContentChange(node.id, label);
+                    setIsSwitchingWidget(false);
+                })}
             </div>
         </div>
       )}
@@ -324,10 +421,11 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
           nodeId={node.id}
           nodeColor={node.color}
           isRoot={isRoot}
-          disabled={showDeleteConfirm || isSetupMode || !!pendingSplit}
+          disabled={showDeleteConfirm || isSetupMode || !!pendingSplit || isSwitchingWidget}
           onSplit={onSplit}
           onColorChange={onColorChange}
           onRename={() => setIsRenaming(true)}
+          onSwitchWidget={() => setIsSwitchingWidget(true)}
           onDelete={() => setShowDeleteConfirm(true)}
         />
       </div>
@@ -336,35 +434,26 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
       {/* --- PANEL BODY --- */}
       <div className="@container flex-1 w-full relative overflow-auto">
         {isSetupMode ? (
-            <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-white/40 overflow-auto">
-                <div className="mb-5 text-center">
-                    <h3 className="text-sm font-bold text-slate-700 mb-1">Select Widget</h3>
+            <div className="w-full h-full flex flex-col overflow-hidden bg-white/40">
+                <div className="px-3 pt-3 pb-1 text-center shrink-0">
+                    <h3 className="text-sm font-bold text-slate-700 mb-0.5">Select Widget</h3>
                     <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">Choose what to display</p>
                 </div>
-
-                <div className="grid grid-cols-3 @sm:grid-cols-5 gap-2.5 mb-5 w-full max-w-[400px]">
-                    {WIDGET_OPTIONS.map((widget) => (
-                        <button
-                            key={widget.type}
-                            onClick={() => {
-                                onWidgetChange(node.id, widget.type);
-                                onContentChange(node.id, widget.label);
-                            }}
-                            className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 transition-all group/btn shadow-sm hover:shadow-md"
-                        >
-                            <div className="text-slate-400 group-hover/btn:text-blue-600 transition-colors">{widget.icon}</div>
-                            <span className="text-[10px] text-slate-600 font-bold group-hover/btn:text-blue-700">{widget.label}</span>
-                        </button>
-                    ))}
+                <div className="flex-1 overflow-auto px-3 pb-3">
+                    {widgetPickerGrid((type, label) => {
+                        onWidgetChange(node.id, type);
+                        onContentChange(node.id, label);
+                    })}
                 </div>
-
                 {!isRoot && (
-                    <button
-                        onClick={() => onRemove(node.id)}
-                        className="text-[10px] text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1 font-bold"
-                    >
-                        <X size={10} /> Close empty pane
-                    </button>
+                    <div className="shrink-0 px-3 pb-2 text-center">
+                        <button
+                            onClick={() => onRemove(node.id)}
+                            className="text-[10px] text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1 font-bold mx-auto"
+                        >
+                            <X size={10} /> Close empty pane
+                        </button>
+                    </div>
                 )}
             </div>
         ) : renderWidget ? (
@@ -384,7 +473,7 @@ export const BentoLeaf: React.FC<BentoLeafProps> = ({ node, editMode, onSplit, o
         )}
       </div>
       
-      {editMode && isRoot && !pendingSplit && !showDeleteConfirm && !isSetupMode && (
+      {editMode && isRoot && !pendingSplit && !showDeleteConfirm && !isSetupMode && !isSwitchingWidget && (
         <div className="absolute bottom-6 left-0 right-0 text-center text-slate-400 text-xs pointer-events-none opacity-60 z-20 font-medium">
            Press <span className="text-slate-900 font-bold bg-white shadow-sm border border-slate-200 px-1.5 rounded mx-0.5">H</span> or <span className="text-slate-900 font-bold bg-white shadow-sm border border-slate-200 px-1.5 rounded mx-0.5">V</span> to start splitting
         </div>
