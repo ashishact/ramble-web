@@ -1,23 +1,30 @@
 /**
- * InterviewEngine — Pipes user speech into a persistent AI conversation
+ * InterviewEngine (SYS-I) — Pipes user speech into a persistent AI conversation
  *
  * Listens to graph:tables:changed for ['conversations'], fetches the
  * latest conversation, and sends it through the active transport.
- * The transport generates exactly ONE follow-up question, which is
- * emitted via eventBus for the QuestionWidget.
  *
- * Fail-safe: Conversations that fail to send are queued and retried
- * on the next successful attempt. The pending queue and question history
- * are persisted to profileStorage so they survive page refreshes.
- * On first boot (nothing in storage), bootstraps from the DB.
+ * The transport classifies the user's intent and returns a structured response:
+ *   - ASSERT/EXPLORE → deepening question (spoken, stored)
+ *   - QUERY → answer from context, with optional graph search round-trip
+ *   - CORRECT → acknowledgment
+ *   - COMMAND → confirmation
+ *   - SOCIAL → brief reply
+ *
+ * Search round-trips: if the LLM requests graph context (search ≠ null),
+ * we run a vector search on DuckDB and inject results back into the conversation.
+ * Max 2 search rounds per send to prevent runaway loops.
+ *
+ * Fail-safe: Conversations that fail are queued and retried on the next attempt.
+ * Pending queue and response history are persisted to profileStorage.
  *
  * Chat Session: Each session maps to a single ChatGPT conversation.
- * The chatSessionId and chatUrl are persisted so the extension can
- * find and reuse the right ChatGPT tab across page reloads and
- * service worker restarts. Ramble-web is the source of truth.
+ * chatSessionId and chatUrl are persisted so the extension can find and reuse
+ * the right ChatGPT tab across page reloads and service worker restarts.
+ * Ramble-web is the source of truth for all session state.
  *
  * Transports:
- *   - ChatGPTTransport: Chrome extension → ChatGPT tab (maintains history)
+ *   - ChatGPTTransport: Chrome extension → ChatGPT tab (history maintained by ChatGPT)
  *   - LLMApiTransport: Direct API call via callLLM() tier system
  */
 
@@ -26,7 +33,7 @@ import { graphEventBus } from '../../graph/events/EventBus'
 import { eventBus } from '../../lib/eventBus'
 import { profileStorage } from '../../lib/profileStorage'
 import { createLogger } from '../../program/utils/logger'
-import type { InterviewTransport } from './transports'
+import type { InterviewTransport, UserIntent, SysISearchRequest } from './transports'
 import { ChatGPTTransport } from './transports'
 
 const log = createLogger('InterviewEngine')
@@ -34,7 +41,12 @@ const log = createLogger('InterviewEngine')
 export type InterviewState = 'idle' | 'sending' | 'error' | 'no-transport'
 
 export interface InterviewQuestion {
-  question: string
+  /** What was spoken to the user */
+  response: string
+  /** Isolated question text for ASSERT/EXPLORE (same as response). Null for QUERY/CORRECT etc. */
+  question: string | null
+  intent: UserIntent
+  topic: string
   timestamp: number
 }
 
@@ -45,6 +57,8 @@ interface PendingEntry {
 }
 
 const DEBOUNCE_MS = 1000
+const MAX_SEARCH_ROUNDS = 2
+
 const STORAGE_KEY_PENDING = 'interview-pending'
 const STORAGE_KEY_HISTORY = 'interview-history'
 const STORAGE_KEY_PROCESSED = 'interview-last-processed-id'
@@ -65,42 +79,34 @@ export class InterviewEngine {
   private chatUrl: string | null = null
 
   constructor(transport?: InterviewTransport) {
-    // Load or generate chat session ID
     this.chatSessionId = this.loadOrCreateSessionId()
     this.chatUrl = profileStorage.getItem(STORAGE_KEY_CHAT_URL)
-
-    // Create transport with session context
     this.transport = transport ?? new ChatGPTTransport(this.chatSessionId, this.chatUrl)
   }
 
   async start(): Promise<void> {
-    if (this.unsubGraphEvents) return // already started
+    if (this.unsubGraphEvents) return
 
     log.info('Starting with transport:', this.transport.name, 'session:', this.chatSessionId)
 
-    // Restore persisted state
     this.loadFromStorage()
 
-    // If we have history, the system prompt was already sent — tell transport
     if (this.history.length > 0) {
       this.transport.resume()
     }
 
-    // Bootstrap from DB if nothing was persisted (first-ever load)
     if (!this.bootstrapped) {
       await this.bootstrapFromDB()
     }
 
     this.updateState(this.transport.isAvailable() ? 'idle' : 'no-transport')
 
-    // Subscribe to graph table changes (conversations table)
     this.unsubGraphEvents = graphEventBus.on('graph:tables:changed', (payload) => {
       if (payload.tables.includes('conversations')) {
         this.onConversationsChanged()
       }
     })
 
-    // Bridge streaming text from Chrome extension → eventBus
     this.streamHandler = ((e: CustomEvent) => {
       const { conversationId, text } = e.detail || {}
       if (conversationId === this.chatSessionId && text) {
@@ -124,7 +130,6 @@ export class InterviewEngine {
     }
   }
 
-  /** Swap transport at runtime (e.g. when user changes plan/settings) */
   setTransport(transport: InterviewTransport): void {
     log.info('Switching transport to:', transport.name)
     this.transport = transport
@@ -159,7 +164,6 @@ export class InterviewEngine {
     return this.chatUrl
   }
 
-  /** Retry sending all pending conversations. Called by widget retry button. */
   retry(): void {
     if (this.state === 'sending') return
     if (this.pending.length === 0) return
@@ -167,14 +171,6 @@ export class InterviewEngine {
     this.flush()
   }
 
-  /**
-   * Reset the chat session — starts a new ChatGPT conversation.
-   * Clears history, pending, and generates a new session ID.
-   *
-   * @param withContext — if true, bootstraps recent conversations from DB
-   *   and immediately flushes them so ChatGPT gets full context on the
-   *   first message (system prompt + recent user speech).
-   */
   async resetSession(opts?: { withContext?: boolean }): Promise<void> {
     log.info('Resetting chat session', { withContext: !!opts?.withContext })
 
@@ -183,16 +179,13 @@ export class InterviewEngine {
     this.chatUrl = null
     this.lastProcessedId = null
 
-    // Generate new session ID
     this.chatSessionId = this.generateSessionId()
     profileStorage.setItem(STORAGE_KEY_SESSION_ID, this.chatSessionId)
     profileStorage.removeItem(STORAGE_KEY_CHAT_URL)
     this.saveToStorage()
 
-    // Reset transport for new session
     this.transport.reset()
 
-    // Recreate ChatGPT transport with new session if using default
     if (this.transport instanceof ChatGPTTransport) {
       this.transport = new ChatGPTTransport(this.chatSessionId, null)
     }
@@ -200,7 +193,6 @@ export class InterviewEngine {
     this.updateState(this.transport.isAvailable() ? 'idle' : 'no-transport')
     log.info('New session:', this.chatSessionId)
 
-    // Bootstrap from DB and send immediately so ChatGPT gets context
     if (opts?.withContext) {
       this.bootstrapped = false
       await this.bootstrapFromDB()
@@ -216,7 +208,6 @@ export class InterviewEngine {
   private loadOrCreateSessionId(): string {
     const stored = profileStorage.getItem(STORAGE_KEY_SESSION_ID)
     if (stored) return stored
-
     const id = this.generateSessionId()
     profileStorage.setItem(STORAGE_KEY_SESSION_ID, id)
     return id
@@ -226,21 +217,21 @@ export class InterviewEngine {
     return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
   }
 
-  // ── Persistence ───────────────────────────────────────────────────
+  // ── Persistence ──────────────────────────────────────────────────
 
   private loadFromStorage(): void {
     const pending = profileStorage.getJSON<PendingEntry[]>(STORAGE_KEY_PENDING)
-    const history = profileStorage.getJSON<InterviewQuestion[]>(STORAGE_KEY_HISTORY)
+    const rawHistory = profileStorage.getJSON<unknown[]>(STORAGE_KEY_HISTORY)
     const lastId = profileStorage.getItem(STORAGE_KEY_PROCESSED)
 
     if (pending) this.pending = pending
-    if (history) this.history = history
+    if (rawHistory) this.history = rawHistory.map(migrateHistoryEntry)
     if (lastId) this.lastProcessedId = lastId
 
-    this.bootstrapped = !!(history || pending || lastId)
+    this.bootstrapped = !!(rawHistory || pending || lastId)
 
     if (this.bootstrapped) {
-      log.info('Restored from storage — pending:', this.pending.length, 'history:', this.history.length, 'chatUrl:', this.chatUrl)
+      log.info('Restored from storage — pending:', this.pending.length, 'history:', this.history.length)
     }
   }
 
@@ -252,16 +243,12 @@ export class InterviewEngine {
     }
   }
 
-  /**
-   * First-ever boot: load recent user conversations from DB into the
-   * pending queue so the first send has context.
-   */
   private async bootstrapFromDB(): Promise<void> {
     try {
       const recent = await conversationStore.getRecent(10)
       const userConvs = recent
         .filter(c => c.speaker === 'user' && c.source === 'text' && c.raw_text.trim().length >= 3)
-        .reverse() // oldest first
+        .reverse()
 
       if (userConvs.length > 0) {
         this.pending = userConvs.map(c => ({
@@ -279,11 +266,11 @@ export class InterviewEngine {
       }
     } catch (err) {
       log.error('Bootstrap from DB failed:', err)
-      this.bootstrapped = true // don't retry bootstrap
+      this.bootstrapped = true
     }
   }
 
-  // ── Event handling ────────────────────────────────────────────────
+  // ── Event handling ───────────────────────────────────────────────
 
   private updateState(newState: InterviewState): void {
     if (this.state === newState) return
@@ -299,10 +286,6 @@ export class InterviewEngine {
     }, DEBOUNCE_MS)
   }
 
-  /**
-   * Check for new user conversations and add to pending queue,
-   * then attempt to flush.
-   */
   private async enqueueLatest(): Promise<void> {
     try {
       const recent = await conversationStore.getRecent(1)
@@ -310,13 +293,9 @@ export class InterviewEngine {
 
       const latest = recent[0]
 
-      // Skip if already seen
       if (latest.id === this.lastProcessedId) return
-      // Skip if already in pending queue
       if (this.pending.some(p => p.conversationId === latest.id)) return
-      // Skip if not user speech
       if (latest.speaker !== 'user') return
-      // Skip very short text
       if (latest.raw_text.trim().length < 3) return
 
       this.lastProcessedId = latest.id
@@ -334,10 +313,8 @@ export class InterviewEngine {
     }
   }
 
-  /**
-   * Send all pending conversations as a single batched prompt to the transport.
-   * On success, clears the pending queue. On failure, queue is preserved for retry.
-   */
+  // ── Flush ────────────────────────────────────────────────────────
+
   private async flush(): Promise<void> {
     if (!this.transport.isAvailable()) {
       this.updateState('no-transport')
@@ -348,69 +325,129 @@ export class InterviewEngine {
 
     this.updateState('sending')
 
-    // Build a combined prompt from all pending conversations.
-    // Single item (normal flow): just the raw text — no brackets, no time.
-    // Multiple items (bootstrap/batch): numbered with relative time for context.
     const now = Date.now()
     const combined = this.pending.length === 1
       ? this.pending[0].rawText
       : this.pending.map((p, i) => `[${i + 1} · ${timeAgo(now - p.timestamp)}] "${p.rawText}"`).join('\n\n')
 
-    log.info('Flushing', this.pending.length, 'pending conversations to', this.transport.name)
+    log.info('Flushing', this.pending.length, 'pending to', this.transport.name)
 
     try {
-      const result = await this.transport.send(combined)
-      log.info('Got question:', result.question)
+      // Initial send
+      let result = await this.transport.send(combined)
 
-      // Update chatUrl if reported back
+      // Search round-trips — LLM may request graph context before responding
+      let searchRounds = 0
+      while (result.search && searchRounds < MAX_SEARCH_ROUNDS) {
+        log.info('LLM requesting search:', result.search)
+        const searchText = await this.runGraphSearch(result.search)
+        result = await this.transport.injectContext(`<search-res>\n${searchText}\n</search-res>`)
+        searchRounds++
+      }
+
+      // If still requesting search after max rounds, fall back
+      if (result.search) {
+        log.warn('Exceeded max search rounds, falling back')
+        result = {
+          intent: 'QUERY',
+          topic: result.topic,
+          response: "I couldn't find the relevant context in your knowledge graph.",
+          question: null,
+          search: null,
+        }
+      }
+
+      const response = result.response ?? ''
+      log.info('Got response:', response.slice(0, 80), '| intent:', result.intent, '| topic:', result.topic)
+
+      // Update chatUrl if ChatGPT transport reports one back
       if (result.chatUrl && result.chatUrl !== this.chatUrl) {
         this.chatUrl = result.chatUrl
         profileStorage.setItem(STORAGE_KEY_CHAT_URL, result.chatUrl)
         log.info('Chat URL updated:', result.chatUrl)
       }
 
-      // Success — clear pending, record question
       this.pending = []
 
       const entry: InterviewQuestion = {
+        response,
         question: result.question,
+        intent: result.intent,
+        topic: result.topic,
         timestamp: Date.now(),
       }
       this.history.push(entry)
       this.saveToStorage()
 
-      // Store question as a conversation record so it appears in the unified thread
+      // Store in conversation DB so it appears in the unified thread
       try {
         const conv = await conversationStore.create({
           sessionId: this.chatSessionId,
-          rawText: result.question,
+          rawText: response,
           source: 'interview',
-          speaker: 'interviewer',
-          intent: 'question',
+          speaker: 'sys1',
+          intent: result.intent.toLowerCase(),
         })
-        // Mark processed immediately — no extraction needed on interview questions
         await conversationStore.markProcessed(conv.id)
       } catch (err) {
-        log.error('Failed to store interview question in DuckDB:', err)
+        log.error('Failed to store SYS-I response in DuckDB:', err)
       }
 
       eventBus.emit('interview:question', entry)
-      if (entry.question) {
-        eventBus.emit('tts:speak', { text: entry.question })
+      if (response) {
+        eventBus.emit('tts:speak', { text: response })
       }
       this.updateState('idle')
     } catch (err) {
       log.error('Transport error:', err)
-      // Pending is preserved — can be retried
       this.saveToStorage()
       this.updateState('error')
+    }
+  }
+
+  // ── Graph Search ─────────────────────────────────────────────────
+
+  /**
+   * Run a semantic search on the knowledge graph.
+   * Used during search round-trips when SYS-I requests context.
+   */
+  private async runGraphSearch(req: SysISearchRequest): Promise<string> {
+    try {
+      const [{ getGraphService }, { EmbeddingService }, { VectorSearch }] = await Promise.all([
+        import('../../graph'),
+        import('../../graph/embeddings/EmbeddingService'),
+        import('../../graph/embeddings/VectorSearch'),
+      ])
+
+      const graph = await getGraphService()
+      const embeddings = new EmbeddingService(graph)
+      const vs = new VectorSearch(graph, embeddings)
+
+      const labelFilter = req.type === 'entity' ? 'entity'
+        : req.type === 'goal' ? 'goal'
+        : 'memory'
+
+      const results = await vs.searchByText(req.query, 5, labelFilter)
+
+      if (results.length === 0) {
+        return `No ${req.type} results found for: "${req.query}"`
+      }
+
+      return results.map(r => {
+        const props = r.node.properties as Record<string, unknown>
+        const content = props.content ?? props.name ?? props.title ?? r.node.id
+        const score = r.similarity.toFixed(2)
+        return `[${req.type}] ${String(content)} (relevance: ${score})`
+      }).join('\n')
+    } catch (err) {
+      log.warn('Graph search failed:', err)
+      return 'Search unavailable.'
     }
   }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/** Humanized relative time from a duration in ms. */
 function timeAgo(ms: number): string {
   const sec = Math.round(ms / 1000)
   if (sec < 5) return 'just now'
@@ -419,4 +456,24 @@ function timeAgo(ms: number): string {
   if (min < 60) return `${min}m ago`
   const hr = Math.round(min / 60)
   return `${hr}h ago`
+}
+
+/**
+ * Migrate old-format history entries ({ question: string, timestamp: number })
+ * to the new shape ({ response, question, intent, topic, timestamp }).
+ */
+function migrateHistoryEntry(raw: unknown): InterviewQuestion {
+  const entry = raw as Record<string, unknown>
+  if (entry.response) {
+    return entry as unknown as InterviewQuestion
+  }
+  // Old format
+  const text = (entry.question as string) ?? ''
+  return {
+    response: text,
+    question: text,
+    intent: 'ASSERT',
+    topic: 'general',
+    timestamp: (entry.timestamp as number) ?? Date.now(),
+  }
 }

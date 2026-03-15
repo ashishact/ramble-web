@@ -40,16 +40,16 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
     if (isPaused) return;
 
     const unsubQuestion = eventBus.on('interview:question', (payload) => {
-      const finalText = payload.question?.trim() || '';
+      const finalText = payload.response?.trim() || '';
       const streamedText = streamingTextRef.current?.trim() || '';
-      const questionText = finalText || streamedText;
+      const responseText = finalText || streamedText;
 
-      if (questionText) {
-        // Dedup: don't add if last question has the same text
+      if (responseText) {
+        // Dedup: don't add if last entry has the same response text
         setQuestions(qs => {
           const last = qs[qs.length - 1];
-          if (last && last.question === questionText) return qs;
-          return [...qs, { ...payload, question: questionText }];
+          if (last && last.response === responseText) return qs;
+          return [...qs, { ...payload, response: responseText }];
         });
       }
 
@@ -264,9 +264,16 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
             </div>
           </div>
 
-          {/* Question text or streaming text */}
+          {/* Intent chip */}
+          {latest?.intent && latest.intent !== 'ASSERT' && (
+            <span className={`inline-block mb-2 px-2 py-0.5 text-[9px] font-semibold rounded-full uppercase tracking-wide ${intentChipClass(latest.intent)}`}>
+              {latest.intent}
+            </span>
+          )}
+
+          {/* Response text or streaming text */}
           <p className="text-[14px] leading-[1.6] text-slate-700 font-medium">
-            {streamingText || latest?.question}
+            {streamingText || latest?.response}
           </p>
         </div>
       </div>
@@ -286,14 +293,22 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
                 <div className="rounded-lg bg-slate-50/80 hover:bg-slate-100/80 transition-colors duration-150 px-3 py-2">
                   <div className="flex items-center gap-1.5 mb-0.5">
                     <span className="text-[9px] font-semibold text-slate-300">
-                      Q{questions.length - 1 - i}
+                      {questions.length - 1 - i}
                     </span>
-                    <span className="text-[9px] text-slate-300">
+                    {q.intent && q.intent !== 'ASSERT' && (
+                      <span className={`px-1.5 py-px text-[8px] font-semibold rounded-full uppercase tracking-wide ${intentChipClass(q.intent)}`}>
+                        {q.intent}
+                      </span>
+                    )}
+                    {q.topic && (
+                      <span className="text-[9px] text-slate-300">{q.topic}</span>
+                    )}
+                    <span className="text-[9px] text-slate-300 ml-auto">
                       {formatTime(q.timestamp)}
                     </span>
                   </div>
                   <p className="text-[12px] text-slate-500 leading-relaxed">
-                    {q.question}
+                    {q.response}
                   </p>
                 </div>
               </div>
@@ -327,4 +342,15 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
 function formatTime(ts: number): string {
   const d = new Date(ts);
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
+function intentChipClass(intent: string): string {
+  switch (intent) {
+    case 'QUERY':   return 'bg-blue-500/10 text-blue-600';
+    case 'CORRECT': return 'bg-amber-500/10 text-amber-600';
+    case 'EXPLORE': return 'bg-violet-500/10 text-violet-600';
+    case 'COMMAND': return 'bg-emerald-500/10 text-emerald-600';
+    case 'SOCIAL':  return 'bg-slate-100 text-slate-400';
+    default:        return 'bg-slate-100 text-slate-400';
+  }
 }
