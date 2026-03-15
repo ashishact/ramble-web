@@ -35,6 +35,7 @@ import {
   PipelineMonitorWidget,
   LLMCostDashboardWidget,
   EmbeddingTestWidget,
+  SynthesisWidget,
 } from '../widgets';
 import { QuestionWidget, SuggestionWidget, SpeakBetterWidget, MeetingTranscriptionWidget, GoogleSearchWidget } from '../widgets/on-demand';
 import { MetaQueryLensWidget } from '../widgets/lens';
@@ -130,6 +131,9 @@ export const BentoApp: React.FC = () => {
         // Start interview engine after graph is ready (needs conversationStore)
         const { getInterviewEngine } = await import('../modules/interview');
         getInterviewEngine();
+        // Start SYS-II period scheduler (catches up missed periods on startup)
+        const { startPeriodScheduler } = await import('../modules/synthesis');
+        startPeriodScheduler();
       })
       .catch(err => {
         console.warn('[KG] DuckDB init failed:', err);
@@ -254,6 +258,8 @@ export const BentoApp: React.FC = () => {
         return <LLMCostDashboardWidget {...props} />;
       case 'embedding-test':
         return <EmbeddingTestWidget {...props} />;
+      case 'synthesis':
+        return <SynthesisWidget {...props} />;
       case 'google-search':
         return <GoogleSearchWidget nodeId={node.id} />;
       // Lens Widgets - intercept input on hover, bypass core pipeline

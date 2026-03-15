@@ -71,7 +71,10 @@ export type LogModule =
   | 'IdleScheduler'
   // Interview engine
   | 'InterviewEngine'
-  | 'InterviewTransport';
+  | 'InterviewTransport'
+  // Synthesis engine (SYS-II)
+  | 'ExtractionEngine'
+  | 'PeriodScheduler';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -148,6 +151,8 @@ const MODULE_COLORS: Record<LogModule, string> = {
   IdleScheduler: '#78909C',
   InterviewEngine: '#E91E63',
   InterviewTransport: '#E91E63',
+  ExtractionEngine: '#00BCD4',
+  PeriodScheduler: '#00897B',
 };
 
 interface LogConfig {

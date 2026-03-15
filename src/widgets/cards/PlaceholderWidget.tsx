@@ -31,6 +31,7 @@ const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'llm-dashboard': <DollarSign className="w-8 h-8" />,
   'google-search': <Search className="w-8 h-8" />,
   'embedding-test': <FlaskConical className="w-8 h-8" />,
+  'synthesis': <Brain className="w-8 h-8" />,
 };
 
 const WIDGET_LABELS: Record<WidgetType, string> = {
@@ -62,6 +63,7 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   'llm-dashboard': 'LLM Dashboard',
   'google-search': 'Google Search',
   'embedding-test': 'Embedding Test',
+  'synthesis': 'Synthesis',
 };
 
 interface PlaceholderWidgetProps extends WidgetProps {

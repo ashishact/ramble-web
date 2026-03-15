@@ -239,6 +239,19 @@ export interface EventPayloads {
 	'interview:stream': { text: string; conversationId: string };
 	'interview:state': { state: 'idle' | 'sending' | 'error' | 'no-transport' };
 
+	// Synthesis engine events (SYS-II)
+	'synthesis:scheduler-state': { state: 'idle' | 'running' };
+	'synthesis:period-progress': { periodKey: string; message: string };
+	'synthesis:period-done': {
+		periodKey: string;
+		summary: {
+			periodKey: string; branchId: string;
+			entities: number; memories: number; goals: number; topics: number;
+			compaction: string;
+		};
+	};
+	'synthesis:period-error': { periodKey: string; error: string };
+
 	// Knowledge tree navigation events
 	'navigate:entity': { entityId: string };
 	'highlight:node': { nodeId: string };

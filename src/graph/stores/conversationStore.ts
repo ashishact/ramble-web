@@ -123,4 +123,20 @@ export const conversationStore = {
     )
   },
 
+  /**
+   * Get user conversations within a time range (for SYS-II period extraction).
+   * Only returns speaker='user' entries with non-trivial text.
+   */
+  async getByTimeRange(startMs: number, endMs: number): Promise<GraphConversation[]> {
+    const graph = await getGraph()
+    return graph.query<GraphConversation>(
+      `SELECT * FROM conversations
+       WHERE created_at >= $1 AND created_at < $2
+         AND speaker = 'user'
+         AND length(trim(raw_text)) > 5
+       ORDER BY created_at ASC`,
+      [startMs, endMs]
+    )
+  },
+
 }

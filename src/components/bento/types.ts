@@ -48,7 +48,8 @@ export type WidgetType =
   | 'pipeline-monitor'    // Real-time pipeline telemetry event stream
   | 'llm-dashboard'       // LLM token usage and cost tracking
   | 'google-search'       // Google Search via Chrome extension
-  | 'embedding-test';     // Embedding model speed comparison test
+  | 'embedding-test'      // Embedding model speed comparison test
+  | 'synthesis';          // SYS-II period extraction monitor + manual trigger
 
 export interface LeafNode extends BaseNode {
   type: 'leaf';

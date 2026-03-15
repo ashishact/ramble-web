@@ -21,3 +21,4 @@ export { PipelineMonitorWidget } from './cards/PipelineMonitorWidget';
 export { LLMCostDashboardWidget } from './cards/LLMCostDashboardWidget';
 export { EmbeddingTestWidget } from './cards/EmbeddingTestWidget';
 export { GoogleSearchWidget } from './on-demand/google-search';
+export { SynthesisWidget } from './cards/SynthesisWidget';
