@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useSyncExternalStore, Suspense, lazy } from 'react';
 import { runV4PostMigrationIfNeeded } from '../program/services/decayService';
 import { initConsolidation } from '../program/kernel/consolidation';
+import { getGraphService, getEmbeddingListener } from '../graph';
 import {
   BentoNodeComponent,
   createInitialTree,
@@ -33,6 +34,7 @@ import {
   TreeDevToolsWidget,
   PipelineMonitorWidget,
   LLMCostDashboardWidget,
+  EmbeddingTestWidget,
 } from '../widgets';
 import { QuestionWidget, SuggestionWidget, SpeakBetterWidget, MeetingTranscriptionWidget, GoogleSearchWidget } from '../widgets/on-demand';
 import { MetaQueryLensWidget } from '../widgets/lens';
@@ -119,6 +121,19 @@ export const BentoApp: React.FC = () => {
       initConsolidation();
     };
     runMaintenance().catch(console.error);
+
+    // Initialize DuckDB Knowledge Graph + Embedding Listener + Interview Engine (non-blocking)
+    getGraphService(profileName ?? 'default')
+      .then(async (g) => {
+        console.log('[KG] DuckDB graph initialized', g);
+        await getEmbeddingListener();
+        // Start interview engine after graph is ready (needs conversationStore)
+        const { getInterviewEngine } = await import('../modules/interview');
+        getInterviewEngine();
+      })
+      .catch(err => {
+        console.warn('[KG] DuckDB init failed:', err);
+      });
   }, []);
 
   const handleSplit = useCallback((id: string, direction: 'horizontal' | 'vertical', ratio = 0.5) => {
@@ -237,6 +252,8 @@ export const BentoApp: React.FC = () => {
         return <PipelineMonitorWidget {...props} />;
       case 'llm-dashboard':
         return <LLMCostDashboardWidget {...props} />;
+      case 'embedding-test':
+        return <EmbeddingTestWidget {...props} />;
       case 'google-search':
         return <GoogleSearchWidget nodeId={node.id} />;
       // Lens Widgets - intercept input on hover, bypass core pipeline

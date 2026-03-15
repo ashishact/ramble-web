@@ -1,66 +1,17 @@
-import { useState, useEffect } from 'react';
 import type { WidgetProps } from '../types';
-import { database } from '../../db/database';
-import Entity from '../../db/models/Entity';
-import Topic from '../../db/models/Topic';
-import Memory from '../../db/models/Memory';
-import Goal from '../../db/models/Goal';
-import Conversation from '../../db/models/Conversation';
-import { Q } from '@nozbe/watermelondb';
-import { combineLatest } from 'rxjs';
+import { useGraphCounts, useConversationCount } from '../../graph/data';
 import { Users, Hash, Brain, Target, MessageSquare } from 'lucide-react';
 
-interface Stats {
-  entities: number;
-  topics: number;
-  memories: number;
-  goals: number;
-  conversations: number;
-}
-
 export const StatsWidget: React.FC<WidgetProps> = () => {
-  const [stats, setStats] = useState<Stats>({
-    entities: 0,
-    topics: 0,
-    memories: 0,
-    goals: 0,
-    conversations: 0,
-  });
-
-  useEffect(() => {
-    const entities$ = database.get<Entity>('entities').query().observeCount();
-    const topics$ = database.get<Topic>('topics').query().observeCount();
-    const memories$ = database.get<Memory>('memories').query().observe();
-    const goals$ = database.get<Goal>('goals').query(Q.where('status', 'active')).observeCount();
-    const conversations$ = database.get<Conversation>('conversations').query().observeCount();
-
-    const subscription = combineLatest([
-      entities$,
-      topics$,
-      memories$,
-      goals$,
-      conversations$,
-    ]).subscribe(([entityCount, topicCount, memoriesArr, goalCount, conversationCount]) => {
-      // Filter active memories (exclude true tombstones; contested memories are active)
-      const activeMemories = memoriesArr.filter((m) => !m.supersededBy && m.state !== 'superseded');
-      setStats({
-        entities: entityCount,
-        topics: topicCount,
-        memories: activeMemories.length,
-        goals: goalCount,
-        conversations: conversationCount,
-      });
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const { counts } = useGraphCounts(['entity', 'topic', 'memory', 'goal']);
+  const { count: conversationCount } = useConversationCount();
 
   const statItems = [
-    { label: 'Entities', value: stats.entities, icon: Users, color: 'bg-purple-50 text-purple-600' },
-    { label: 'Topics', value: stats.topics, icon: Hash, color: 'bg-blue-50 text-blue-600' },
-    { label: 'Memories', value: stats.memories, icon: Brain, color: 'bg-emerald-50 text-emerald-600' },
-    { label: 'Goals', value: stats.goals, icon: Target, color: 'bg-orange-50 text-orange-600' },
-    { label: 'Messages', value: stats.conversations, icon: MessageSquare, color: 'bg-pink-50 text-pink-600' },
+    { label: 'Entities', value: counts.entity ?? 0, icon: Users, color: 'bg-purple-50 text-purple-600' },
+    { label: 'Topics', value: counts.topic ?? 0, icon: Hash, color: 'bg-blue-50 text-blue-600' },
+    { label: 'Memories', value: counts.memory ?? 0, icon: Brain, color: 'bg-emerald-50 text-emerald-600' },
+    { label: 'Goals', value: counts.goal ?? 0, icon: Target, color: 'bg-orange-50 text-orange-600' },
+    { label: 'Messages', value: conversationCount, icon: MessageSquare, color: 'bg-pink-50 text-pink-600' },
   ];
 
   return (

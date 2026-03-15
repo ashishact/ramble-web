@@ -31,7 +31,7 @@ import { profileStorage } from '../../lib/profileStorage';
 import { eventBus } from '../../lib/eventBus';
 
 const TTS_TEXT_STORAGE_KEY = 'tts-widget-text';
-const TTS_VOICE_SETTINGS_KEY = 'tts-voice-settings';
+const TTS_VOICE_SETTINGS_KEY = 'tts-voice-settings-web';
 
 interface VoiceSettings {
   language: LanguageCode;
@@ -44,8 +44,7 @@ const VoiceSettingsSchema = z.object({
 });
 
 /**
- * Load and validate voice settings from storage
- * Returns defaults if stored data is invalid or missing
+ * Load and validate voice settings from storage.
  */
 function loadVoiceSettings(): VoiceSettings {
   const defaultVoiceDef = voices.find(v => v.id === DEFAULT_VOICE);
@@ -64,7 +63,7 @@ function loadVoiceSettings(): VoiceSettings {
     return defaults;
   }
 
-  // Cross-reference check: voice must exist in our voices list and match the stored language
+  // Cross-reference check: voice must exist in the voice list and match the stored language
   const voiceDef = voices.find(v => v.id === parsed.data.voice);
   if (!voiceDef || voiceDef.language !== parsed.data.language) {
     profileStorage.removeItem(TTS_VOICE_SETTINGS_KEY);
@@ -112,6 +111,7 @@ export const TTSWidget: React.FC<WidgetProps> = () => {
   useEffect(() => {
     isInitialized.current = true;
   }, []);
+
   const [gradientProgress, setGradientProgress] = useState(0);
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
 
@@ -339,12 +339,12 @@ export const TTSWidget: React.FC<WidgetProps> = () => {
   };
 
   // Get current voice info for display
-  const currentVoiceInfo = availableVoices.find(v => v.id === currentVoice);
+  const currentVoiceInfo = voices.find(v => v.id === currentVoice) || availableVoices[0];
 
   return (
     <div
       className="w-full h-full flex flex-col overflow-hidden"
-      data-doc='{"icon":"mdi:account-voice","title":"Narrator","desc":"Read text aloud with 54 voices in 8 languages. Use ← → to navigate chunks. Alt+Click any text on page to narrate it."}'
+      data-doc='{"icon":"mdi:account-voice","title":"Narrator","desc":"Read text aloud with up to 54 voices. Use ← → to navigate chunks. Alt+Click any text on page to narrate it."}'
     >
       {/* Header - Compact */}
       <div className="bg-base-200/30 px-2 py-1 flex items-center justify-between border-b border-base-200 flex-shrink-0">

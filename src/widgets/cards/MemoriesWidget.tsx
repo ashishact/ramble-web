@@ -1,13 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import type { WidgetProps } from '../types';
-import { database } from '../../db/database';
-import Memory from '../../db/models/Memory';
-import { Q } from '@nozbe/watermelondb';
+import { useGraphData } from '../../graph/data';
+import type { MemoryItem } from '../../graph/data';
 import { formatRelativeTime } from '../../program/utils';
 import { Brain, Settings } from 'lucide-react';
 import { MemoryManager } from '../../components/v2/MemoryManager';
-import { eventBus } from '../../lib/eventBus';
-import type { MemoryRef } from '../../program/WorkingMemory';
 
 // Muted colors for memory types
 const typeColors: Record<string, string> = {
@@ -22,88 +19,17 @@ const typeColors: Record<string, string> = {
   decision: 'text-indigo-400/70',
 };
 
-// Unified display item — works for both MemoryRef (from System II) and Memory (from DB)
-interface MemoryDisplayItem {
-  id: string;
-  content: string;
-  type: string;
-  confidence: number;
-  lastReinforced: number;
-  reinforcementCount: number;
-  subject?: string;
-  shortId?: string;
-}
-
-function fromMemoryRef(m: MemoryRef): MemoryDisplayItem {
-  return {
-    id: m.id,
-    content: m.content,
-    type: m.type,
-    confidence: m.confidence,
-    lastReinforced: m.lastReinforced,
-    reinforcementCount: m.reinforcementCount,
-    subject: m.subject,
-    shortId: m.shortId,
-  };
-}
-
-function fromMemoryModel(m: Memory): MemoryDisplayItem {
-  return {
-    id: m.id,
-    content: m.content,
-    type: m.type,
-    confidence: m.confidence,
-    lastReinforced: m.lastReinforced,
-    reinforcementCount: m.reinforcementCount,
-    subject: m.subject || undefined,
-  };
-}
-
 export const MemoriesWidget: React.FC<WidgetProps> = () => {
-  const [memories, setMemories] = useState<MemoryDisplayItem[]>([]);
+  const { data: memories } = useGraphData<MemoryItem>('memory', {
+    limit: 20,
+    orderBy: { field: 'lastReinforced', dir: 'desc' },
+  });
   const [showManager, setShowManager] = useState(false);
-  // Track whether we've received System II context yet
-  const [hasLLMContext, setHasLLMContext] = useState(false);
 
-  // Cold-start: load from DB until first System II event arrives
-  const loadFromDB = useCallback(async () => {
-    const results = await database
-      .get<Memory>('memories')
-      .query(
-        Q.where('supersededBy', null),
-        Q.sortBy('lastReinforced', Q.desc),
-        Q.take(20)
-      )
-      .fetch();
+  // Filter out superseded memories
+  const activeMemories = memories.filter(m => m.state !== 'superseded' && !m.supersededBy);
 
-    const active = results.filter((m) => m.state !== 'superseded');
-    setMemories(active.map(fromMemoryModel));
-  }, []);
-
-  // Load from DB on mount
-  useEffect(() => {
-    loadFromDB();
-  }, [loadFromDB]);
-
-  // Subscribe to System II events — show the exact memories the LLM saw,
-  // sorted by most recently reinforced at top (stack view).
-  useEffect(() => {
-    const unsub = eventBus.on('processing:system-ii', (payload) => {
-      if (payload.context?.memories) {
-        const sorted = [...payload.context.memories]
-          .map(fromMemoryRef)
-          .sort((a, b) => b.lastReinforced - a.lastReinforced);
-        setMemories(sorted);
-        setHasLLMContext(true);
-      } else {
-        // Recovery path — no context on event, refresh from DB
-        loadFromDB();
-      }
-    });
-    return unsub;
-  }, [loadFromDB]);
-
-  if (memories.length === 0) {
+  if (activeMemories.length === 0) {
     return (
       <>
         <div
@@ -127,7 +53,7 @@ export const MemoriesWidget: React.FC<WidgetProps> = () => {
         {/* Header with manage button */}
         <div className="flex-shrink-0 px-2 py-1 border-b border-slate-100 flex items-center justify-between">
           <span className="text-[10px] text-slate-400">
-            {memories.length} memories{!hasLLMContext && ' · recent'}
+            {activeMemories.length} memories
           </span>
           <button
             onClick={() => setShowManager(true)}
@@ -140,7 +66,7 @@ export const MemoriesWidget: React.FC<WidgetProps> = () => {
 
         {/* Memory list — stack view, newest at top */}
         <div className="flex-1 overflow-auto p-1.5">
-          {memories.map((memory, index) => {
+          {activeMemories.map((memory, index) => {
             const isOdd = index % 2 === 1;
             const typeColor = typeColors[memory.type] || 'text-slate-400/70';
             return (

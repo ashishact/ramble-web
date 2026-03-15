@@ -460,6 +460,7 @@ class RambleNative {
             transcript: event.payload.transcript,
           });
           break;
+
       }
     } catch (err) {
       console.error('[RambleNative] Failed to parse message:', err);

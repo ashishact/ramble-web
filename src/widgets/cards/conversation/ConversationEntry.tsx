@@ -2,21 +2,22 @@
  * ConversationEntry — Single conversation block with annotations
  *
  * Displays conversation text with:
- * - Normalized text by default (falls back to sanitized, then raw)
- * - Truncation with click-to-expand (like compact view's ExpandableText)
+ * - Raw text display (single-pass LLM handles understanding)
+ * - Truncation with click-to-expand
  * - Entity highlighting when extraction data is available
  * - Source indicator (speech/typed) with timestamp
- * - Meeting mode: speaker tags (You/Them) from speakerHint in sentences
+ * - Meeting mode: speaker tags from the speaker field
  * - Fade+slide animation for new entries
  */
 
 import { useState } from 'react';
-import type Conversation from '../../../db/models/Conversation';
+import { Icon } from '@iconify/react';
+import type { ConversationRecord } from '../../../graph/data';
 import type { ProcessingResult } from '../../../program/kernel/processor';
 import { AnnotatedText } from './InlineAnnotations';
 
 interface ConversationEntryProps {
-  conversation: Conversation;
+  conversation: ConversationRecord;
   showRawText: boolean;
   extraction?: ProcessingResult;
   isMeetingMode: boolean;
@@ -26,16 +27,13 @@ const TRUNCATE_LENGTH = 280;
 
 export function ConversationEntry({
   conversation,
-  showRawText,
+  showRawText: _showRawText,
   extraction,
   isMeetingMode,
 }: ConversationEntryProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Text priority: raw toggle → normalized → sanitized → raw
-  const fullText = showRawText
-    ? conversation.rawText
-    : conversation.normalizedText || conversation.sanitizedText || conversation.rawText;
+  const fullText = conversation.rawText;
 
   const isLongText = fullText.length > TRUNCATE_LENGTH;
   const displayText = isLongText && !isExpanded
@@ -45,28 +43,46 @@ export function ConversationEntry({
   // Entity names for highlighting
   const entityNames = extraction?.entities?.map((e) => e.name) ?? [];
 
+  const isInterviewer = conversation.speaker === 'interviewer';
+
   const isSpeech = conversation.source === 'speech' || conversation.source === 'meeting';
   const timeStr = new Date(conversation.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
   });
 
-  // In meeting mode, determine speaker from speakerHint in parsed sentences.
-  // isMeetingMode comes from meetingStatus (driven by native:mode-changed event),
-  // NOT from conversation.source — the source field may not always be 'meeting'.
-  // mic = user's microphone (You), system = remote audio (Them)
+  // ── Interviewer entry — distinct violet styling ──────────────────────
+  if (isInterviewer) {
+    return (
+      <div className="animate-fadeSlideIn">
+        <div className="border-l-2 border-violet-400/60 pl-3 py-1">
+          {/* Label row */}
+          <div className="flex items-center gap-1.5 mb-1">
+            <Icon icon="mdi:auto-fix" className="w-3.5 h-3.5 text-violet-500/70" />
+            <span className="text-[11px] font-medium text-violet-500/70">Interview</span>
+          </div>
+          {/* Question text — no truncation, no entity highlighting */}
+          <div className="text-[15px] leading-relaxed text-base-content/80">
+            {fullText}
+          </div>
+          {/* Timestamp */}
+          <div className="flex justify-end items-center gap-1 mt-1 text-[10px] text-base-content/25">
+            <span className="w-1.5 h-1.5 rounded-full bg-violet-400/30" />
+            <span>interview</span>
+            <span>{timeStr}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── User / meeting speaker entry ─────────────────────────────────────
+
+  // In meeting mode, determine speaker from the speaker field
   const speakerTag = (() => {
     if (!isMeetingMode) return null;
-
-    const sentences = conversation.sentencesParsed;
-    if (sentences.length > 0) {
-      // Use the dominant speakerHint across sentences
-      const micCount = sentences.filter((s) => s.speakerHint === 'mic').length;
-      const systemCount = sentences.filter((s) => s.speakerHint === 'system').length;
-      if (micCount > 0 || systemCount > 0) {
-        return micCount >= systemCount ? 'You' : 'Them';
-      }
-    }
+    if (conversation.speaker === 'user') return 'You';
+    if (conversation.speaker === 'other') return 'Them';
     return null;
   })();
 

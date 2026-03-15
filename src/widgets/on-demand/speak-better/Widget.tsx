@@ -27,9 +27,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Q } from "@nozbe/watermelondb";
-import { database } from "../../../db/database";
-import type Conversation from "../../../db/models/Conversation";
+import { useConversationData, graphMutations } from "../../../graph/data";
 import { eventBus } from "../../../lib/eventBus";
 import { profileStorage } from "../../../lib/profileStorage";
 import { useWidgetPause } from "../useWidgetPause";
@@ -282,54 +280,44 @@ export function SpeakBetterWidget({ nodeId }: { nodeId: string }) {
   const analyzeRef = useRef(analyze);
   analyzeRef.current = analyze;
 
-  // Observe conversations for new user messages
-  // Gated on storageLoaded to prevent the race condition where the observation
-  // fires before loadFromStorage() completes, causing a redundant re-analysis.
+  // Observe conversations for new user messages via DuckDB
+  const { data: latestConversations } = useConversationData({
+    where: { speaker: 'user' },
+    orderBy: { field: 'timestamp', dir: 'desc' },
+    limit: 1,
+    deps: [isPaused, storageLoaded],
+  });
+
+  // Trigger analysis when latest user conversation changes
   useEffect(() => {
     if (isPaused || !storageLoaded) return;
+    if (latestConversations.length === 0) return;
 
-    const conversations = database.get<Conversation>("conversations");
-    const query = conversations.query(
-      Q.where("speaker", "user"),
-      Q.sortBy("timestamp", Q.desc),
-      Q.take(1),
-    );
-
-    const subscription = query.observe().subscribe((results) => {
-      if (results.length === 0) return;
-
-      const latest = results[0];
-      // Skip if same conversation ID
-      if (latest.id === lastAnalyzedIdRef.current) return;
-      // Skip if same text content (different record, same words)
-      const textHash = simpleHash(latest.sanitizedText || '');
-      if (textHash === lastAnalyzedTextHashRef.current) {
-        lastAnalyzedIdRef.current = latest.id;
-        return;
-      }
-
+    const latest = latestConversations[0];
+    // Skip if same conversation ID
+    if (latest.id === lastAnalyzedIdRef.current) return;
+    // Skip if same text content (different record, same words)
+    const textHash = simpleHash(latest.rawText || '');
+    if (textHash === lastAnalyzedTextHashRef.current) {
       lastAnalyzedIdRef.current = latest.id;
-      lastAnalyzedTextHashRef.current = textHash;
-      analyzeRef.current(latest.id, latest.sanitizedText);
-    });
+      return;
+    }
 
-    return () => subscription.unsubscribe();
-  }, [isPaused, storageLoaded]);
+    lastAnalyzedIdRef.current = latest.id;
+    lastAnalyzedTextHashRef.current = textHash;
+    analyzeRef.current(latest.id, latest.rawText);
+  }, [isPaused, storageLoaded, latestConversations]);
 
   // Manual refresh with latest text
   const handleRefresh = useCallback(async () => {
-    const conversations = database.get<Conversation>("conversations");
-    const results = await conversations
-      .query(
-        Q.where("speaker", "user"),
-        Q.sortBy("timestamp", Q.desc),
-        Q.take(1),
-      )
-      .fetch();
+    const results = await graphMutations.query<Record<string, unknown>>(
+      "SELECT * FROM conversations WHERE speaker = 'user' ORDER BY timestamp DESC LIMIT 1"
+    );
 
     if (results.length > 0) {
-      lastAnalyzedIdRef.current = results[0].id;
-      analyze(results[0].id, results[0].sanitizedText);
+      const latest = results[0];
+      lastAnalyzedIdRef.current = latest.id as string;
+      analyze(latest.id as string, latest.raw_text as string);
     }
   }, [analyze]);
 

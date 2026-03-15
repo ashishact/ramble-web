@@ -18,7 +18,7 @@
  *
  * This module does NOT call processInput() / the core processor. It has its
  * own independent LLM prompt and state machine. Completed meeting data is
- * stored in WatermelonDB via widgetRecordStore, not the conversations table.
+ * stored in DuckDB via widgetRecordStore, not the conversations table.
  *
  * GAP — INTEGRATION WITH WORKING MEMORY:
  *   Live meeting segments are never fed into WorkingMemory (which only reads
@@ -58,7 +58,7 @@ import { z } from 'zod';
 import { callLLM } from '../../../program/llmClient';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
 import { profileStorage } from '../../../lib/profileStorage';
-import { widgetRecordStore } from '../../../db/stores';
+import { widgetRecordStore } from '../../../graph/stores/widgetRecordStore';
 
 // ============================================================================
 // Constants
@@ -67,7 +67,7 @@ import { widgetRecordStore } from '../../../db/stores';
 // Settings stay in profileStorage — they are user preferences, not LLM-generated data
 export const SETTINGS_STORAGE_KEY = 'meeting-transcription:settings';
 
-// WatermelonDB widget type / subtype constants
+// DuckDB widget type / subtype constants
 const MEETING_WIDGET_TYPE = 'meeting';
 const MEETING_SUBTYPE_ACTIVE = 'active';
 const MEETING_SUBTYPE_ARCHIVE = 'archive';
@@ -323,7 +323,7 @@ const MeetingSettingsSchema = z.object({
 });
 
 // ============================================================================
-// Storage — meeting state + archive → WatermelonDB; settings → profileStorage
+// Storage — meeting state + archive → DuckDB; settings → profileStorage
 // ============================================================================
 
 /**
@@ -338,7 +338,7 @@ export function saveMeetingState(state: MeetingState): void {
 }
 
 /**
- * Load active meeting state from WatermelonDB with Zod validation.
+ * Load active meeting state from DuckDB with Zod validation.
  */
 export async function loadMeetingState(): Promise<MeetingState | null> {
   try {
@@ -372,7 +372,7 @@ export function clearMeetingState(): void {
 }
 
 /**
- * Load archived meetings from WatermelonDB (up to MAX_ARCHIVE, most recent first).
+ * Load archived meetings from DuckDB (up to MAX_ARCHIVE, most recent first).
  */
 export async function loadArchivedMeetings(): Promise<ArchivedMeeting[]> {
   try {

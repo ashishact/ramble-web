@@ -1,8 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import type { WidgetProps } from '../types';
-import { database } from '../../db/database';
-import Topic from '../../db/models/Topic';
-import { Q } from '@nozbe/watermelondb';
+import { useGraphData } from '../../graph/data';
+import type { TopicItem } from '../../graph/data';
 import { formatRelativeTime } from '../../program/utils';
 import { Hash, Settings, ChevronRight } from 'lucide-react';
 import { TopicManager } from '../../components/v2/TopicManager';
@@ -29,8 +28,8 @@ function parseTopicNamespace(name: string): { domain: string; topic: string } {
 }
 
 // Group topics by domain
-function groupTopicsByDomain(topics: Topic[]): Map<string, Topic[]> {
-  const groups = new Map<string, Topic[]>();
+function groupTopicsByDomain(topics: TopicItem[]): Map<string, TopicItem[]> {
+  const groups = new Map<string, TopicItem[]>();
   for (const topic of topics) {
     const { domain } = parseTopicNamespace(topic.name);
     if (!groups.has(domain)) {
@@ -42,20 +41,11 @@ function groupTopicsByDomain(topics: Topic[]): Map<string, Topic[]> {
 }
 
 export const TopicsWidget: React.FC<WidgetProps> = () => {
-  const [topics, setTopics] = useState<Topic[]>([]);
+  const { data: topics } = useGraphData<TopicItem>('topic', {
+    limit: 50,
+    orderBy: { field: 'lastMentioned', dir: 'desc' },
+  });
   const [showManager, setShowManager] = useState(false);
-
-  useEffect(() => {
-    const query = database
-      .get<Topic>('topics')
-      .query(Q.sortBy('lastMentioned', Q.desc), Q.take(50));
-
-    const subscription = query.observe().subscribe((results) => {
-      setTopics(results);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   const groupedTopics = useMemo(() => groupTopicsByDomain(topics), [topics]);
 

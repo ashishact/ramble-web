@@ -26,6 +26,7 @@ export type TelemetryCategory =
   | 'tree-editor'      // knowledge tree editing
   | 'timeline'         // timeline extraction
   | 'entity-resolution' // entity blocking + scoring
+  | 'embedding'         // vector embedding of graph nodes
   | 'llm'              // raw LLM call (tracked separately in llmTracker)
 
 export interface TelemetryEvent {

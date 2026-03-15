@@ -14,12 +14,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { Icon } from '@iconify/react';
 import { Check, X, Loader2, Circle } from 'lucide-react';
-import type Conversation from '../../db/models/Conversation';
+import type { ConversationRecord } from '../../graph/data';
 import { ExpandableText } from '../ui/ExpandableText';
 import { pipelineStatus, type PipelineState, type StepStatus } from '../../program/kernel/pipelineStatus';
 
 interface ConversationListProps {
-  conversations: Conversation[];
+  conversations: ConversationRecord[];
   onClose?: () => void;
 }
 
@@ -129,8 +129,8 @@ export function ConversationList({ conversations, onClose }: ConversationListPro
         ) : (
           <>
             {conversations.slice(0, displayLimit).map((conv, index, arr) => {
-              const displayText = showRawText ? conv.rawText : conv.sanitizedText;
-              const hasChanges = conv.rawText !== conv.sanitizedText;
+              const displayText = conv.rawText;
+              const hasChanges = false;
 
               const prevConv = arr[index - 1];
               const isSessionStart = !prevConv || prevConv.sessionId !== conv.sessionId;
@@ -166,16 +166,6 @@ export function ConversationList({ conversations, onClose }: ConversationListPro
                     }`}
                   >
                     <ExpandableText text={displayText} truncateLength={TRUNCATE_LENGTH} />
-                    {/* Show summary if it exists */}
-                    {conv.summary && (
-                      <div className="mt-2 p-2 bg-base-300/50 rounded text-xs border-l-2 border-primary/50">
-                        <div className="flex items-center gap-1 text-primary/70 mb-1">
-                          <Icon icon="mdi:text-box-outline" className="w-3 h-3" />
-                          <span className="font-medium">Summary</span>
-                        </div>
-                        <p className="opacity-80 leading-relaxed">{conv.summary}</p>
-                      </div>
-                    )}
                     {/* Show diff indicator when there are changes */}
                     {hasChanges && (
                       <div className="mt-1 text-xs">

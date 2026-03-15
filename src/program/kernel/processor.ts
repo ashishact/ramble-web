@@ -36,7 +36,7 @@
 
 import { callLLM } from '../llmClient';
 import { workingMemory, type WorkingMemoryData } from '../WorkingMemory';
-import { normalizeInput, type NormalizeResult } from '../services/normalizeInput';
+import { normalizeInput } from '../services/normalizeInput';
 import { retrieveContext } from './contextRetrieval';
 import { parseLLMJSON } from '../utils/jsonUtils';
 import { eventBus } from '../../lib/eventBus';
@@ -47,12 +47,13 @@ import {
   goalStore,
   extractionLogStore,
   correctionStore,
-  conversationStore,
   cooccurrenceStore,
   taskStore,
 } from '../../db/stores';
+import { conversationStore } from '../../graph/stores/conversationStore';
 import type { MemoryOrigin } from '../../db/stores/memoryStore';
-import type { ConversationSource } from '../../db/models/Conversation';
+
+export type ConversationSource = 'speech' | 'text' | 'typed' | 'pasted' | 'document' | 'meeting'
 import type { ProcessingMode, NormalizationHints } from '../types/recording';
 import { runPlugins, type PluginOutput } from '../plugins';
 import { createLogger } from '../utils/logger';
@@ -394,49 +395,24 @@ export async function processInput(
     inputText: inputText,
   });
   let normalizedText: string
-  let sentences: NormalizeResult['sentences']
   let hints: NormalizationHints
 
   if (options?.hints) {
     // Pre-computed hints from caller (chunked processing or System I submitChunk path)
     normalizedText = inputText
-    sentences = []
     hints = options.hints
-
-    // Persist normalization data on conversation record (intent, normalized text)
-    // so chunked conversations are fully annotated like single-pass ones.
-    await conversationStore.updateNormalized(
-      conversationId,
-      normalizedText,
-      '[]',
-      hints.intent
-    );
   } else {
     // Full normalization with correction pipeline
     const recentConvs = await conversationStore.getRecent(3);
     const recentSentences: string[] = recentConvs
       .reverse() // oldest first
-      .flatMap(c => {
-        const parsed = c.sentencesParsed
-        if (parsed.length > 0) {
-          return parsed.map(s => s.text)
-        }
-        return c.sanitizedText.split(/(?<=[.!?])\s+/).filter(Boolean)
-      })
+      .flatMap(c => c.raw_text.split(/(?<=[.!?])\s+/).filter(Boolean))
       .slice(-5);
 
     const normalizeResult = await normalizeInput(inputText, recentSentences, source);
     normalizedText = normalizeResult.normalizedText;
-    sentences = normalizeResult.sentences;
     hints = normalizeResult.hints;
 
-    // Persist Phase 1 output on the conversation record (including intent)
-    await conversationStore.updateNormalized(
-      conversationId,
-      normalizedText,
-      JSON.stringify(sentences),
-      hints.intent
-    );
   }
 
   telemetry.emit('normalize', 'phase1-normalize', 'end', {
@@ -601,11 +577,6 @@ Extract entities, topics, memories, and goals from the new input. Respond with J
     retractions: extraction.retractions,
     summary: extraction.summary,
   }, { status: 'success' });
-
-  // 5.1 Save summary if generated
-  if (needsSummary && extraction.summary) {
-    await conversationStore.updateSummary(conversationId, extraction.summary);
-  }
 
   // 5.2 Deterministic auto-reinforce: boost existing memories that share entities/topics
   // with the newly created memories. Zero LLM calls — pure DB operations.

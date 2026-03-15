@@ -5,8 +5,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { dataStore } from '../../../db/stores'
-import type { OnboardingData, UserProfileData } from '../../../db/models/Data'
+import { dataStore } from '../../../graph/stores/dataStore'
+import type { OnboardingData, UserProfileData } from '../../../graph/stores/dataStore'
 import { settingsHelpers } from '../../../stores/settingsStore'
 
 export type OnboardingStep = 'api_key' | 'user_info' | 'complete'

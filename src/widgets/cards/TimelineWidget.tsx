@@ -1,9 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { WidgetProps } from '../types';
-import { database } from '../../db/database';
-import TimelineEvent from '../../db/models/TimelineEvent';
-import Entity from '../../db/models/Entity';
-import { Q } from '@nozbe/watermelondb';
+import { useGraphData } from '../../graph/data';
+import type { TimelineEventItem, EntityItem } from '../../graph/data';
 import { eventBus } from '../../lib/eventBus';
 import { Clock } from 'lucide-react';
 
@@ -76,11 +74,11 @@ const EntityTag: React.FC<{ entityId: string; name: string }> = ({ entityId, nam
 // ============================================================================
 
 const EventRow: React.FC<{
-  event: TimelineEvent;
+  event: TimelineEventItem;
   entityNames: Map<string, string>;
 }> = ({ event, entityNames }) => {
   const timeStr = formatEventTime(event.eventTime, event.timeGranularity);
-  const entityIds = event.entityIdsParsed;
+  const entityIds = event.entityIds ?? [];
 
   return (
     <div className="py-1 px-1 hover:bg-slate-50 rounded transition-colors">
@@ -117,53 +115,47 @@ const EventRow: React.FC<{
 // ============================================================================
 
 export const TimelineWidget: React.FC<WidgetProps> = ({ config, onConfigChange }) => {
-  const [events, setEvents] = useState<TimelineEvent[]>([]);
-  const [entityNames, setEntityNames] = useState<Map<string, string>>(new Map());
   const [filterEntityId, setFilterEntityId] = useState<string | null>(
     (config?.filterEntityId as string) ?? null
   );
-  const [entityOptions, setEntityOptions] = useState<{ id: string; name: string }[]>([]);
+  const [entityNames, setEntityNames] = useState<Map<string, string>>(new Map());
 
-  // Subscribe to timeline events
+  // Read timeline events from graph
+  const { data: allEvents } = useGraphData<TimelineEventItem>('timeline_event', {
+    limit: 100,
+    orderBy: { field: 'eventTime', dir: 'desc' },
+  });
+
+  // Read entities for name resolution
+  const { data: entities } = useGraphData<EntityItem>('entity', {
+    limit: 1000,
+  });
+
+  // Build entity name map
   useEffect(() => {
-    const subscription = database
-      .get<TimelineEvent>('timeline_events')
-      .query(Q.sortBy('eventTime', Q.desc), Q.take(100))
-      .observe()
-      .subscribe(results => {
-        const filtered = filterEntityId
-          ? results.filter(e => e.entityIdsParsed.includes(filterEntityId))
-          : results;
-        setEvents(filtered);
-
-        // Collect all entity IDs to resolve names
-        const allIds = new Set<string>();
-        for (const ev of results) {
-          for (const eid of ev.entityIdsParsed) allIds.add(eid);
-        }
-        resolveEntityNames(allIds);
-      });
-
-    return () => subscription.unsubscribe();
-  }, [filterEntityId]);
-
-  // Resolve entity names
-  const resolveEntityNames = async (ids: Set<string>) => {
     const names = new Map<string, string>();
-    const options: { id: string; name: string }[] = [];
-    for (const id of ids) {
-      try {
-        const entity = await database.get<Entity>('entities').find(id);
-        names.set(id, entity.name);
-        options.push({ id, name: entity.name });
-      } catch {
-        // Entity not found
-      }
+    for (const e of entities) {
+      names.set(e.id, e.name);
     }
-    options.sort((a, b) => a.name.localeCompare(b.name));
     setEntityNames(names);
-    setEntityOptions(options);
-  };
+  }, [entities]);
+
+  // Filter by entity if set
+  const events = useMemo(() => {
+    if (!filterEntityId) return allEvents;
+    return allEvents.filter(e => (e.entityIds ?? []).includes(filterEntityId));
+  }, [allEvents, filterEntityId]);
+
+  // Entity options for filter dropdown
+  const entityOptions = useMemo(() => {
+    const allIds = new Set<string>();
+    for (const ev of allEvents) {
+      for (const eid of (ev.entityIds ?? [])) allIds.add(eid);
+    }
+    return [...allIds]
+      .map(id => ({ id, name: entityNames.get(id) ?? id }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allEvents, entityNames]);
 
   // Listen for navigate:entity events
   useEffect(() => {
@@ -182,7 +174,7 @@ export const TimelineWidget: React.FC<WidgetProps> = ({ config, onConfigChange }
 
   // Group events by day
   const grouped = useMemo(() => {
-    const map = new Map<string, TimelineEvent[]>();
+    const map = new Map<string, TimelineEventItem[]>();
     for (const ev of events) {
       const key = dayKey(ev.eventTime);
       if (!map.has(key)) map.set(key, []);
@@ -196,7 +188,7 @@ export const TimelineWidget: React.FC<WidgetProps> = ({ config, onConfigChange }
     if (events.length === 0) return null;
     const entitySet = new Set<string>();
     for (const ev of events) {
-      for (const eid of ev.entityIdsParsed) entitySet.add(eid);
+      for (const eid of (ev.entityIds ?? [])) entitySet.add(eid);
     }
     const oldest = events[events.length - 1]?.eventTime ?? 0;
     const newest = events[0]?.eventTime ?? 0;

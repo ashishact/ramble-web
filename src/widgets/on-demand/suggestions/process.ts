@@ -9,8 +9,8 @@ import { z } from 'zod';
 import { callLLM } from '../../../program/llmClient';
 import { workingMemory } from '../../../program/WorkingMemory';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
-import { widgetRecordStore } from '../../../db/stores';
-// (no localStorage key needed — storage is WatermelonDB via widgetRecordStore)
+import { widgetRecordStore } from '../../../graph/stores/widgetRecordStore';
+// (no localStorage key needed — storage is DuckDB via widgetRecordStore)
 
 // ============================================================================
 // Zod Schemas for validation
@@ -38,13 +38,13 @@ export type Suggestion = z.infer<typeof SuggestionSchema>;
 export type SuggestionResult = z.infer<typeof SuggestionResultSchema>;
 
 // ============================================================================
-// WatermelonDB Persistence
+// DuckDB Persistence
 // ============================================================================
 
 const WIDGET_TYPE = 'suggestion';
 
 /**
- * Save suggestions to WatermelonDB (fire-and-forget — never throws).
+ * Save suggestions to DuckDB (fire-and-forget — never throws).
  * Appends a new row each call; full generation history is preserved.
  */
 export function saveSuggestionsToStorage(result: SuggestionResult): void {
@@ -56,7 +56,7 @@ export function saveSuggestionsToStorage(result: SuggestionResult): void {
 }
 
 /**
- * Load the latest suggestions from WatermelonDB with Zod validation.
+ * Load the latest suggestions from DuckDB with Zod validation.
  * Returns null if not found or invalid.
  */
 export async function loadSuggestionsFromStorage(): Promise<SuggestionResult | null> {

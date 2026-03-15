@@ -25,11 +25,13 @@
 import type {
   AiQueryOptions,
   AiRawOptions,
+  AiConversationOptions,
   AiResponse,
+  AiConversationResponse,
   ExtensionStatus,
 } from "./protocol"
 
-export type { AiQueryOptions, AiRawOptions, AiResponse, ExtensionStatus }
+export type { AiQueryOptions, AiRawOptions, AiConversationOptions, AiResponse, AiConversationResponse, ExtensionStatus }
 export type { AiTarget } from "./protocol"
 
 let extensionReady = false
@@ -125,5 +127,14 @@ export const rambleExt = {
    */
   async aiRaw(options: AiRawOptions): Promise<AiResponse> {
     return sendAndWait<AiResponse>("ai_raw", options)
+  },
+
+  /**
+   * Send a prompt in a named persistent ChatGPT conversation.
+   * Same conversationId reuses the same ChatGPT conversation tab (full history preserved).
+   * System prompt is only sent on the first message.
+   */
+  async aiConversation(options: AiConversationOptions): Promise<AiConversationResponse> {
+    return sendAndWait<AiConversationResponse>("ai_conversation", options)
   },
 }

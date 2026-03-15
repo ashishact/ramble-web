@@ -17,17 +17,17 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Icon } from '@iconify/react';
-import type Conversation from '../../db/models/Conversation';
+import type { ConversationRecord } from '../../graph/data';
 import type { ProcessingResult } from '../../program/kernel/processor';
 import type { PipelineState } from '../../program/kernel/pipelineStatus';
 import { ConversationEntry } from './conversation/ConversationEntry';
 import { ExtractionCard } from './conversation/ExtractionCard';
 import { LiveStatusBar } from './conversation/LiveStatusBar';
 import { ConversationInput } from './conversation/ConversationInput';
-import { FollowUpQuestions } from './conversation/FollowUpQuestions';
+import { MeetingCompanionCards } from './conversation/FollowUpQuestions';
 
 interface ConversationExpandedViewProps {
-  conversations: Conversation[];
+  conversations: ConversationRecord[];
   extractionsByConvId: Map<string, ProcessingResult>;
   pipelineState: PipelineState;
   isMeetingMode: boolean;
@@ -45,8 +45,8 @@ const SESSION_GAP_MINUTES = 5;
  * - There's a gap of SESSION_GAP_MINUTES+ between entries
  */
 function shouldShowSeparator(
-  prev: Conversation | undefined,
-  current: Conversation
+  prev: ConversationRecord | undefined,
+  current: ConversationRecord
 ): { show: boolean; label: string } {
   if (!prev) {
     // First entry — show date
@@ -195,8 +195,8 @@ export function ConversationExpandedView({
                   isMeetingMode={isMeetingMode}
                 />
 
-                {/* Extraction card (below source conversation) */}
-                {extraction && <ExtractionCard extraction={extraction} />}
+                {/* Extraction card (below source conversation) — skip for interviewer entries */}
+                {extraction && conv.speaker !== 'interviewer' && <ExtractionCard extraction={extraction} />}
               </div>
             );
           })
@@ -205,8 +205,8 @@ export function ConversationExpandedView({
         {/* Live pipeline status after newest entry */}
         <LiveStatusBar pipelineState={pipelineState} />
 
-        {/* Follow-up questions from the questions widget */}
-        <FollowUpQuestions />
+        {/* Meeting companion cards (questions now appear inline as interviewer entries) */}
+        <MeetingCompanionCards />
       </div>
 
       {/* Bottom text input */}

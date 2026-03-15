@@ -112,6 +112,26 @@ export interface AiResponse {
   format: "markdown" | "text"
 }
 
+export interface AiConversationOptions {
+  /** Chat session ID — same ID reuses same ChatGPT conversation */
+  conversationId: string
+  /** The prompt to send in this conversation turn */
+  prompt: string
+  /** System prompt — only used on the first message in the conversation */
+  systemPrompt?: string
+  /** Known ChatGPT conversation URL — web is source of truth, extension uses this to find the tab */
+  chatUrl?: string
+}
+
+export interface AiConversationResponse {
+  conversationId: string
+  answer: string
+  format: "markdown" | "text"
+  sendCount: number
+  /** ChatGPT conversation URL (e.g. https://chatgpt.com/c/69b35eb0-...) — reported back after first send */
+  chatUrl: string | null
+}
+
 export interface ExtensionStatus {
   version: string
   wsConnected: boolean

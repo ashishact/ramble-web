@@ -1,8 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import type { WidgetProps } from '../types';
-import { database } from '../../db/database';
-import Goal from '../../db/models/Goal';
-import { Q } from '@nozbe/watermelondb';
+import { useGraphData } from '../../graph/data';
+import type { GoalItem } from '../../graph/data';
 import { formatRelativeTime } from '../../program/utils';
 import { Target, CheckCircle2, Settings, ChevronRight } from 'lucide-react';
 import { GoalManager } from '../../components/v2/GoalManager';
@@ -28,8 +27,8 @@ function parseGoalNamespace(statement: string): { category: string; path: string
 }
 
 // Group goals by category
-function groupGoalsByCategory(goals: Goal[]): Map<string, Goal[]> {
-  const groups = new Map<string, Goal[]>();
+function groupGoalsByCategory(goals: GoalItem[]): Map<string, GoalItem[]> {
+  const groups = new Map<string, GoalItem[]>();
   for (const goal of goals) {
     const { category } = parseGoalNamespace(goal.statement);
     if (!groups.has(category)) {
@@ -41,23 +40,11 @@ function groupGoalsByCategory(goals: Goal[]): Map<string, Goal[]> {
 }
 
 export const GoalsWidget: React.FC<WidgetProps> = () => {
-  const [goals, setGoals] = useState<Goal[]>([]);
+  const { data: goals } = useGraphData<GoalItem>('goal', {
+    where: { status: 'active' },
+    orderBy: { field: 'lastReferenced', dir: 'desc' },
+  });
   const [showManager, setShowManager] = useState(false);
-
-  useEffect(() => {
-    const query = database
-      .get<Goal>('goals')
-      .query(
-        Q.where('status', 'active'),
-        Q.sortBy('lastReferenced', Q.desc)
-      );
-
-    const subscription = query.observe().subscribe((results) => {
-      setGoals(results);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   const groupedGoals = useMemo(() => groupGoalsByCategory(goals), [goals]);
 

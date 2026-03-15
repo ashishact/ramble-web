@@ -226,6 +226,11 @@ export interface EventPayloads {
 	'ext:google-search-result': { query: string; result: string; requestId: string };
 	'ext:google-search-error': { query: string; error: string; requestId: string };
 
+	// Interview engine events
+	'interview:question': { question: string; timestamp: number };
+	'interview:stream': { text: string; conversationId: string };
+	'interview:state': { state: 'idle' | 'sending' | 'error' | 'no-transport' };
+
 	// Knowledge tree navigation events
 	'navigate:entity': { entityId: string };
 	'highlight:node': { nodeId: string };
@@ -322,3 +327,35 @@ class EventBus {
  *   window.addEventListener('ramble:stt:final', (e) => console.log(e.detail.text));
  */
 export const eventBus = new EventBus();
+
+// ============================================================================
+// Bridge: Old EventBus ↔ GraphEventBus
+// ============================================================================
+// Lazy import to avoid circular dependency. The bridge is set up once on first
+// access. Graph events that match old event names are forwarded here,
+// and vice versa. This allows gradual migration without breaking existing code.
+
+let bridgeInitialized = false;
+
+export function initEventBusBridge(): void {
+	if (bridgeInitialized) return;
+	bridgeInitialized = true;
+
+	// Lazy import to avoid top-level circular dep
+	import('../graph/events/EventBus').then(({ graphEventBus }) => {
+		// Forward graph:tables:changed → old bus (for widgets that listen)
+		graphEventBus.on('graph:tables:changed', (payload) => {
+			eventBus.emit('graph:tables:changed' as keyof EventPayloads, payload as never);
+		});
+
+		// Forward graph:node:created → old bus
+		graphEventBus.on('graph:node:created', (payload) => {
+			eventBus.emit('graph:node:created' as keyof EventPayloads, payload as never);
+		});
+
+		// Forward graph:edge:created → old bus
+		graphEventBus.on('graph:edge:created', (payload) => {
+			eventBus.emit('graph:edge:created' as keyof EventPayloads, payload as never);
+		});
+	});
+}

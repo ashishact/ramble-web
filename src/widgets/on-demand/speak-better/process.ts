@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { callLLM } from '../../../program/llmClient';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
 import { profileStorage } from '../../../lib/profileStorage';
-import { widgetRecordStore } from '../../../db/stores';
+import { widgetRecordStore } from '../../../graph/stores/widgetRecordStore';
 
 // ============================================================================
 // Constants
@@ -23,7 +23,7 @@ import { widgetRecordStore } from '../../../db/stores';
 // Tone preference stays in profileStorage — it is a user preference, not LLM-generated data
 const TONE_STORAGE_KEY = 'speak-better-tone';
 
-// WatermelonDB widget type for analysis results
+// DuckDB widget type for analysis results
 const WIDGET_TYPE = 'speak_better';
 
 // Maximum characters to send to LLM (roughly ~4000 tokens)
@@ -135,11 +135,11 @@ export type Suggestion = z.infer<typeof SuggestionSchema>;
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
 
 // ============================================================================
-// WatermelonDB Persistence (analysis results) + profileStorage (tone preference)
+// DuckDB Persistence (analysis results) + profileStorage (tone preference)
 // ============================================================================
 
 /**
- * Save analysis result to WatermelonDB (fire-and-forget — never throws).
+ * Save analysis result to DuckDB (fire-and-forget — never throws).
  * Appends a new row; full analysis history is preserved.
  */
 export function saveToStorage(result: AnalysisResult): void {
@@ -151,7 +151,7 @@ export function saveToStorage(result: AnalysisResult): void {
 }
 
 /**
- * Load the latest analysis result from WatermelonDB with Zod validation.
+ * Load the latest analysis result from DuckDB with Zod validation.
  * Returns null if not found or invalid.
  */
 export async function loadFromStorage(): Promise<AnalysisResult | null> {

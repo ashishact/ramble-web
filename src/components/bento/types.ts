@@ -47,7 +47,8 @@ export type WidgetType =
   // Observability widgets (v10)
   | 'pipeline-monitor'    // Real-time pipeline telemetry event stream
   | 'llm-dashboard'       // LLM token usage and cost tracking
-  | 'google-search';      // Google Search via Chrome extension
+  | 'google-search'       // Google Search via Chrome extension
+  | 'embedding-test';     // Embedding model speed comparison test
 
 export interface LeafNode extends BaseNode {
   type: 'leaf';

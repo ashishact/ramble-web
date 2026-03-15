@@ -1,27 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { WidgetProps } from '../types';
-import { database } from '../../db/database';
-import Entity from '../../db/models/Entity';
-import { Q } from '@nozbe/watermelondb';
+import { useGraphData } from '../../graph/data';
+import type { EntityItem } from '../../graph/data';
 import { formatRelativeTime } from '../../program/utils';
 import { Users, Settings } from 'lucide-react';
 import { EntityManager } from '../../components/v2/EntityManager';
 
 export const EntitiesWidget: React.FC<WidgetProps> = () => {
-  const [entities, setEntities] = useState<Entity[]>([]);
+  const { data: entities } = useGraphData<EntityItem>('entity', {
+    limit: 50,
+    orderBy: { field: 'lastMentioned', dir: 'desc' },
+  });
   const [showManager, setShowManager] = useState(false);
-
-  useEffect(() => {
-    const query = database
-      .get<Entity>('entities')
-      .query(Q.sortBy('lastMentioned', Q.desc), Q.take(50));
-
-    const subscription = query.observe().subscribe((results) => {
-      setEntities(results);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   if (entities.length === 0) {
     return (

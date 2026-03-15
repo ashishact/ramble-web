@@ -2,7 +2,7 @@
  * useConversationStream — Data hook for conversation views
  *
  * Combines:
- * - WatermelonDB observable for conversations (sorted DESC, take 50)
+ * - DuckDB conversations table via useConversationData
  * - eventBus `processing:system-ii` subscription → caches ProcessingResult by conversationId
  * - pipelineStatus subscription → for live status
  * - meetingStatus subscription → tracks whether we're in meeting mode
@@ -10,7 +10,7 @@
  *
  * INTERMEDIATE CHUNK CONSOLIDATION:
  * During voice recording, each System I intermediate chunk creates a separate
- * Conversation record in WatermelonDB. This hook hides them once the final arrives:
+ * Conversation record. This hook hides them once the final arrives:
  *
  * 1. LIVE (during recording + transition): Event-driven tracking.
  *    - recording:started → begin tracking
@@ -18,33 +18,26 @@
  *    - processing:system-ii → uses conversationId from event to identify the final,
  *      removes it from intermediates, ends transition
  *    Tracking extends into transition period to catch late-arriving intermediates
- *    (DB writes from System I that land after recording:ended).
+ *    (DB writes that land after recording:ended).
  *
  * 2. HISTORICAL (page reload): Dual strategy.
- *    a. recordingId grouping (v8+): conversations sharing a recordingId are from the
+ *    a. recordingId grouping: conversations sharing a recordingId are from the
  *       same recording session. Keep only the newest (the final), hide the rest.
- *       This is reliable even when text differs between intermediate and final.
  *    b. Exact text match: hide conversations with identical rawText (WebSocket dupes,
  *       dual submission paths). Keeps the newest, hides older duplicates.
- *
- * EXACT DUPLICATE PREVENTION:
- * Handled at the kernel level (processInputItem) — not here. The kernel checks
- * for exact rawText matches in recent conversations before creating new records.
- * This catches duplicates from WebSocket dupes, dual submission paths, etc.
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type Conversation from '../../../db/models/Conversation';
 import type { ProcessingResult } from '../../../program/kernel/processor';
 import type { PipelineState } from '../../../program/kernel/pipelineStatus';
 import { pipelineStatus } from '../../../program/kernel/pipelineStatus';
 import { meetingStatus } from '../../../program/kernel/meetingStatus';
 import { eventBus } from '../../../lib/eventBus';
-import { database } from '../../../db/database';
-import { Q } from '@nozbe/watermelondb';
+import { useConversationData } from '../../../graph/data';
+import type { ConversationRecord } from '../../../graph/data';
 
 export interface ConversationStreamData {
-  conversations: Conversation[];
+  conversations: ConversationRecord[];
   extractionsByConvId: Map<string, ProcessingResult>;
   pipelineState: PipelineState;
   isMeetingMode: boolean;
@@ -56,9 +49,12 @@ export interface ConversationStreamData {
 const FINAL_HIGHLIGHT_DELAY_MS = 600;
 
 export function useConversationStream(): ConversationStreamData {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  // ⚠️ OPTIMIZATION: This Map grows unbounded as new conversations are processed.
-  // Consider evicting entries for conversations no longer in the visible list.
+  // DuckDB-backed conversation data
+  const { data: conversations } = useConversationData({
+    limit: 50,
+    orderBy: { field: 'timestamp', dir: 'desc' },
+  });
+
   const [extractionsByConvId, setExtractionsByConvId] = useState<Map<string, ProcessingResult>>(
     () => new Map()
   );
@@ -67,48 +63,23 @@ export function useConversationStream(): ConversationStreamData {
 
   // ── Recording lifecycle state ──────────────────────────────────────────
   const [activeRecordingId, setActiveRecordingId] = useState<string | null>(null);
-  // Conv IDs created during recording/transition — accumulated across recordings, never cleared.
-  // ⚠️ OPTIMIZATION: This Set grows unbounded across recordings. Consider periodic cleanup
-  // (e.g., clear IDs older than N recordings) if memory becomes a concern in long sessions.
   const [intermediateConvIds, setIntermediateConvIds] = useState<Set<string>>(() => new Set());
-  // Between recording:ended and processing:system-ii — keep tracking intermediates
   const [isTransitioning, setIsTransitioning] = useState(false);
-  // The final conv ID for fadeIn animation — cleared after delay
   const [finalConvId, setFinalConvId] = useState<string | null>(null);
 
-  // Keep a ref to the latest conversations for matching in event handlers
-  const conversationsRef = useRef<Conversation[]>([]);
+  // Keep refs for event handlers (avoids stale closures)
+  const conversationsRef = useRef<ConversationRecord[]>([]);
   conversationsRef.current = conversations;
 
-  // Ref to track active recording ID in event handlers (avoids stale closure)
   const activeRecordingIdRef = useRef<string | null>(null);
   activeRecordingIdRef.current = activeRecordingId;
 
-  // Ref to track previous conversation IDs for diffing new arrivals
   const prevConvIdsRef = useRef<Set<string>>(new Set());
 
-  // Ref for isTransitioning in event handler (avoids stale closure)
   const isTransitioningRef = useRef(false);
   isTransitioningRef.current = isTransitioning;
 
-  // Subscribe to WatermelonDB conversations
-  useEffect(() => {
-    const query = database
-      .get<Conversation>('conversations')
-      .query(Q.sortBy('timestamp', Q.desc), Q.take(50));
-
-    const subscription = query.observe().subscribe((results) => {
-      setConversations(results);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
   // ── Track new conversation arrivals during recording AND transition ────
-  // During recording: new convs are intermediate chunks from System I.
-  // During transition: late-arriving intermediates (DB writes that land after
-  // recording:ended) still need to be tracked. The final conv is also tracked
-  // here but gets removed when processing:system-ii fires.
   useEffect(() => {
     const currentIds = new Set(conversations.map((c) => c.id));
 
@@ -135,7 +106,6 @@ export function useConversationStream(): ConversationStreamData {
   useEffect(() => {
     const unsubs: (() => void)[] = [];
 
-    // recording:started → begin tracking new conv IDs as intermediates
     unsubs.push(
       eventBus.on('recording:started', ({ recording }) => {
         setActiveRecordingId(recording.id);
@@ -144,7 +114,6 @@ export function useConversationStream(): ConversationStreamData {
       })
     );
 
-    // recording:ended → enter transition (keep tracking + showing intermediates)
     unsubs.push(
       eventBus.on('recording:ended', ({ recording }) => {
         if (recording.id !== activeRecordingIdRef.current) return;
@@ -153,7 +122,6 @@ export function useConversationStream(): ConversationStreamData {
       })
     );
 
-    // native:recording-cancelled → stop tracking, but keep accumulated intermediate IDs
     unsubs.push(
       eventBus.on('native:recording-cancelled', () => {
         setActiveRecordingId(null);
@@ -169,25 +137,18 @@ export function useConversationStream(): ConversationStreamData {
     return eventBus.on('processing:system-ii', (payload) => {
       if (!payload.result) return;
 
-      // Use conversationId from the event directly (reliable, set by processor.ts)
-      // Falls back to newest conv only for legacy paths (resumePendingTasks, reprocessFailed)
       const convs = conversationsRef.current;
       const finalId = payload.conversationId
         ?? (convs.length > 0 ? convs[0].id : null);
 
       if (!finalId) return;
 
-      // Cache extraction for the final conv
       setExtractionsByConvId((prev) => {
         const next = new Map(prev);
         next.set(finalId, payload.result);
         return next;
       });
 
-      // If we're transitioning from a live recording:
-      // - Remove the final conv from intermediates (it may have been tracked during transition)
-      // - End transition so filtering kicks in
-      // - Mark final conv for fadeIn animation
       if (isTransitioningRef.current) {
         setIntermediateConvIds((prev) => {
           if (!prev.has(finalId)) return prev;
@@ -197,7 +158,6 @@ export function useConversationStream(): ConversationStreamData {
         });
         setIsTransitioning(false);
         setFinalConvId(finalId);
-        // Clear finalConvId after animation plays
         setTimeout(() => setFinalConvId(null), FINAL_HIGHLIGHT_DELAY_MS);
       }
     });
@@ -216,24 +176,16 @@ export function useConversationStream(): ConversationStreamData {
   }, []);
 
   // ── Historical dedup for page reload ──────────────────────────────────
-  // On reload there's no event history. Two strategies:
-  //
-  // 1. recordingId grouping (v8+): conversations sharing a recordingId are from
-  //    the same recording session. Keep only the newest (the final), hide the rest.
-  //
-  // 2. Exact text match: hide conversations with identical rawText (WebSocket
-  //    dupes, dual submission paths). Keeps the newest, hides older duplicates.
   const hiddenConvIds = useMemo(() => {
-    // Skip dedup during active recording or transition — event-based tracking handles it
     if (activeRecordingId || isTransitioning) return new Set<string>();
 
     const hidden = new Set<string>();
 
-    // ── recordingId grouping ─────────────────────────────────────────────
-    // Group conversations that share a recordingId, keep only newest per group
-    const byRecordingId = new Map<string, Conversation[]>();
-
+    // recordingId grouping — keep only newest per recording
+    // Skip interviewer entries (they don't participate in recording lifecycle)
+    const byRecordingId = new Map<string, ConversationRecord[]>();
     for (const conv of conversations) {
+      if (conv.speaker === 'interviewer') continue;
       if (conv.recordingId) {
         const group = byRecordingId.get(conv.recordingId);
         if (group) {
@@ -246,24 +198,21 @@ export function useConversationStream(): ConversationStreamData {
 
     for (const [, group] of byRecordingId) {
       if (group.length <= 1) continue;
-      // conversations are already sorted DESC by timestamp from the DB query,
-      // so group[0] is the newest (the final)
       for (let i = 1; i < group.length; i++) {
         hidden.add(group[i].id);
       }
     }
 
-    // ── Exact text match dedup ───────────────────────────────────────────
-    // For any remaining visible conversations (including legacy without
-    // recordingId), hide exact rawText duplicates — keep newest only.
-    const seenTexts = new Map<string, string>(); // rawText → first conv id seen (newest)
+    // Exact text match dedup — keep newest
+    // Skip interviewer entries (duplicate questions are valid if asked again)
+    const seenTexts = new Map<string, string>();
     for (const conv of conversations) {
       if (hidden.has(conv.id)) continue;
+      if (conv.speaker === 'interviewer') continue;
       const text = conv.rawText.trim();
       if (!text) continue;
 
       if (seenTexts.has(text)) {
-        // This is an older duplicate (conversations sorted DESC) — hide it
         hidden.add(conv.id);
       } else {
         seenTexts.set(text, conv.id);
@@ -274,17 +223,12 @@ export function useConversationStream(): ConversationStreamData {
   }, [conversations, activeRecordingId, isTransitioning]);
 
   // ── Filter conversations ───────────────────────────────────────────────
-  // During recording or transition: show everything (intermediates visible as they arrive)
-  // After transition ends: filter out intermediate IDs and content-dedup'd IDs
   const filteredConversations = useMemo(() => {
     const isRecordingOrTransitioning = activeRecordingId !== null || isTransitioning;
 
     return conversations.filter((c) => {
-      // During recording/transition, show all entries
       if (isRecordingOrTransitioning) return true;
-      // After recording: filter event-tracked intermediates
       if (intermediateConvIds.has(c.id)) return false;
-      // Filter recordingId-grouped and content-dedup'd intermediates (page reload)
       if (hiddenConvIds.has(c.id)) return false;
       return true;
     });

@@ -6,69 +6,32 @@
  * - Edit correction text
  * - Delete unwanted corrections
  *
- * Uses WatermelonDB observable for automatic reactivity.
+ * Reads from DuckDB via useGraphData, writes via graphMutations.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Brain, Trash2, Edit2, Check, X, ArrowRight } from 'lucide-react';
-import { learnedCorrectionStore } from '../../db/stores';
-import { collections } from '../../db';
-import type LearnedCorrection from '../../db/models/LearnedCorrection';
+import { useGraphData, graphMutations } from '../../graph/data';
+import type { LearnedCorrectionItem } from '../../graph/data';
 
 export function LearnedCorrectionsWidget() {
-  const [corrections, setCorrections] = useState<LearnedCorrection[]>([]);
+  const { data: corrections, loading } = useGraphData<LearnedCorrectionItem>('learned_correction', {
+    limit: 500,
+    orderBy: { field: 'created_at', dir: 'desc' },
+  });
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Subscribe to learned_corrections collection changes
-  useEffect(() => {
-    setIsLoading(true);
-
-    // Create observable query for all corrections, sorted by createdAt desc
-    const subscription = collections.learnedCorrections
-      .query()
-      .observe()
-      .subscribe({
-        next: (records) => {
-          // Cast and sort by createdAt descending (newest first)
-          const typed = records as LearnedCorrection[];
-          const sorted = [...typed].sort((a, b) => b.createdAt - a.createdAt);
-          setCorrections(sorted);
-          setIsLoading(false);
-        },
-        error: (err) => {
-          console.error('Failed to observe corrections:', err);
-          setIsLoading(false);
-        },
-      });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Manual reload (for after edits that create new records)
-  const loadCorrections = useCallback(async () => {
-    try {
-      const all = await learnedCorrectionStore.getAll();
-      setCorrections(all);
-    } catch (err) {
-      console.error('Failed to load corrections:', err);
-    }
-  }, []);
 
   // Delete a correction
   const handleDelete = useCallback(async (id: string) => {
     const confirmed = window.confirm('Delete this correction?');
     if (!confirmed) return;
-
-    const success = await learnedCorrectionStore.delete(id);
-    if (success) {
-      setCorrections((prev) => prev.filter((c) => c.id !== id));
-    }
+    await graphMutations.deleteNode(id);
   }, []);
 
   // Start editing
-  const handleStartEdit = useCallback((correction: LearnedCorrection) => {
+  const handleStartEdit = useCallback((correction: LearnedCorrectionItem) => {
     setEditingId(correction.id);
     setEditValue(correction.corrected);
   }, []);
@@ -79,28 +42,30 @@ export function LearnedCorrectionsWidget() {
     setEditValue('');
   }, []);
 
-  // Save edit (we need to delete and recreate since we can't update the corrected value easily)
-  const handleSaveEdit = useCallback(async (correction: LearnedCorrection) => {
+  // Save edit (delete old, create new with updated correction)
+  const handleSaveEdit = useCallback(async (correction: LearnedCorrectionItem) => {
     if (!editValue.trim() || editValue === correction.corrected) {
       handleCancelEdit();
       return;
     }
 
-    // Delete old and create new with updated correction
-    await learnedCorrectionStore.delete(correction.id);
-    await learnedCorrectionStore.learn({
-      original: correction.original,
-      corrected: editValue.trim(),
-      leftContext: correction.leftContextParsed,
-      rightContext: correction.rightContextParsed,
+    await graphMutations.batch(async () => {
+      await graphMutations.deleteNode(correction.id);
+      await graphMutations.createNode(['learned_correction'], {
+        original: correction.original,
+        corrected: editValue.trim(),
+        leftContext: correction.leftContext ?? [],
+        rightContext: correction.rightContext ?? [],
+        confidence: correction.confidence ?? 0.5,
+        count: correction.count ?? 1,
+      });
     });
 
     setEditingId(null);
     setEditValue('');
-    loadCorrections();
-  }, [editValue, handleCancelEdit, loadCorrections]);
+  }, [editValue, handleCancelEdit]);
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div
         className="h-full flex items-center justify-center text-slate-400"
@@ -145,9 +110,9 @@ export function LearnedCorrectionsWidget() {
         <div className="space-y-1.5">
           {corrections.map((correction) => {
             const isEditing = editingId === correction.id;
-            const confidencePct = Math.round(correction.confidence * 100);
-            const leftCtx = correction.leftContextParsed.join(' ');
-            const rightCtx = correction.rightContextParsed.join(' ');
+            const confidencePct = Math.round((correction.confidence ?? 0) * 100);
+            const leftCtx = (correction.leftContext ?? []).join(' ');
+            const rightCtx = (correction.rightContext ?? []).join(' ');
 
             return (
               <div
@@ -226,7 +191,7 @@ export function LearnedCorrectionsWidget() {
                     </span>
                   )}
                   <span className="ml-auto flex-shrink-0">
-                    {confidencePct}% • {correction.count}x used
+                    {confidencePct}% • {correction.count ?? 0}x used
                   </span>
                 </div>
               </div>

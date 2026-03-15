@@ -1,44 +1,34 @@
 /**
  * Memory Bar — Spotlight bar for latest memory.
  *
- * Observes the most recent non-superseded memory via WatermelonDB.
+ * Uses DuckDB graph data via useGraphData.
  * Shows relative time since last reinforced, memory content, type badge.
  * Hover action: edit (opens MemoryManager with editMemoryId).
  */
 
 import { useState, useEffect } from 'react';
-import { Q } from '@nozbe/watermelondb';
-import { database } from '../../../db/database';
-import type Memory from '../../../db/models/Memory';
 import { Brain, Pencil } from 'lucide-react';
+import { useGraphData } from '../../../graph/data';
+import type { MemoryItem } from '../../../graph/data';
 import { formatRelativeTime } from '../../../program/utils/time';
 import { MemoryManager } from '../../../components/v2/MemoryManager';
 import type { SpotlightBarDefinition, SpotlightBarData } from '../types';
 
 interface MemoryBarData extends SpotlightBarData {
-	memory: Memory | null;
+	memory: MemoryItem | null;
 }
 
 function useMemoryBarData(): MemoryBarData {
-	const [latestMemory, setLatestMemory] = useState<Memory | null>(null);
 	// Force re-render every 30s to update relative time
 	const [, setTick] = useState(0);
 
-	useEffect(() => {
-		const col = database.get<Memory>('memories');
-		const query = col.query(
-			Q.where('supersededBy', null),
-			Q.where('state', Q.notEq('superseded')),
-			Q.sortBy('createdAt', Q.desc),
-			Q.take(1)
-		);
+	const { data: memories } = useGraphData<MemoryItem>('memory', {
+		orderBy: { field: 'created_at', dir: 'desc' },
+		limit: 1,
+	});
 
-		const subscription = query.observe().subscribe((results) => {
-			setLatestMemory(results[0] || null);
-		});
-
-		return () => subscription.unsubscribe();
-	}, []);
+	// Filter out superseded
+	const latestMemory = memories.find(m => m.state !== 'superseded' && !m.supersededBy) ?? null;
 
 	// Tick for relative time updates
 	useEffect(() => {

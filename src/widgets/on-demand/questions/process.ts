@@ -9,10 +9,10 @@ import { z } from 'zod';
 import { callLLM } from '../../../program/llmClient';
 import { workingMemory } from '../../../program/WorkingMemory';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
-import { widgetRecordStore } from '../../../db/stores';
+import { widgetRecordStore } from '../../../graph/stores/widgetRecordStore';
 import { eventBus } from '../../../lib/eventBus';
 import { analyzeTreeGaps, type TreeGap } from './treeGapAnalysis';
-// (no localStorage key needed — storage is WatermelonDB via widgetRecordStore)
+// (no localStorage key needed — storage is DuckDB via widgetRecordStore)
 
 // ============================================================================
 // Zod Schemas for validation
@@ -42,13 +42,13 @@ export type Question = z.infer<typeof QuestionSchema>;
 export type QuestionResult = z.infer<typeof QuestionResultSchema>;
 
 // ============================================================================
-// WatermelonDB Persistence
+// DuckDB Persistence
 // ============================================================================
 
 const WIDGET_TYPE = 'question';
 
 /**
- * Save questions to WatermelonDB (fire-and-forget — never throws).
+ * Save questions to DuckDB (fire-and-forget — never throws).
  * Appends a new row each call; full generation history is preserved.
  */
 export function saveQuestionsToStorage(result: QuestionResult): void {
@@ -62,7 +62,7 @@ export function saveQuestionsToStorage(result: QuestionResult): void {
 }
 
 /**
- * Load the latest questions from WatermelonDB with Zod validation.
+ * Load the latest questions from DuckDB with Zod validation.
  * Returns null if not found or invalid.
  */
 export async function loadQuestionsFromStorage(): Promise<QuestionResult | null> {

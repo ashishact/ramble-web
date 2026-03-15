@@ -18,7 +18,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { entityStore, learnedCorrectionStore } from '../db/stores';
+import { graphMutations } from '../graph/data';
+import { learnedCorrectionStore } from '../graph/stores/learnedCorrectionStore';
 import { settingsHelpers } from '../stores/settingsStore';
 import {
   analyzeText,
@@ -100,13 +101,20 @@ export function TranscriptReview({ initialText, onSubmit, onCancel, rambleMetada
   // Load entities on mount
   useEffect(() => {
     const loadEntities = async () => {
-      const allEntities = await entityStore.getAll();
+      const rows = await graphMutations.query<Record<string, unknown>>(
+        `SELECT * FROM nodes WHERE list_contains(labels, 'entity')`
+      );
       setEntities(
-        allEntities.map((e) => ({
-          name: e.name,
-          type: e.type,
-          aliases: e.aliasesParsed,
-        }))
+        rows.map((row) => {
+          const props = typeof row.properties === 'string'
+            ? JSON.parse(row.properties as string)
+            : (row.properties ?? {}) as Record<string, unknown>;
+          return {
+            name: (props.name as string) ?? '',
+            type: (props.type as string) ?? '',
+            aliases: Array.isArray(props.aliases) ? props.aliases as string[] : [],
+          };
+        })
       );
     };
     loadEntities();

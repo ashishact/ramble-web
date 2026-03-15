@@ -135,6 +135,8 @@ function actionLabel(action: string): string {
     'verify-creates': 'Verify Creates',
     'id-resolution': 'Resolve IDs',
     'action-dropped': 'Action Dropped',
+    'embed-nodes': 'Embed Nodes',
+    'embed-model-load': 'Load Embedding Model',
   }
   return labels[action] ?? action
 }

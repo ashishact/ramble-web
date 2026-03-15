@@ -3,20 +3,21 @@
  *
  * Singleton that manages:
  * - Session lifecycle
- * - Input processing queue
- * - Durable execution
+ * - Conversation accumulation (BatchDetector)
+ * - Batch processing (SinglePassProcessor → GraphMerger)
  *
  * The Loop:
- * [userinput] → [search/surface] → LLM → [update] → save → wait
+ * [userinput] → save to DuckDB → accumulate → batch ready → single LLM pass → merge into graph
  */
 
-import { sessionStore, conversationStore, taskStore, recordingStore } from '../../db/stores';
-import { processInput, type ProcessingResult } from './processor';
-import { normalizeInput } from '../services/normalizeInput';
-import { splitText } from './textSplitter';
-import { editTrees } from '../knowledgeTree/treeEditor';
-import { extractTimeline } from '../timelineExtractor';
-import { seedCorePlugins } from '../plugins';
+import { sessionStore, recordingStore } from '../../db/stores';
+import { conversationStore } from '../../graph/stores/conversationStore';
+import { getGraphService } from '../../graph';
+import { BatchDetector } from '../../graph/stores/batchDetector';
+import { SinglePassProcessor } from '../../graph/llm/SinglePassProcessor';
+import { GraphMerger } from '../../graph/merge/GraphMerger';
+import { ReactiveGraphService } from '../../graph/reactive/ReactiveGraphService';
+import { WorkingContextWindow } from '../../graph/context/WorkingContextWindow';
 import { createLogger } from '../utils/logger';
 import { pipelineStatus } from './pipelineStatus';
 import { recordingManager } from './recordingManager';
@@ -41,7 +42,6 @@ export interface KernelState {
 
 export interface InputResult {
   conversationId: string;
-  processingResult?: ProcessingResult;
   error?: string;
 }
 
@@ -75,15 +75,18 @@ class Kernel {
   private pendingMeetingTranscript: string | null = null;
 
   /**
-   * In-memory dedup caches — prevent duplicate conversation records.
-   *
-   * recentRawTexts: hash(rawText) → conversationId for the last N texts.
-   * Uses simpleHash to avoid storing full text strings as Map keys.
-   * Catches exact duplicates regardless of source (WebSocket dupe, paste dupe,
-   * dual submission path, etc.). Entries auto-expire after 2 minutes.
+   * In-memory dedup cache — hash(rawText) → conversationId.
+   * Prevents duplicate conversation records from multiple submission paths.
+   * Entries auto-expire after 2 minutes.
    */
   private recentRawTexts = new Map<string, string>();
   private readonly DEDUP_TTL_MS = 2 * 60 * 1000;
+
+  // New architecture components (lazy-initialized in initialize())
+  private batchDetector: BatchDetector | null = null;
+  private singlePassProcessor: SinglePassProcessor | null = null;
+  private graphMerger: GraphMerger | null = null;
+  private workingContext: WorkingContextWindow | null = null;
 
   private constructor() {}
 
@@ -113,14 +116,23 @@ class Kernel {
       logger.info('Created new session', { id: this.currentSession.id });
     }
 
-    // Seed core plugins if needed
-    await seedCorePlugins();
+    // Initialize graph components
+    const graph = await getGraphService();
+    const reactive = new ReactiveGraphService(graph);
 
-    // Fix any conversations that were processed but not marked (recovery from crashes)
-    await this.fixOrphanedConversations();
-
-    // Resume any pending tasks (for durability)
-    await this.resumePendingTasks();
+    this.workingContext = new WorkingContextWindow(graph);
+    this.singlePassProcessor = new SinglePassProcessor(graph, this.workingContext);
+    this.graphMerger = new GraphMerger(reactive);
+    // Initialize batch detector — fires onBatchReady when accumulation threshold is met
+    this.batchDetector = new BatchDetector({
+      gapThresholdMs: 30_000,   // 30s silence → process batch
+      maxBatchSize: 10,          // Max 10 conversations per batch
+      maxWaitMs: 60_000,         // Force batch after 60s
+      onBatchReady: (batchId, conversationIds) => {
+        this.processBatch(batchId, conversationIds)
+          .catch(err => logger.error('Batch processing failed', { batchId, error: err }));
+      },
+    });
 
     // Wire recording lifecycle to native events
     this.wireRecordingLifecycle();
@@ -136,9 +148,20 @@ class Kernel {
 
     logger.info('Shutting down kernel...');
 
+    // Flush any pending batch before shutdown
+    if (this.batchDetector && this.batchDetector.pendingCount > 0) {
+      this.batchDetector.flush();
+    }
+
     // Unsubscribe recording lifecycle listeners
     this.recordingUnsubscribers.forEach(unsub => unsub());
     this.recordingUnsubscribers = [];
+
+    // Clean up batch detector
+    if (this.batchDetector) {
+      this.batchDetector.destroy();
+      this.batchDetector = null;
+    }
 
     // End current session
     if (this.currentSession) {
@@ -147,6 +170,9 @@ class Kernel {
 
     this.initialized = false;
     this.currentSession = null;
+    this.singlePassProcessor = null;
+    this.graphMerger = null;
+    this.workingContext = null;
     this.notifyListeners();
 
     logger.info('Kernel shut down');
@@ -166,6 +192,11 @@ class Kernel {
     this.currentSession = await sessionStore.create({});
     this.notifyListeners();
 
+    // Reset processor conversation history for the new session
+    if (this.singlePassProcessor) {
+      this.singlePassProcessor.reset();
+    }
+
     logger.info('Started new session', { id: this.currentSession.id });
     return this.currentSession;
   }
@@ -178,19 +209,7 @@ class Kernel {
   // Recording Lifecycle Wiring
   // ==========================================================================
 
-  /**
-   * Wire RecordingManager to native events so the unified pipeline processes
-   * all audio input through System I (per-chunk) and System II (full recording).
-   *
-   * Flow:
-   *   native:recording-started  → recordingManager.start('voice')
-   *   native:transcription-intermediate → recordingManager.addChunk() (tracking only, no LLM processing)
-   *   native:recording-ended    → recordingManager.end() → submitInput() (System II)
-   *
-   * Text/paste input: called directly via submitInput() — no recording lifecycle needed.
-   */
   private wireRecordingLifecycle(): void {
-    // Clean up any previous subscriptions (shouldn't happen, but defensive)
     this.recordingUnsubscribers.forEach(unsub => unsub());
     this.recordingUnsubscribers = [];
 
@@ -202,11 +221,7 @@ class Kernel {
       })
     );
 
-    // ── Intermediate chunk → track in recording only (no System I processing) ──
-    // Chunks are added to recordingManager so recording:chunk events fire for
-    // on-demand widgets that want real-time intermediate text. The kernel does
-    // NOT run LLM extraction here — all extraction happens once on the final
-    // transcript via System II (which already includes all intermediate text).
+    // ── Intermediate chunk → track in recording only ──
     this.recordingUnsubscribers.push(
       eventBus.on('native:transcription-intermediate', (payload) => {
         if (!recordingManager.isRecording) return;
@@ -230,19 +245,17 @@ class Kernel {
       })
     );
 
-    // ── Recording end → System II processing ──
+    // ── Recording end → save + accumulate ──
     this.recordingUnsubscribers.push(
       eventBus.on('native:recording-ended', () => {
         if (!recordingManager.isRecording) return;
 
         const { recording, fullText, chunks } = recordingManager.end();
 
-        // Check if we have a meeting transcript — if so, use it instead of flat fullText
         const isMeeting = this.pendingMeetingTranscript !== null;
         const textToProcess = isMeeting ? this.pendingMeetingTranscript! : fullText;
         const source = isMeeting ? 'meeting' as const : 'speech' as const;
 
-        // Clear pending meeting transcript after consuming
         this.pendingMeetingTranscript = null;
 
         logger.info('Recording ended', {
@@ -252,7 +265,6 @@ class Kernel {
         });
 
         if (textToProcess.trim()) {
-          // Save recording to DB for time travel
           recordingStore.create({
             type: recording.type,
             startedAt: recording.startedAt,
@@ -266,25 +278,39 @@ class Kernel {
             sessionId: this.currentSession?.id,
           }).catch(err => logger.error('Failed to save recording', { error: err }));
 
-          // Submit for System II (durable) processing — pass recordingId
-          // so the event chain stays connected: recording → processing → widgets
-          this.submitInput(textToProcess.trim(), source, recording.id)
-            .catch(err => logger.error('System II processing failed', { error: err }));
+          // Only submit to conversationStore (and knowledge graph) for meetings.
+          // Solo/individual native speech is NOT ingested — user must explicitly
+          // paste text in ramble-web for it to enter the database.
+          if (isMeeting) {
+            this.submitInput(textToProcess.trim(), source, recording.id)
+              .catch(err => logger.error('Processing failed', { error: err }));
+          } else {
+            logger.info('Solo native speech — skipping DB ingestion', {
+              id: recording.id,
+              chars: textToProcess.length,
+            });
+          }
         }
       })
     );
 
-    // ── Transcription final (cloud STT) → same as recording end ──
+    // ── Transcription final (cloud STT) ──
+    // Cloud STT is only used in solo/individual mode. Native meetings have
+    // their own path (native:meeting-transcript-complete → native:recording-ended).
+    // In solo mode we do NOT ingest native speech — only explicit text paste.
     this.recordingUnsubscribers.push(
       eventBus.on('native:transcription-final', (payload) => {
         if (!recordingManager.isRecording) return;
 
-        // Add final text as last chunk
         recordingManager.addChunk(payload.text, 'mic');
         const { recording, fullText, chunks } = recordingManager.end();
-        logger.info('Transcription final', { id: recording.id, chars: fullText.length });
+        logger.info('Transcription final (solo — not ingested)', {
+          id: recording.id,
+          chars: fullText.length,
+        });
 
         if (fullText.trim()) {
+          // Save to recordingStore for diagnostics only — no submitInput
           recordingStore.create({
             type: recording.type,
             startedAt: recording.startedAt,
@@ -296,9 +322,6 @@ class Kernel {
             processingMode: 'system-ii',
             sessionId: this.currentSession?.id,
           }).catch(err => logger.error('Failed to save recording', { error: err }));
-
-          this.submitInput(fullText.trim(), 'speech', recording.id)
-            .catch(err => logger.error('System II processing failed', { error: err }));
         }
       })
     );
@@ -307,21 +330,9 @@ class Kernel {
   }
 
   // ==========================================================================
-  // Input Processing (The Core Loop)
+  // Input Submission
   // ==========================================================================
 
-  /**
-   * Submit user input for processing.
-   *
-   * Every input should have a recordingId — the Recording abstraction tracks
-   * ALL inputs (voice, text, paste, keyboard) for time travel and event routing.
-   * If no recordingId is provided, one is created automatically so that
-   * downstream processing (processor.ts) can always emit typed events.
-   *
-   * @param text - The input text
-   * @param source - How the text arrived ('speech' | 'text')
-   * @param recordingId - Optional recording ID (auto-created if not provided)
-   */
   async submitInput(
     text: string,
     source: 'speech' | 'text' | 'meeting' = 'text',
@@ -336,8 +347,7 @@ class Kernel {
       throw new Error('Kernel not initialized');
     }
 
-    // Ensure every input has a recording — if the caller didn't create one
-    // (e.g. TextInputWidget, legacy code paths), we create one here.
+    // Ensure every input has a recording
     let finalRecordingId = recordingId;
     if (!finalRecordingId) {
       const recType = source === 'speech' ? 'voice' : 'text';
@@ -346,7 +356,6 @@ class Kernel {
       const { recording: ended } = recordingManager.end();
       finalRecordingId = ended.id;
 
-      // Persist the auto-created recording
       recordingStore.create({
         type: ended.type,
         startedAt: ended.startedAt,
@@ -378,10 +387,10 @@ class Kernel {
       this.notifyListeners();
 
       try {
-        const result = await this.processInputItem(item.text, item.source, item.recordingId);
+        const result = await this.saveAndAccumulate(item.text, item.source, item.recordingId);
         item.resolve(result);
       } catch (error) {
-        logger.error('Failed to process input', { error });
+        logger.error('Failed to save input', { error });
         item.reject(error instanceof Error ? error : new Error(String(error)));
       }
     }
@@ -390,7 +399,16 @@ class Kernel {
     this.notifyListeners();
   }
 
-  private async processInputItem(
+  // ==========================================================================
+  // Save & Accumulate (replaces old processInputItem)
+  // ==========================================================================
+
+  /**
+   * Save conversation to DuckDB and feed the batch detector.
+   * No LLM calls here — just save and accumulate.
+   * BatchDetector fires onBatchReady when threshold is met.
+   */
+  private async saveAndAccumulate(
     text: string,
     source: 'speech' | 'text' | 'meeting',
     recordingId?: string
@@ -400,539 +418,156 @@ class Kernel {
     }
     const sessionId = this.currentSession.id;
 
-    // ── Exact rawText dedup gate (in-memory) ─────────────────────────────
-    // The same text can arrive via multiple paths (WebSocket + paste, native
-    // recording + cloud STT, etc.) — only the first one should create a record.
-    // Check against in-memory cache of recently created texts — no DB query.
+    // Dedup gate
     const textHash = simpleHash(text);
     const existingConvId = this.recentRawTexts.get(textHash);
     if (existingConvId) {
-      console.log(
-        '%c[Kernel] Duplicate rawText — skipping',
-        'color: red; font-weight: bold',
-        { existingConvId, source, textPreview: text.slice(0, 80) }
-      );
+      logger.info('Duplicate rawText — skipping', { existingConvId, source });
       return { conversationId: existingConvId };
     }
 
-    // Start pipeline tracking
+    // Save conversation to DuckDB
     pipelineStatus.start();
     pipelineStatus.step('input', 'running');
-    telemetry.emit('kernel', 'processInputItem', 'start', {
+    telemetry.emit('kernel', 'saveAndAccumulate', 'start', {
       source,
       chars: text.length,
-      inputText: text,
     });
 
-    // ── Phase 1: Normalize the full text FIRST ───────────────────────────
-    // Normalization adds proper punctuation/sentence boundaries and extracts
-    // entity/topic hints. We need this before splitting because raw STT text
-    // may lack sentence boundaries entirely.
-    const recentConvs = await conversationStore.getRecent(3);
-    const recentSentences: string[] = recentConvs
-      .reverse()
-      .flatMap(c => {
-        const parsed = c.sentencesParsed;
-        if (parsed.length > 0) return parsed.map(s => s.text);
-        return c.sanitizedText.split(/(?<=[.!?])\s+/).filter(Boolean);
-      })
-      .slice(-5);
-
-    const normalizeResult = await normalizeInput(text, recentSentences, source);
-    const normalizedText = normalizeResult.normalizedText;
-    const hints = normalizeResult.hints;
-    pipelineStatus.step('input', 'success');
-
-    // ── Check if text needs splitting ────────────────────────────────────
-    // Split the NORMALIZED text (has proper sentence boundaries now).
-    // If multiple chunks, delegate to sequential chunked processing.
-    const chunks = splitText(normalizedText);
-
-    // Detect meeting mode from source
-    const isMeeting = source === 'meeting';
-
-    if (chunks.length > 1) {
-      logger.info('Long text detected, splitting into chunks', {
-        originalLength: text.length,
-        normalizedLength: normalizedText.length,
-        chunkCount: chunks.length,
-        source,
-        isMeeting,
-      });
-      return await this.processChunkedInput(
-        text, chunks, hints, source, sessionId, recordingId, isMeeting
-      );
-    }
-
-    // ── Single chunk: existing flow (with pre-computed hints) ────────────
-    const sanitizedText = normalizedText;
-
-    // Cache rawText → conversationId for dedup (auto-expires)
-    // (set after we know we're not splitting — for splits, dedup is per-chunk)
-
-    // 2. Save conversation unit
-    pipelineStatus.step('save', 'running');
     const conversation = await conversationStore.create({
       sessionId,
       rawText: text,
-      sanitizedText,
       source,
       speaker: 'user',
       recordingId,
     });
 
+    // Dedup cache
     this.recentRawTexts.set(textHash, conversation.id);
     setTimeout(() => this.recentRawTexts.delete(textHash), this.DEDUP_TTL_MS);
 
-    // 3. Increment session unit count
+    // Increment session unit count
     await sessionStore.incrementUnitCount(sessionId);
 
-    // 4. Create durable task for processing
-    const task = await taskStore.create({
-      taskType: 'process-input',
-      payload: {
-        conversationId: conversation.id,
-        sessionId,
-        text: sanitizedText,
-        source,
-      },
-      sessionId,
-    });
+    pipelineStatus.step('input', 'success');
     pipelineStatus.step('save', 'success');
+    pipelineStatus.step('done', 'success');
 
-    // 5. Process immediately — pass pre-computed hints to skip re-normalization
+    telemetry.emit('kernel', 'saveAndAccumulate', 'end', {
+      conversationId: conversation.id,
+    }, { status: 'success' });
+
+    // Feed batch detector — it will call onBatchReady when threshold is met
+    if (this.batchDetector) {
+      this.batchDetector.add(conversation.id);
+      logger.info('Conversation accumulated', {
+        conversationId: conversation.id,
+        pendingInBatch: this.batchDetector.pendingCount,
+      });
+    }
+
+    return { conversationId: conversation.id };
+  }
+
+  // ==========================================================================
+  // Batch Processing (fired by BatchDetector.onBatchReady)
+  // ==========================================================================
+
+  /**
+   * Process a batch of accumulated conversations through the single-pass pipeline.
+   * Called by BatchDetector when gap/threshold triggers.
+   *
+   * Flow: load conversations → SinglePassProcessor (1 LLM call) → GraphMerger → done
+   */
+  private async processBatch(batchId: string, conversationIds: string[]): Promise<void> {
+    if (!this.singlePassProcessor || !this.graphMerger) {
+      logger.warn('Processor not initialized, skipping batch', { batchId });
+      return;
+    }
+
+    logger.info('Processing batch', { batchId, count: conversationIds.length });
+    pipelineStatus.start();
     pipelineStatus.step('process', 'running');
-    try {
-      await taskStore.start(task.id);
 
-      const processingResult = await processInput(
-        sessionId,
-        conversation.id,
-        sanitizedText,
-        source,
-        { mode: 'system-ii', recordingId, hints, isMeeting }
+    try {
+      // Load conversations from DuckDB
+      const conversations = await Promise.all(
+        conversationIds.map(id => conversationStore.getById(id))
+      );
+      const validConvs = conversations.filter(
+        (c): c is NonNullable<typeof c> => c !== null
       );
 
-      await conversationStore.markProcessed(conversation.id);
+      if (validConvs.length === 0) {
+        logger.warn('No valid conversations found for batch', { batchId });
+        return;
+      }
 
-      await taskStore.complete(task.id, {
-        entities: processingResult.entities.length,
-        topics: processingResult.topics.length,
-        memories: processingResult.memories.length,
+      // Single LLM pass
+      const result = await this.singlePassProcessor.processBatch({
+        conversations: validConvs.map(c => ({
+          id: c.id,
+          rawText: c.raw_text,
+          source: c.source,
+          speaker: c.speaker,
+        })),
+        recordingId: validConvs[0].recording_id ?? undefined,
       });
+
+      logger.info('Single-pass extraction complete', {
+        batchId,
+        nodes: result.subset.nodes.length,
+        edges: result.subset.edges.length,
+        searchLoops: result.searchLoops,
+      });
+
+      // Merge KG subset into graph
+      // Embeddings are handled reactively by EmbeddingListener (graph:node:created events)
+      if (result.subset.nodes.length > 0 || result.subset.edges.length > 0) {
+        await this.graphMerger.merge(
+          result.subset,
+          'global',
+          validConvs[0].source,
+          validConvs[0].recording_id ?? undefined
+        );
+
+        logger.info('Graph merge complete', { batchId });
+      }
+
+      // Mark all conversations as processed
+      for (const id of conversationIds) {
+        await conversationStore.markProcessed(id, batchId);
+      }
 
       pipelineStatus.step('process', 'success');
       pipelineStatus.step('done', 'success');
-      telemetry.emit('kernel', 'processInputItem', 'end', {
-        entities: processingResult.entities.length,
-        memories: processingResult.memories.length,
+
+      telemetry.emit('kernel', 'processBatch', 'end', {
+        batchId,
+        conversations: conversationIds.length,
+        nodes: result.subset.nodes.length,
+        edges: result.subset.edges.length,
       }, { status: 'success' });
 
-      // Drain any follow-up tasks (e.g. edit-trees) that processInput() queued
-      this.resumePendingTasks().catch(err =>
-        logger.error('Follow-up task processing failed (non-fatal)', { error: err })
-      );
+      // Emit event for UI updates
+      eventBus.emit('processing:complete', {
+        batchId,
+        conversationIds,
+        nodeCount: result.subset.nodes.length,
+      });
 
-      return {
-        conversationId: conversation.id,
-        processingResult,
-      };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      await taskStore.fail(task.id, errorMessage);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Batch processing failed', { batchId, error: errorMessage });
 
       pipelineStatus.step('process', 'error');
       pipelineStatus.step('done', 'error');
-      telemetry.emit('kernel', 'processInputItem', 'end', { error: errorMessage }, { status: 'error' });
 
-      return {
-        conversationId: conversation.id,
+      telemetry.emit('kernel', 'processBatch', 'end', {
+        batchId,
         error: errorMessage,
-      };
+      }, { status: 'error' });
     }
-  }
-
-  // ==========================================================================
-  // Chunked Input Processing (Long Text Splitting)
-  // ==========================================================================
-
-  /**
-   * Process long text as sequential chunks. Each chunk gets its own conversation
-   * record and extraction pass. Sequential (not parallel) so each chunk's
-   * extracted entities/memories are in the DB before the next chunk's context
-   * retrieval runs — giving later chunks progressively richer context.
-   *
-   * @param rawText - Original raw text (for the first conversation's rawText field)
-   * @param normalizedText - Full normalized text (already punctuated)
-   * @param chunks - Pre-split chunks from splitText()
-   * @param hints - Pre-computed normalization hints (entity/topic search keys)
-   * @param source - Input source ('speech' | 'text')
-   * @param sessionId - Current session ID
-   * @param recordingId - Optional recording ID
-   */
-  private async processChunkedInput(
-    rawText: string,
-    chunks: import('./textSplitter').TextChunk[],
-    hints: import('../types/recording').NormalizationHints,
-    source: 'speech' | 'text' | 'meeting',
-    sessionId: string,
-    recordingId?: string,
-    isMeeting?: boolean
-  ): Promise<InputResult> {
-    // Cache the full rawText for dedup
-    const textHash = simpleHash(rawText);
-    // We'll set the dedup entry to the first conversation ID below
-
-    let lastConversationId = '';
-    let lastResult: ProcessingResult | undefined;
-
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-
-      logger.info(`Processing chunk ${chunk.index + 1}/${chunk.totalChunks}`, {
-        chunkLength: chunk.text.length,
-      });
-      pipelineStatus.start();
-      pipelineStatus.step('input', 'success');
-      pipelineStatus.step('save', 'running');
-
-      // Create conversation record for this chunk
-      const conversation = await conversationStore.create({
-        sessionId,
-        rawText: i === 0 ? rawText : chunk.text,  // First chunk stores full raw text
-        sanitizedText: chunk.text,
-        source,
-        speaker: 'user',
-        recordingId,
-      });
-
-      // Set dedup to first conversation
-      if (i === 0) {
-        this.recentRawTexts.set(textHash, conversation.id);
-        setTimeout(() => this.recentRawTexts.delete(textHash), this.DEDUP_TTL_MS);
-      }
-
-      await sessionStore.incrementUnitCount(sessionId);
-
-      const task = await taskStore.create({
-        taskType: 'process-input',
-        payload: {
-          conversationId: conversation.id,
-          sessionId,
-          text: chunk.text,
-          source,
-          chunkIndex: chunk.index,
-          totalChunks: chunk.totalChunks,
-        },
-        sessionId,
-      });
-      pipelineStatus.step('save', 'success');
-
-      // Process this chunk — pass pre-computed hints to skip re-normalization
-      pipelineStatus.step('process', 'running');
-      try {
-        await taskStore.start(task.id);
-
-        const processingResult = await processInput(
-          sessionId,
-          conversation.id,
-          chunk.text,
-          source,
-          { mode: 'system-ii', recordingId, hints, isMeeting }
-        );
-
-        await conversationStore.markProcessed(conversation.id);
-
-        await taskStore.complete(task.id, {
-          entities: processingResult.entities.length,
-          topics: processingResult.topics.length,
-          memories: processingResult.memories.length,
-          chunkIndex: chunk.index,
-          totalChunks: chunk.totalChunks,
-        });
-
-        pipelineStatus.step('process', 'success');
-        pipelineStatus.step('done', 'success');
-
-        lastConversationId = conversation.id;
-        lastResult = processingResult;
-
-        logger.info(`Chunk ${chunk.index + 1}/${chunk.totalChunks} complete`, {
-          entities: processingResult.entities.length,
-          memories: processingResult.memories.length,
-        });
-
-        // IMPORTANT: Do NOT continue to next chunk until this one's follow-up
-        // tasks (edit-trees, etc.) have drained — so the next chunk's context
-        // retrieval picks up the freshest data.
-        await this.resumePendingTasks();
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        await taskStore.fail(task.id, errorMessage);
-
-        pipelineStatus.step('process', 'error');
-        pipelineStatus.step('done', 'error');
-
-        logger.error(`Chunk ${chunk.index + 1}/${chunk.totalChunks} failed`, {
-          error: errorMessage,
-        });
-
-        // Continue to next chunk — don't let one failure stop the whole batch
-        lastConversationId = conversation.id;
-      }
-    }
-
-    return {
-      conversationId: lastConversationId,
-      processingResult: lastResult,
-    };
-  }
-
-  // ==========================================================================
-  // Task Recovery (Durability)
-  // ==========================================================================
-
-  /**
-   * Fix conversations where the task completed but markProcessed never ran
-   * This can happen if the app crashes between task.complete and markProcessed
-   */
-  private async fixOrphanedConversations(): Promise<void> {
-    // Get unprocessed conversations
-    const unprocessed = await conversationStore.getUnprocessed(100);
-    logger.info('Checking for orphaned conversations', {
-      unprocessedCount: unprocessed.length
-    });
-    if (unprocessed.length === 0) return;
-
-    // Get completed process-input tasks
-    const completedTasks = await taskStore.getByStatus('completed');
-    const processInputTasks = completedTasks.filter(t => t.taskType === 'process-input');
-    logger.info('Found completed process-input tasks', {
-      count: processInputTasks.length
-    });
-
-    // Also check running tasks (might have crashed mid-execution)
-    const runningTasks = await taskStore.getByStatus('running');
-    const runningProcessInputTasks = runningTasks.filter(t => t.taskType === 'process-input');
-    logger.info('Found running process-input tasks', {
-      count: runningProcessInputTasks.length
-    });
-
-    // Build a set of conversationIds that have completed tasks
-    const completedConversationIds = new Set<string>();
-    for (const task of processInputTasks) {
-      try {
-        const payload = task.payloadParsed as { conversationId?: string };
-        if (payload.conversationId) {
-          completedConversationIds.add(payload.conversationId);
-        }
-      } catch {
-        // Invalid payload, skip
-      }
-    }
-
-    // Mark orphaned conversations as processed
-    let fixed = 0;
-    for (const conv of unprocessed) {
-      if (completedConversationIds.has(conv.id)) {
-        await conversationStore.markProcessed(conv.id);
-        fixed++;
-        logger.info('Fixed orphaned conversation', { id: conv.id });
-      }
-    }
-
-    // For running tasks that are stale (crashed), reset to pending for retry
-    // Don't complete them - the processing might have failed mid-way
-    for (const task of runningProcessInputTasks) {
-      try {
-        // Reset to pending so resumePendingTasks will pick it up
-        await taskStore.reschedule(task.id, Date.now());
-        logger.info('Reset stale running task to pending', {
-          taskId: task.id,
-        });
-      } catch {
-        // Invalid task, skip
-      }
-    }
-
-    if (fixed > 0) {
-      logger.info('Fixed orphaned conversations', { count: fixed });
-    }
-  }
-
-  private async resumePendingTasks(): Promise<void> {
-    // Only get pending tasks - failed tasks require manual retry via reprocessFailed()
-    // This prevents infinite retry loops when API is persistently broken
-    const pendingTasks = await taskStore.getPending(10);
-
-    if (pendingTasks.length === 0) return;
-
-    logger.info('Resuming pending tasks', { count: pendingTasks.length });
-
-    for (const task of pendingTasks) {
-      if (task.taskType === 'process-input') {
-        const payload = task.payloadParsed as {
-          conversationId: string;
-          sessionId: string;
-          text: string;
-          source?: 'speech' | 'text';
-        };
-
-        try {
-          await taskStore.start(task.id);
-          await processInput(
-            payload.sessionId,
-            payload.conversationId,
-            payload.text,
-            payload.source ?? 'text'
-          );
-          // Mark conversation first, then complete task
-          await conversationStore.markProcessed(payload.conversationId);
-          await taskStore.complete(task.id);
-          logger.info('Successfully resumed task', { taskId: task.id });
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          await taskStore.fail(task.id, errorMessage);
-          logger.error('Failed to resume task', { taskId: task.id, error: errorMessage });
-        }
-      } else if (task.taskType === 'edit-trees') {
-        const payload = task.payloadParsed as {
-          entityIds: string[];
-          topicIds: string[];
-          memoryIds: string[];
-          conversationId: string;
-          intent?: string;
-        };
-
-        try {
-          await taskStore.start(task.id);
-
-          const intent = (payload.intent ?? 'inform') as import('../types/recording').Intent;
-
-          const result = await editTrees({
-            entityIds: payload.entityIds,
-            topicIds: payload.topicIds,
-            memoryIds: payload.memoryIds,
-            conversationId: payload.conversationId,
-            intent,
-          });
-
-          await taskStore.complete(task.id, {
-            actionsProposed: result.actionsProposed,
-            actionsApplied: result.actionsApplied,
-            entitiesAffected: result.entitiesAffected,
-            searchLoops: result.searchLoops,
-          });
-          logger.info('Tree editor task completed', {
-            taskId: task.id,
-            proposed: result.actionsProposed,
-            applied: result.actionsApplied,
-            entities: result.entitiesAffected,
-          });
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          await taskStore.fail(task.id, errorMessage);
-          logger.error('Tree editor task failed', { taskId: task.id, error: errorMessage });
-
-          eventBus.emit('tree:activity', {
-            type: 'curation-llm-error',
-            message: `Tree editor failed`,
-            detail: errorMessage,
-            timestamp: Date.now(),
-          });
-        }
-      } else if (task.taskType === 'curate-timeline') {
-        const payload = task.payloadParsed as {
-          entityIds: string[];
-          memoryIds: string[];
-          conversationId: string;
-          intent?: string;
-        };
-
-        try {
-          await taskStore.start(task.id);
-
-          const conversation = await conversationStore.getById(payload.conversationId);
-          const contextSummary = conversation?.summary ?? conversation?.rawText?.slice(0, 200) ?? '';
-          const intent = (payload.intent ?? 'inform') as import('../types/recording').Intent;
-
-          await extractTimeline({
-            memoryIds: payload.memoryIds,
-            entityIds: payload.entityIds,
-            conversationContext: contextSummary,
-            intent,
-          });
-
-          await taskStore.complete(task.id);
-          logger.info('Timeline extraction task completed', { taskId: task.id });
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          await taskStore.fail(task.id, errorMessage);
-          logger.error('Timeline extraction task failed', { taskId: task.id, error: errorMessage });
-        }
-      }
-    }
-  }
-
-  // ==========================================================================
-  // Reprocessing
-  // ==========================================================================
-
-  /**
-   * Reprocess conversations that failed extraction
-   * Useful for recovering from errors
-   */
-  async reprocessFailed(): Promise<{ processed: number; failed: number }> {
-    const unprocessed = await conversationStore.getUnprocessed(100);
-
-    if (unprocessed.length === 0) {
-      logger.info('No unprocessed conversations to reprocess');
-      return { processed: 0, failed: 0 };
-    }
-
-    logger.info('Reprocessing failed conversations', { count: unprocessed.length });
-
-    let processed = 0;
-    let failed = 0;
-
-    for (const conv of unprocessed) {
-      try {
-        // Skip conversations with no sessionId (corrupted data)
-        if (!conv.sessionId) {
-          logger.warn('Skipping conversation with no sessionId', { id: conv.id });
-          // Just mark as processed to clear it
-          await conversationStore.markProcessed(conv.id);
-          processed++;
-          continue;
-        }
-
-        logger.info('Reprocessing conversation', { id: conv.id, sessionId: conv.sessionId });
-
-        await processInput(
-          conv.sessionId,
-          conv.id,
-          conv.sanitizedText,
-          conv.source as 'speech' | 'text'
-        );
-
-        await conversationStore.markProcessed(conv.id);
-        processed++;
-
-        logger.info('Reprocessed conversation successfully', { id: conv.id });
-      } catch (error) {
-        failed++;
-        logger.error('Failed to reprocess conversation', {
-          id: conv.id,
-          error: error instanceof Error ? error.message : 'Unknown',
-          stack: error instanceof Error ? error.stack : undefined
-        });
-        // Also log to console for visibility
-        console.error('Reprocess error:', error);
-      }
-    }
-
-    logger.info('Reprocessing complete', { processed, failed });
-    return { processed, failed };
   }
 
   // ==========================================================================
@@ -967,14 +602,4 @@ class Kernel {
 
 export function getKernel(): Kernel {
   return Kernel.getInstance();
-}
-
-// Expose for debugging in browser console
-if (typeof window !== 'undefined') {
-  (window as unknown as Record<string, unknown>).reprocessFailed = async () => {
-    const kernel = getKernel();
-    const result = await kernel.reprocessFailed();
-    console.log(`Reprocessed: ${result.processed} succeeded, ${result.failed} failed`);
-    return result;
-  };
 }

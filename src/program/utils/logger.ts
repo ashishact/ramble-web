@@ -65,7 +65,13 @@ export type LogModule =
   | 'EntityResolver'
   | 'EntityMerge'
   // DB stores
-  | 'KnowledgeNodeStore';
+  | 'KnowledgeNodeStore'
+  // Knowledge graph
+  | 'SinglePassProcessor'
+  | 'IdleScheduler'
+  // Interview engine
+  | 'InterviewEngine'
+  | 'InterviewTransport';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -137,6 +143,11 @@ const MODULE_COLORS: Record<LogModule, string> = {
   EntityMerge: '#AB47BC',
   // DB stores
   KnowledgeNodeStore: '#78909C',
+  // Knowledge Graph
+  SinglePassProcessor: '#7C4DFF',
+  IdleScheduler: '#78909C',
+  InterviewEngine: '#E91E63',
+  InterviewTransport: '#E91E63',
 };
 
 interface LogConfig {

@@ -1,13 +1,15 @@
 /**
  * Topic Manager - Full CRUD and merge for topics
+ *
+ * Reads from DuckDB via useGraphData, writes via graphMutations.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { Icon } from '@iconify/react';
-import { topicStore } from '../../db/stores';
+import { useGraphData, graphMutations } from '../../graph/data';
+import type { TopicItem } from '../../graph/data';
 import { SortIcon } from './SortIcon';
 import { formatRelativeTime } from '../../program/utils/time';
-import type Topic from '../../db/models/Topic';
 
 type SortField = 'name' | 'category' | 'mentionCount' | 'lastMentioned' | 'firstMentioned';
 type SortDir = 'asc' | 'desc';
@@ -17,9 +19,11 @@ interface TopicManagerProps {
 }
 
 export function TopicManager({ onClose }: TopicManagerProps) {
-  // Data
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Data — reactive via useGraphData
+  const { data: topics, loading } = useGraphData<TopicItem>('topic', {
+    limit: 500,
+    orderBy: { field: 'lastMentioned', dir: 'desc' },
+  });
 
   // Filters & Sort
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,7 +35,7 @@ export function TopicManager({ onClose }: TopicManagerProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Modals
-  const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
+  const [editingTopic, setEditingTopic] = useState<TopicItem | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showMergeModal, setShowMergeModal] = useState(false);
 
@@ -39,18 +43,6 @@ export function TopicManager({ onClose }: TopicManagerProps) {
   const [formName, setFormName] = useState('');
   const [formCategory, setFormCategory] = useState('');
   const [formDescription, setFormDescription] = useState('');
-
-  // Load data
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    const allTopics = await topicStore.getAll();
-    setTopics(allTopics);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   // Get unique categories for filter
   const allCategories = [...new Set(topics.map(t => t.category).filter(Boolean))].sort() as string[];
@@ -88,13 +80,13 @@ export function TopicManager({ onClose }: TopicManagerProps) {
           cmp = (a.category ?? '').localeCompare(b.category ?? '');
           break;
         case 'mentionCount':
-          cmp = a.mentionCount - b.mentionCount;
+          cmp = (a.mentionCount ?? 0) - (b.mentionCount ?? 0);
           break;
         case 'lastMentioned':
-          cmp = a.lastMentioned - b.lastMentioned;
+          cmp = (a.lastMentioned ?? 0) - (b.lastMentioned ?? 0);
           break;
         case 'firstMentioned':
-          cmp = a.firstMentioned - b.firstMentioned;
+          cmp = (a.firstMentioned ?? 0) - (b.firstMentioned ?? 0);
           break;
       }
       return sortDir === 'asc' ? cmp : -cmp;
@@ -114,11 +106,8 @@ export function TopicManager({ onClose }: TopicManagerProps) {
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -134,63 +123,70 @@ export function TopicManager({ onClose }: TopicManagerProps) {
   // CRUD handlers
   const handleCreate = async () => {
     if (!formName.trim()) return;
-
-    await topicStore.create({
+    const now = Date.now();
+    await graphMutations.createNode(['topic'], {
       name: formName.trim(),
       category: formCategory.trim() || undefined,
       description: formDescription.trim() || undefined,
+      mentionCount: 0,
+      firstMentioned: now,
+      lastMentioned: now,
     });
-
     setShowCreateModal(false);
     resetForm();
-    loadData();
   };
 
   const handleUpdate = async () => {
     if (!editingTopic || !formName.trim()) return;
-
-    await topicStore.update(editingTopic.id, {
+    await graphMutations.updateNodeProperties(editingTopic.id, {
       name: formName.trim(),
       category: formCategory.trim() || undefined,
       description: formDescription.trim() || undefined,
     });
-
     setEditingTopic(null);
     resetForm();
-    loadData();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this topic? This cannot be undone.')) return;
-    await topicStore.delete(id);
+    await graphMutations.deleteNode(id);
     setSelectedIds(prev => {
       const next = new Set(prev);
       next.delete(id);
       return next;
     });
-    loadData();
   };
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
     if (!confirm(`Delete ${selectedIds.size} topics? This cannot be undone.`)) return;
-
-    for (const id of selectedIds) {
-      await topicStore.delete(id);
-    }
+    await graphMutations.batch(async () => {
+      for (const id of selectedIds) {
+        await graphMutations.deleteNode(id);
+      }
+    });
     setSelectedIds(new Set());
-    loadData();
   };
 
   // Merge handler
   const handleMerge = async (targetId: string) => {
     const sourceIds = [...selectedIds].filter(id => id !== targetId);
-    for (const sourceId of sourceIds) {
-      await topicStore.merge(targetId, sourceId);
-    }
+    const target = topics.find(t => t.id === targetId);
+    if (!target) return;
+
+    await graphMutations.batch(async () => {
+      for (const sourceId of sourceIds) {
+        const source = topics.find(t => t.id === sourceId);
+        if (!source) continue;
+        await graphMutations.updateNodeProperties(targetId, {
+          mentionCount: (target.mentionCount ?? 0) + (source.mentionCount ?? 0),
+        });
+        await graphMutations.deleteNode(sourceId);
+      }
+    });
+
     setSelectedIds(new Set());
     setShowMergeModal(false);
-    loadData();
   };
 
   // Form helpers
@@ -200,7 +196,7 @@ export function TopicManager({ onClose }: TopicManagerProps) {
     setFormDescription('');
   };
 
-  const openEdit = (topic: Topic) => {
+  const openEdit = (topic: TopicItem) => {
     setEditingTopic(topic);
     setFormName(topic.name);
     setFormCategory(topic.category ?? '');
@@ -368,7 +364,7 @@ export function TopicManager({ onClose }: TopicManagerProps) {
                     <td className="max-w-[200px] truncate text-xs opacity-70">
                       {topic.description || '-'}
                     </td>
-                    <td className="font-mono">{topic.mentionCount}</td>
+                    <td className="font-mono">{topic.mentionCount ?? 0}</td>
                     <td className="text-xs opacity-60">{formatRelativeTime(topic.firstMentioned)}</td>
                     <td className="text-xs opacity-60">{formatRelativeTime(topic.lastMentioned)}</td>
                     <td>
@@ -495,7 +491,7 @@ export function TopicManager({ onClose }: TopicManagerProps) {
                     >
                       <div className="font-medium">{topic.name}</div>
                       <div className="text-xs opacity-60">
-                        {topic.category ?? 'No category'} · {topic.mentionCount} mentions
+                        {topic.category ?? 'No category'} · {topic.mentionCount ?? 0} mentions
                       </div>
                     </button>
                   );

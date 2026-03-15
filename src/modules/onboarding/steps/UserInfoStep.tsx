@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { User, Mic, Edit3, Loader2, AlertCircle, Sparkles, ArrowRight, Command } from 'lucide-react'
-import type { UserProfileData } from '../../../db/models/Data'
+import type { UserProfileData } from '../../../graph/stores/dataStore'
 import { rambleNative } from '../../../services/stt/rambleNative'
 import { extractUserInfo } from '../utils/extractUserInfo'
 

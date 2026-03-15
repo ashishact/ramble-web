@@ -1,13 +1,15 @@
 /**
  * Memory Manager - Full CRUD for memories with importance tracking
+ *
+ * Reads from DuckDB via useGraphData, writes via graphMutations.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
-import { memoryStore } from '../../db/stores';
+import { useGraphData, graphMutations } from '../../graph/data';
+import type { MemoryItem } from '../../graph/data';
 import { SortIcon } from './SortIcon';
 import { formatRelativeTime } from '../../program/utils/time';
-import type Memory from '../../db/models/Memory';
 
 type SortField = 'content' | 'type' | 'importance' | 'confidence' | 'lastReinforced' | 'firstExpressed';
 type SortDir = 'asc' | 'desc';
@@ -20,9 +22,11 @@ interface MemoryManagerProps {
 const TYPE_OPTIONS = ['fact', 'preference', 'event', 'relationship', 'insight', 'belief', 'habit'];
 
 export function MemoryManager({ onClose, editMemoryId }: MemoryManagerProps) {
-  // Data
-  const [memories, setMemories] = useState<Memory[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Data — reactive via useGraphData
+  const { data: memories, loading } = useGraphData<MemoryItem>('memory', {
+    limit: 500,
+    orderBy: { field: 'lastReinforced', dir: 'desc' },
+  });
 
   // Filters & Sort
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,7 +39,7 @@ export function MemoryManager({ onClose, editMemoryId }: MemoryManagerProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Modals
-  const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
+  const [editingMemory, setEditingMemory] = useState<MemoryItem | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Form state
@@ -43,18 +47,6 @@ export function MemoryManager({ onClose, editMemoryId }: MemoryManagerProps) {
   const [formType, setFormType] = useState('fact');
   const [formImportance, setFormImportance] = useState(50);
   const [formConfidence, setFormConfidence] = useState(80);
-
-  // Load data
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    const allMemories = await memoryStore.getAll();
-    setMemories(allMemories);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   // Auto-open edit modal when editMemoryId is provided
   useEffect(() => {
@@ -107,16 +99,16 @@ export function MemoryManager({ onClose, editMemoryId }: MemoryManagerProps) {
           cmp = a.type.localeCompare(b.type);
           break;
         case 'importance':
-          cmp = a.importance - b.importance;
+          cmp = (a.importance ?? 0) - (b.importance ?? 0);
           break;
         case 'confidence':
-          cmp = a.confidence - b.confidence;
+          cmp = (a.confidence ?? 0) - (b.confidence ?? 0);
           break;
         case 'lastReinforced':
-          cmp = a.lastReinforced - b.lastReinforced;
+          cmp = (a.lastReinforced ?? 0) - (b.lastReinforced ?? 0);
           break;
         case 'firstExpressed':
-          cmp = a.firstExpressed - b.firstExpressed;
+          cmp = (a.createdAt ?? 0) - (b.createdAt ?? 0);
           break;
       }
       return sortDir === 'asc' ? cmp : -cmp;
@@ -136,11 +128,8 @@ export function MemoryManager({ onClose, editMemoryId }: MemoryManagerProps) {
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -156,59 +145,63 @@ export function MemoryManager({ onClose, editMemoryId }: MemoryManagerProps) {
   // CRUD handlers
   const handleCreate = async () => {
     if (!formContent.trim()) return;
-
-    await memoryStore.create({
+    const now = Date.now();
+    await graphMutations.createNode(['memory'], {
       content: formContent.trim(),
       type: formType,
       importance: formImportance / 100,
       confidence: formConfidence / 100,
+      activityScore: 1.0,
+      state: 'provisional',
+      lastReinforced: now,
+      reinforcementCount: 1,
     });
-
     setShowCreateModal(false);
     resetForm();
-    loadData();
   };
 
   const handleUpdate = async () => {
     if (!editingMemory || !formContent.trim()) return;
-
-    await memoryStore.update(editingMemory.id, {
+    await graphMutations.updateNodeProperties(editingMemory.id, {
       content: formContent.trim(),
       type: formType,
       importance: formImportance / 100,
       confidence: formConfidence / 100,
     });
-
     setEditingMemory(null);
     resetForm();
-    loadData();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this memory? This cannot be undone.')) return;
-    await memoryStore.delete(id);
+    await graphMutations.deleteNode(id);
     setSelectedIds(prev => {
       const next = new Set(prev);
       next.delete(id);
       return next;
     });
-    loadData();
   };
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
     if (!confirm(`Delete ${selectedIds.size} memories? This cannot be undone.`)) return;
-
-    for (const id of selectedIds) {
-      await memoryStore.delete(id);
-    }
+    await graphMutations.batch(async () => {
+      for (const id of selectedIds) {
+        await graphMutations.deleteNode(id);
+      }
+    });
     setSelectedIds(new Set());
-    loadData();
   };
 
   const handleReinforce = async (id: string) => {
-    await memoryStore.reinforce(id);
-    loadData();
+    const memory = memories.find(m => m.id === id);
+    if (!memory) return;
+    await graphMutations.updateNodeProperties(id, {
+      lastReinforced: Date.now(),
+      reinforcementCount: (memory.reinforcementCount ?? 0) + 1,
+      activityScore: Math.min(1.0, (memory.activityScore ?? 0.5) + 0.1),
+      confidence: Math.min(1.0, (memory.confidence ?? 0.5) + 0.05),
+    });
   };
 
   // Form helpers
@@ -219,12 +212,12 @@ export function MemoryManager({ onClose, editMemoryId }: MemoryManagerProps) {
     setFormConfidence(80);
   };
 
-  const openEdit = (memory: Memory) => {
+  const openEdit = (memory: MemoryItem) => {
     setEditingMemory(memory);
     setFormContent(memory.content);
     setFormType(memory.type);
-    setFormImportance(Math.round(memory.importance * 100));
-    setFormConfidence(Math.round(memory.confidence * 100));
+    setFormImportance(Math.round((memory.importance ?? 0.5) * 100));
+    setFormConfidence(Math.round((memory.confidence ?? 0.8) * 100));
   };
 
   // Type color
@@ -398,8 +391,8 @@ export function MemoryManager({ onClose, editMemoryId }: MemoryManagerProps) {
                         <span className="text-xs text-error opacity-60">Tombstoned</span>
                       )}
                       {!memory.supersededBy && memory.state === 'contested' && (
-                        <span className="text-xs text-warning opacity-70" title={`Competing with ${memory.contradictsParsed.length} other belief(s) — currently ${memory.isContested ? 'contested' : 'stable'}`}>
-                          ⚡ contested ({memory.contradictsParsed.length})
+                        <span className="text-xs text-warning opacity-70" title={`Competing with ${(memory.contradictedBy ?? []).length} other belief(s)`}>
+                          ⚡ contested ({(memory.contradictedBy ?? []).length})
                         </span>
                       )}
                     </td>
@@ -408,19 +401,19 @@ export function MemoryManager({ onClose, editMemoryId }: MemoryManagerProps) {
                     </td>
                     <td>
                       <div className="flex items-center gap-2">
-                        <progress className="progress progress-accent w-12" value={memory.importance * 100} max="100"></progress>
-                        <span className="text-xs font-mono">{Math.round(memory.importance * 100)}%</span>
+                        <progress className="progress progress-accent w-12" value={(memory.importance ?? 0) * 100} max="100"></progress>
+                        <span className="text-xs font-mono">{Math.round((memory.importance ?? 0) * 100)}%</span>
                       </div>
                     </td>
                     <td>
                       <div className="flex items-center gap-2">
-                        <progress className="progress progress-info w-12" value={memory.confidence * 100} max="100"></progress>
-                        <span className="text-xs font-mono">{Math.round(memory.confidence * 100)}%</span>
+                        <progress className="progress progress-info w-12" value={(memory.confidence ?? 0) * 100} max="100"></progress>
+                        <span className="text-xs font-mono">{Math.round((memory.confidence ?? 0) * 100)}%</span>
                       </div>
                     </td>
                     <td className="text-xs opacity-60">
                       {formatRelativeTime(memory.lastReinforced)}
-                      {memory.reinforcementCount > 1 && (
+                      {(memory.reinforcementCount ?? 0) > 1 && (
                         <span className="ml-1 opacity-60">({memory.reinforcementCount}x)</span>
                       )}
                     </td>

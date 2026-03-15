@@ -1,13 +1,8 @@
 import { useState, useEffect, useSyncExternalStore, useRef, useCallback } from 'react';
 import type { WidgetProps } from '../types';
-import { database } from '../../db/database';
-import KnowledgeNode from '../../db/models/KnowledgeNode';
-import EntityCooccurrence from '../../db/models/EntityCooccurrence';
-import TimelineEvent from '../../db/models/TimelineEvent';
-import Entity from '../../db/models/Entity';
-import Conversation from '../../db/models/Conversation';
+import { useGraphData, useGraphCounts, useConversationCount, graphMutations } from '../../graph/data';
+import type { KnowledgeNodeItem, EntityItem } from '../../graph/data';
 import { backfillService, type BackfillLogEntry } from '../../program/knowledgeTree/backfill';
-import { filterEligibleEntities } from '../../program/knowledgeTree/entityFilter';
 import { eventBus } from '../../lib/eventBus';
 import { FlaskConical, Play, Pause, Square, RotateCcw, Download } from 'lucide-react';
 
@@ -32,41 +27,23 @@ const ACTION_COLORS: Record<string, string> = {
 // ============================================================================
 
 const TreeStats: React.FC = () => {
-  const [stats, setStats] = useState({
-    totalNodes: 0,
-    totalTrees: 0,
-    avgDepth: 0,
-    maxDepth: 0,
-    cooccurrences: 0,
-    timelineEvents: 0,
-  });
+  const { counts } = useGraphCounts(['knowledge_node', 'timeline_event']);
+  const knowledgeNodes = useGraphData<KnowledgeNodeItem>('knowledge_node', { limit: 5000 });
 
-  useEffect(() => {
-    const loadStats = async () => {
-      const nodes = await database.get<KnowledgeNode>('knowledge_nodes').query().fetch();
-      const activeNodes = nodes.filter(n => !n.metadataParsed?.deleted);
-      const cooccurrences = await database.get<EntityCooccurrence>('entity_cooccurrences').query().fetch();
-      const events = await database.get<TimelineEvent>('timeline_events').query().fetch();
-
-      const entityIds = new Set(activeNodes.map(n => n.entityId));
-      const depths = activeNodes.map(n => n.depth);
-      const avgDepth = depths.length > 0 ? depths.reduce((a, b) => a + b, 0) / depths.length : 0;
-      const maxDepth = depths.length > 0 ? Math.max(...depths) : 0;
-
-      setStats({
-        totalNodes: activeNodes.length,
-        totalTrees: entityIds.size,
-        avgDepth: Math.round(avgDepth * 10) / 10,
-        maxDepth,
-        cooccurrences: cooccurrences.length,
-        timelineEvents: events.length,
-      });
+  const stats = (() => {
+    const activeNodes = knowledgeNodes.data.filter(n => !(n.metadata as Record<string, unknown>)?.deleted);
+    const entityIds = new Set(activeNodes.map(n => n.entityId));
+    const depths = activeNodes.map(n => n.depth ?? 0);
+    const avgDepth = depths.length > 0 ? depths.reduce((a, b) => a + b, 0) / depths.length : 0;
+    const maxDepth = depths.length > 0 ? Math.max(...depths) : 0;
+    return {
+      totalNodes: activeNodes.length,
+      totalTrees: entityIds.size,
+      avgDepth: Math.round(avgDepth * 10) / 10,
+      maxDepth,
+      timelineEvents: counts['timeline_event'] ?? 0,
     };
-
-    loadStats();
-    const interval = setInterval(loadStats, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  })();
 
   return (
     <div className="text-[9px] text-slate-400 flex flex-wrap gap-x-3 gap-y-0.5">
@@ -74,7 +51,6 @@ const TreeStats: React.FC = () => {
       <span>Nodes: {stats.totalNodes}</span>
       <span>Avg depth: {stats.avgDepth}</span>
       <span>Max depth: {stats.maxDepth}</span>
-      <span>Co-occur: {stats.cooccurrences}</span>
       <span>Timeline: {stats.timelineEvents}</span>
     </div>
   );
@@ -121,22 +97,13 @@ const LogEntryRow: React.FC<{ entry: BackfillLogEntry }> = ({ entry }) => {
 export const TreeDevToolsWidget: React.FC<WidgetProps> = () => {
   const state = useSyncExternalStore(backfillService.subscribe, backfillService.getState);
   const logEndRef = useRef<HTMLDivElement>(null);
-  const [convCount, setConvCount] = useState(0);
-  const [eligibleEntities, setEligibleEntities] = useState(0);
   const [delayMs, setDelayMs] = useState(backfillService.delayMs);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  // Load conversation count and eligible entity count
-  useEffect(() => {
-    const load = async () => {
-      const convs = await database.get<Conversation>('conversations').query().fetchCount();
-      setConvCount(convs);
-      const allEntities = await database.get<Entity>('entities').query().fetch();
-      const eligible = await filterEligibleEntities(allEntities);
-      setEligibleEntities(eligible.length);
-    };
-    load();
-  }, []);
+  // Read counts from DuckDB
+  const { count: convCount } = useConversationCount();
+  const { data: entities } = useGraphData<EntityItem>('entity', { limit: 1000 });
+  const eligibleEntities = entities.filter(e => (e.mentionCount ?? 0) >= 3).length;
 
   // Auto-scroll log to bottom
   useEffect(() => {
@@ -149,37 +116,49 @@ export const TreeDevToolsWidget: React.FC<WidgetProps> = () => {
   }, [delayMs]);
 
   const handleReset = useCallback(async () => {
-    // Delete all knowledge nodes, cooccurrences, timeline events
-    const allNodes = await database.get<KnowledgeNode>('knowledge_nodes').query().fetch();
-    const allCooc = await database.get<EntityCooccurrence>('entity_cooccurrences').query().fetch();
-    const allEvents = await database.get<TimelineEvent>('timeline_events').query().fetch();
+    // Delete all knowledge nodes and timeline events from DuckDB
+    const knowledgeNodes = await graphMutations.query<{ id: string }>(
+      `SELECT id FROM nodes WHERE list_contains(labels, 'knowledge_node')`
+    );
+    const timelineEvents = await graphMutations.query<{ id: string }>(
+      `SELECT id FROM nodes WHERE list_contains(labels, 'timeline_event')`
+    );
 
-    await database.write(async () => {
-      for (const n of allNodes) await n.destroyPermanently();
-      for (const c of allCooc) await c.destroyPermanently();
-      for (const e of allEvents) await e.destroyPermanently();
+    await graphMutations.batch(async () => {
+      for (const n of knowledgeNodes) {
+        await graphMutations.deleteNode(n.id);
+      }
+      for (const e of timelineEvents) {
+        await graphMutations.deleteNode(e.id);
+      }
     });
 
     setShowResetConfirm(false);
   }, []);
 
   const handleExport = useCallback(async () => {
-    const allNodes = await database.get<KnowledgeNode>('knowledge_nodes').query().fetch();
-    const data = allNodes.map(n => ({
-      id: n.id,
-      entityId: n.entityId,
-      parentId: n.parentId,
-      depth: n.depth,
-      label: n.label,
-      summary: n.summary,
-      content: n.content,
-      nodeType: n.nodeType,
-      source: n.source,
-      verification: n.verification,
-      memoryIds: n.memoryIdsParsed,
-      childCount: n.childCount,
-      templateKey: n.templateKey,
-    }));
+    const nodes = await graphMutations.query<Record<string, unknown>>(
+      `SELECT * FROM nodes WHERE list_contains(labels, 'knowledge_node')`
+    );
+    const data = nodes.map(n => {
+      const props = typeof n.properties === 'string'
+        ? JSON.parse(n.properties as string)
+        : (n.properties ?? {});
+      return {
+        id: n.id,
+        entityId: props.entityId,
+        parentId: props.parentId,
+        depth: props.depth,
+        label: props.label,
+        summary: props.summary,
+        content: props.content,
+        nodeType: props.nodeType,
+        source: props.source,
+        verification: props.verification,
+        memoryIds: props.memoryIds,
+        templateKey: props.templateKey,
+      };
+    });
     const json = JSON.stringify(data, null, 2);
     await navigator.clipboard.writeText(json);
   }, []);

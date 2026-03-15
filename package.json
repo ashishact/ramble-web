@@ -26,6 +26,8 @@
     "@ai-sdk/google": "^2.0.43",
     "@ai-sdk/groq": "^2.0.31",
     "@ai-sdk/openai": "^2.0.73",
+    "@duckdb/duckdb-wasm": "1.33.1-dev20.0",
+    "@huggingface/transformers": "^3.8.1",
     "@iconify/react": "^6.0.2",
     "@nozbe/watermelondb": "^0.28.0",
     "@tailwindcss/vite": "^4.1.14",

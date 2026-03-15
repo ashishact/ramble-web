@@ -10,10 +10,8 @@
  * - staleness: old verified nodes with multiple memories → refresh outdated info
  */
 
-import { knowledgeNodeStore } from '../../../db/stores/knowledgeNodeStore'
-import { cooccurrenceStore } from '../../../db/stores/cooccurrenceStore'
-import { entityStore } from '../../../db/stores'
-import type KnowledgeNode from '../../../db/models/KnowledgeNode'
+import { graphMutations } from '../../../graph/data'
+import type { KnowledgeNodeItem, EntityItem } from '../../../graph/data'
 
 // ============================================================================
 // Types
@@ -29,6 +27,21 @@ export interface TreeGap {
   nodeId: string
   detail: string          // human-readable gap description
   priority: number        // 0-1 score
+}
+
+// ============================================================================
+// Row parsers
+// ============================================================================
+
+function parseKnowledgeNode(row: Record<string, unknown>): KnowledgeNodeItem {
+  const props = typeof row.properties === 'string'
+    ? JSON.parse(row.properties as string)
+    : (row.properties ?? {}) as Record<string, unknown>
+  return { ...row, ...(props as Record<string, unknown>) } as unknown as KnowledgeNodeItem
+}
+
+function isDeleted(node: KnowledgeNodeItem): boolean {
+  return (node.metadata as Record<string, unknown>)?.deleted === true
 }
 
 // ============================================================================
@@ -50,13 +63,12 @@ export async function analyzeTreeGaps(
   maxGaps = 8
 ): Promise<TreeGap[]> {
   // 1. Collect entity IDs: conversation entities first, then co-occurring
-  // Conversation entities get priority — co-occurring fill remaining slots
   const orderedIds: string[] = [...conversationEntityIds]
   const seen = new Set(conversationEntityIds)
 
   for (const eid of conversationEntityIds) {
     if (orderedIds.length >= MAX_ENTITIES) break
-    const cluster = await cooccurrenceStore.getCluster(eid, 3)
+    const cluster = await getCooccurrenceCluster(eid, 3)
     for (const coId of cluster) {
       if (orderedIds.length >= MAX_ENTITIES) break
       if (!seen.has(coId)) {
@@ -71,20 +83,20 @@ export async function analyzeTreeGaps(
   const conversationSet = new Set(conversationEntityIds)
 
   for (const entityId of orderedIds) {
-    const entity = await entityStore.getById(entityId)
+    const entity = await getEntityById(entityId)
     if (!entity) continue
 
-    const allNodes = await knowledgeNodeStore.getByEntity(entityId)
+    const allNodes = await getKnowledgeNodesByEntity(entityId)
     if (allNodes.length === 0) continue
-    // Cap nodes — getByEntity sorts by depth asc, so shallower nodes come first
+    // Cap nodes — sorted by depth asc, so shallower nodes come first
     const nodes = allNodes.slice(0, MAX_NODES_PER_TREE)
 
     const isConversationEntity = conversationSet.has(entityId)
 
     // --- Gap mode: empty or thin leaf nodes ---
     for (const node of nodes) {
-      if (node.isDeleted) continue
-      if (node.nodeType === 'group') continue // groups are containers
+      if (isDeleted(node)) continue
+      if (node.nodeType === 'group') continue
 
       const contentLen = (node.content ?? '').length
       const isEmpty = contentLen === 0
@@ -112,13 +124,12 @@ export async function analyzeTreeGaps(
     }
 
     // --- Depth mode: high-mention entities with sparse tree content ---
-    if (entity.mentionCount > 8) {
+    if ((entity.mentionCount ?? 0) > 8) {
       const totalContent = nodes.reduce((sum, n) => sum + (n.content ?? '').length, 0)
       if (totalContent < 100) {
         const maxCooc = await getMaxCooccurrence(entityId, conversationEntityIds)
         if (maxCooc > 5 || isConversationEntity) {
-          // Find the root or shallowest non-group node to attach gap to
-          const targetNode = nodes.find(n => !n.isDeleted && n.nodeType !== 'group') ?? nodes[0]
+          const targetNode = nodes.find(n => !isDeleted(n) && n.nodeType !== 'group') ?? nodes[0]
           allGaps.push({
             entityId,
             entityName: entity.name,
@@ -139,10 +150,10 @@ export async function analyzeTreeGaps(
     const staleCutoff = Date.now() - SEVEN_DAYS
 
     for (const node of nodes) {
-      if (node.isDeleted) continue
-      if (node.modifiedAt >= staleCutoff) continue
+      if (isDeleted(node)) continue
+      if ((node.modifiedAt ?? node.updatedAt) >= staleCutoff) continue
       if (node.verification === 'unverified') continue
-      if (node.memoryIdsParsed.length < 2) continue
+      if ((node.memoryIds ?? []).length < 2) continue
 
       allGaps.push({
         entityId,
@@ -164,11 +175,89 @@ export async function analyzeTreeGaps(
 }
 
 // ============================================================================
+// Graph query helpers
+// ============================================================================
+
+async function getEntityById(entityId: string): Promise<EntityItem | null> {
+  const node = await graphMutations.getNode(entityId)
+  if (!node) return null
+  const props = typeof node.properties === 'string'
+    ? JSON.parse(node.properties as unknown as string)
+    : node.properties
+  return { id: node.id, ...(props as Record<string, unknown>) } as unknown as EntityItem
+}
+
+async function getKnowledgeNodesByEntity(entityId: string): Promise<KnowledgeNodeItem[]> {
+  const rows = await graphMutations.query<Record<string, unknown>>(
+    `SELECT * FROM nodes WHERE list_contains(labels, 'knowledge_node')
+     AND json_extract_string(properties, '$.entityId') = $1
+     ORDER BY CAST(json_extract(properties, '$.depth') AS INT) ASC,
+              CAST(json_extract(properties, '$.sortOrder') AS INT) ASC`,
+    [entityId]
+  )
+  return rows.map(parseKnowledgeNode)
+}
+
+/** Get co-occurring entity IDs with count >= minStrength */
+async function getCooccurrenceCluster(entityId: string, minStrength: number): Promise<string[]> {
+  // Query edges of type COOCCURS where this entity is involved
+  const rows = await graphMutations.query<Record<string, unknown>>(
+    `SELECT start_id, end_id, properties FROM edges
+     WHERE type = 'COOCCURS'
+     AND (start_id = $1 OR end_id = $1)`,
+    [entityId]
+  )
+
+  const results: string[] = []
+  for (const row of rows) {
+    const props = typeof row.properties === 'string'
+      ? JSON.parse(row.properties as string)
+      : (row.properties ?? {}) as Record<string, unknown>
+    const count = (props.count as number) ?? 0
+    if (count >= minStrength) {
+      const otherId = (row.start_id as string) === entityId
+        ? (row.end_id as string)
+        : (row.start_id as string)
+      results.push(otherId)
+    }
+  }
+  return results
+}
+
+/** Get max cooccurrence count between entityId and any conversation entity */
+async function getMaxCooccurrence(
+  entityId: string,
+  conversationEntityIds: string[]
+): Promise<number> {
+  let max = 0
+  for (const convEid of conversationEntityIds) {
+    const count = await getCooccurrenceCount(entityId, convEid)
+    if (count > max) max = count
+  }
+  return max
+}
+
+async function getCooccurrenceCount(entityIdA: string, entityIdB: string): Promise<number> {
+  const [eA, eB] = entityIdA < entityIdB ? [entityIdA, entityIdB] : [entityIdB, entityIdA]
+  const rows = await graphMutations.query<Record<string, unknown>>(
+    `SELECT properties FROM edges
+     WHERE type = 'COOCCURS' AND start_id = $1 AND end_id = $2
+     LIMIT 1`,
+    [eA, eB]
+  )
+  if (rows.length === 0) return 0
+  const props = typeof rows[0].properties === 'string'
+    ? JSON.parse(rows[0].properties as string)
+    : (rows[0].properties ?? {}) as Record<string, unknown>
+  return (props.count as number) ?? 0
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
 /** Walk parentId chain to build "Parent / Child" path string */
-function getNodePath(node: KnowledgeNode, allNodes: KnowledgeNode[]): string {
+function getNodePath(node: KnowledgeNodeItem, allNodes: KnowledgeNodeItem[]): string {
   const nodeMap = new Map(allNodes.map(n => [n.id, n]))
   const parts: string[] = [node.label]
 
@@ -181,17 +270,4 @@ function getNodePath(node: KnowledgeNode, allNodes: KnowledgeNode[]): string {
   }
 
   return parts.join(' / ')
-}
-
-/** Get max cooccurrence count between entityId and any conversation entity */
-async function getMaxCooccurrence(
-  entityId: string,
-  conversationEntityIds: string[]
-): Promise<number> {
-  let max = 0
-  for (const convEid of conversationEntityIds) {
-    const count = await cooccurrenceStore.getCount(entityId, convEid)
-    if (count > max) max = count
-  }
-  return max
 }

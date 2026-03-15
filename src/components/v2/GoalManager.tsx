@@ -1,14 +1,15 @@
 /**
  * Goal Manager - Full CRUD for goals with progress tracking
+ *
+ * Reads from DuckDB via useGraphData, writes via graphMutations.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
-import { goalStore } from '../../db/stores';
+import { useGraphData, graphMutations } from '../../graph/data';
+import type { GoalItem } from '../../graph/data';
 import { SortIcon } from './SortIcon';
 import { formatRelativeTime } from '../../program/utils/time';
-import type Goal from '../../db/models/Goal';
-import type { GoalStatus } from '../../db/models/Goal';
 
 type SortField = 'statement' | 'type' | 'status' | 'progress' | 'lastReferenced' | 'firstExpressed';
 type SortDir = 'asc' | 'desc';
@@ -18,13 +19,16 @@ interface GoalManagerProps {
   editGoalId?: string;
 }
 
+type GoalStatus = 'active' | 'achieved' | 'abandoned' | 'blocked';
 const STATUS_OPTIONS: GoalStatus[] = ['active', 'achieved', 'abandoned', 'blocked'];
 const TYPE_OPTIONS = ['short-term', 'long-term', 'recurring', 'milestone'];
 
 export function GoalManager({ onClose, editGoalId }: GoalManagerProps) {
-  // Data
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Data — reactive via useGraphData
+  const { data: goals, loading } = useGraphData<GoalItem>('goal', {
+    limit: 500,
+    orderBy: { field: 'lastReferenced', dir: 'desc' },
+  });
 
   // Filters & Sort
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,7 +40,7 @@ export function GoalManager({ onClose, editGoalId }: GoalManagerProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Modals
-  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [editingGoal, setEditingGoal] = useState<GoalItem | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Form state
@@ -44,18 +48,6 @@ export function GoalManager({ onClose, editGoalId }: GoalManagerProps) {
   const [formType, setFormType] = useState('short-term');
   const [formStatus, setFormStatus] = useState<GoalStatus>('active');
   const [formProgress, setFormProgress] = useState(0);
-
-  // Load data
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    const allGoals = await goalStore.getAll();
-    setGoals(allGoals);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   // Auto-open edit modal when editGoalId is provided
   useEffect(() => {
@@ -87,22 +79,22 @@ export function GoalManager({ onClose, editGoalId }: GoalManagerProps) {
       let cmp = 0;
       switch (sortField) {
         case 'statement':
-          cmp = a.statement.localeCompare(b.statement);
+          cmp = (a.statement ?? '').localeCompare(b.statement ?? '');
           break;
         case 'type':
-          cmp = a.type.localeCompare(b.type);
+          cmp = (a.type ?? '').localeCompare(b.type ?? '');
           break;
         case 'status':
-          cmp = a.status.localeCompare(b.status);
+          cmp = (a.status ?? '').localeCompare(b.status ?? '');
           break;
         case 'progress':
-          cmp = a.progress - b.progress;
+          cmp = (a.progress ?? 0) - (b.progress ?? 0);
           break;
         case 'lastReferenced':
-          cmp = a.lastReferenced - b.lastReferenced;
+          cmp = (a.lastReferenced ?? 0) - (b.lastReferenced ?? 0);
           break;
         case 'firstExpressed':
-          cmp = a.firstExpressed - b.firstExpressed;
+          cmp = (a.firstExpressed ?? 0) - (b.firstExpressed ?? 0);
           break;
       }
       return sortDir === 'asc' ? cmp : -cmp;
@@ -122,11 +114,8 @@ export function GoalManager({ onClose, editGoalId }: GoalManagerProps) {
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -142,66 +131,81 @@ export function GoalManager({ onClose, editGoalId }: GoalManagerProps) {
   // CRUD handlers
   const handleCreate = async () => {
     if (!formStatement.trim()) return;
-
-    await goalStore.create({
+    const now = Date.now();
+    await graphMutations.createNode(['goal'], {
       statement: formStatement.trim(),
       type: formType,
+      status: 'active',
+      progress: 0,
+      firstExpressed: now,
+      lastReferenced: now,
     });
-
     setShowCreateModal(false);
     resetForm();
-    loadData();
   };
 
   const handleUpdate = async () => {
     if (!editingGoal || !formStatement.trim()) return;
-
-    await goalStore.update(editingGoal.id, {
+    const updates: Record<string, unknown> = {
       statement: formStatement.trim(),
       type: formType,
-    });
-    await goalStore.updateStatus(editingGoal.id, formStatus);
-    await goalStore.updateProgress(editingGoal.id, formProgress);
-
+      status: formStatus,
+      progress: formProgress,
+      lastReferenced: Date.now(),
+    };
+    if (formStatus === 'achieved' && editingGoal.status !== 'achieved') {
+      updates.achievedAt = Date.now();
+      updates.progress = 100;
+    }
+    await graphMutations.updateNodeProperties(editingGoal.id, updates);
     setEditingGoal(null);
     resetForm();
-    loadData();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this goal? This cannot be undone.')) return;
-    await goalStore.delete(id);
+    await graphMutations.deleteNode(id);
     setSelectedIds(prev => {
       const next = new Set(prev);
       next.delete(id);
       return next;
     });
-    loadData();
   };
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
     if (!confirm(`Delete ${selectedIds.size} goals? This cannot be undone.`)) return;
-
-    for (const id of selectedIds) {
-      await goalStore.delete(id);
-    }
+    await graphMutations.batch(async () => {
+      for (const id of selectedIds) {
+        await graphMutations.deleteNode(id);
+      }
+    });
     setSelectedIds(new Set());
-    loadData();
   };
 
   const handleMarkComplete = async (id: string) => {
-    await goalStore.updateProgress(id, 100);
-    loadData();
+    await graphMutations.updateNodeProperties(id, {
+      status: 'achieved',
+      progress: 100,
+      achievedAt: Date.now(),
+      lastReferenced: Date.now(),
+    });
   };
 
   const handleBulkMarkComplete = async () => {
     if (selectedIds.size === 0) return;
-    for (const id of selectedIds) {
-      await goalStore.updateProgress(id, 100);
-    }
+    const now = Date.now();
+    await graphMutations.batch(async () => {
+      for (const id of selectedIds) {
+        await graphMutations.updateNodeProperties(id, {
+          status: 'achieved',
+          progress: 100,
+          achievedAt: now,
+          lastReferenced: now,
+        });
+      }
+    });
     setSelectedIds(new Set());
-    loadData();
   };
 
   // Form helpers
@@ -212,16 +216,16 @@ export function GoalManager({ onClose, editGoalId }: GoalManagerProps) {
     setFormProgress(0);
   };
 
-  const openEdit = (goal: Goal) => {
+  const openEdit = (goal: GoalItem) => {
     setEditingGoal(goal);
     setFormStatement(goal.statement);
     setFormType(goal.type);
-    setFormStatus(goal.status);
-    setFormProgress(goal.progress);
+    setFormStatus(goal.status as GoalStatus);
+    setFormProgress(goal.progress ?? 0);
   };
 
   // Status badge color
-  const statusColor = (status: GoalStatus) => {
+  const statusColor = (status: string) => {
     switch (status) {
       case 'active': return 'badge-info';
       case 'achieved': return 'badge-success';
@@ -398,8 +402,8 @@ export function GoalManager({ onClose, editGoalId }: GoalManagerProps) {
                     </td>
                     <td>
                       <div className="flex items-center gap-2">
-                        <progress className="progress progress-success w-16" value={goal.progress} max="100"></progress>
-                        <span className="text-xs font-mono">{goal.progress}%</span>
+                        <progress className="progress progress-success w-16" value={goal.progress ?? 0} max="100"></progress>
+                        <span className="text-xs font-mono">{goal.progress ?? 0}%</span>
                       </div>
                     </td>
                     <td className="text-xs opacity-60">{formatRelativeTime(goal.lastReferenced)}</td>

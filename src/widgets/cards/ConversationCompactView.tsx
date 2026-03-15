@@ -5,11 +5,11 @@
  * Used when the conversation widget panel is < 480px wide.
  */
 
-import type Conversation from '../../db/models/Conversation';
+import type { ConversationRecord } from '../../graph/data';
 import { ConversationList } from '../../components/v2/ConversationList';
 
 interface ConversationCompactViewProps {
-  conversations: Conversation[];
+  conversations: ConversationRecord[];
 }
 
 export function ConversationCompactView({ conversations }: ConversationCompactViewProps) {

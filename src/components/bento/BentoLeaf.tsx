@@ -53,6 +53,7 @@ const WIDGET_OPTIONS: { type: WidgetType; label: string; icon: React.ReactNode; 
     { type: 'tree-dev-tools', label: 'Tree Dev Tools', icon: <FlaskConical size={16} />, color: 'stone', category: 'Tools' },
     { type: 'pipeline-monitor', label: 'Pipeline Monitor', icon: <Activity size={16} />, color: 'zinc', category: 'Tools' },
     { type: 'llm-dashboard', label: 'LLM Dashboard', icon: <DollarSign size={16} />, color: 'neutral', category: 'Tools' },
+    { type: 'embedding-test', label: 'Embedding Test', icon: <FlaskConical size={16} />, color: 'violet', category: 'Tools' },
 ];
 
 const WIDGET_COLOR_MAP: Record<string, { text: string; bg: string }> = {
