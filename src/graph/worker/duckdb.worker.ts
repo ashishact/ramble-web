@@ -14,10 +14,9 @@ import * as duckdb from '@duckdb/duckdb-wasm'
 import type { WorkerRequest, WorkerResponse } from '../types'
 import { CREATE_TABLES } from './schema.sql'
 
-import duckdbWasmEH from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url'
-import duckdbWorkerEH from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url'
-import duckdbWasmMVP from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url'
-import duckdbWorkerMVP from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url'
+// WASM bundles loaded from jsdelivr CDN at runtime — avoids bundling
+// 30+ MiB files that exceed Cloudflare Pages' 25 MiB limit.
+import { getJsDelivrBundles } from '@duckdb/duckdb-wasm'
 
 let db: duckdb.AsyncDuckDB | null = null
 let conn: duckdb.AsyncDuckDBConnection | null = null
@@ -40,15 +39,17 @@ function scheduleCheckpoint() {
 async function initDuckDB(profileName: string): Promise<void> {
   console.log('[DuckDB Worker] Starting init for profile:', profileName)
 
-  const MANUAL_BUNDLES: duckdb.DuckDBBundles = {
-    mvp: { mainModule: duckdbWasmMVP, mainWorker: duckdbWorkerMVP },
-    eh: { mainModule: duckdbWasmEH, mainWorker: duckdbWorkerEH },
-  }
-
-  const bundle = await duckdb.selectBundle(MANUAL_BUNDLES)
+  const JSDELIVR_BUNDLES = await getJsDelivrBundles()
+  const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES)
   const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING)
 
-  const innerWorker = new Worker(bundle.mainWorker!)
+  // CDN URLs are cross-origin — `new Worker(url)` blocks cross-origin scripts.
+  // Fetch the script text and wrap it in a same-origin blob URL.
+  const workerScript = await fetch(bundle.mainWorker!)
+  const workerBlob = new Blob([await workerScript.text()], { type: 'application/javascript' })
+  const workerUrl = URL.createObjectURL(workerBlob)
+
+  const innerWorker = new Worker(workerUrl)
   const instance = new duckdb.AsyncDuckDB(logger, innerWorker)
   await instance.instantiate(bundle.mainModule, bundle.pthreadWorker)
   console.log('[DuckDB Worker] WASM instantiated')
