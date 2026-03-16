@@ -249,7 +249,7 @@ export class SinglePassProcessor {
     const nodes = await this.graph.query<{
       id: string
       labels: string[]
-      properties: string
+      properties: Record<string, unknown>
     }>(
       `SELECT id, labels, properties FROM nodes
        WHERE list_contains(labels, $1)
@@ -262,9 +262,9 @@ export class SinglePassProcessor {
     if (nodes.length === 0) return '(no results)'
 
     return nodes.map(n => {
-      const props = typeof n.properties === 'string' ? JSON.parse(n.properties) : n.properties
-      const name = (props as Record<string, unknown>).name ?? n.id
-      const desc = (props as Record<string, unknown>).description ?? (props as Record<string, unknown>).content ?? ''
+      const props = (n.properties ?? {}) as Record<string, unknown>
+      const name = props.name ?? n.id
+      const desc = props.description ?? props.content ?? ''
       const truncDesc = typeof desc === 'string' && desc.length > 100 ? desc.slice(0, 100) + '...' : desc
       return `- [${n.id}] ${name}: ${truncDesc}`
     }).join('\n')

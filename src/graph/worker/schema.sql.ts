@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   speaker         VARCHAR NOT NULL DEFAULT 'user',
   processed       BOOLEAN NOT NULL DEFAULT false,
   intent          VARCHAR,
+  topic           VARCHAR,
   recording_id    VARCHAR,
   batch_id        VARCHAR,
   created_at      BIGINT NOT NULL
@@ -118,6 +119,9 @@ CREATE INDEX IF NOT EXISTS idx_conv_recording ON conversations(recording_id);
 CREATE INDEX IF NOT EXISTS idx_conv_batch ON conversations(batch_id);
 CREATE INDEX IF NOT EXISTS idx_conv_created ON conversations(created_at);
 CREATE INDEX IF NOT EXISTS idx_conv_processed ON conversations(processed);
+
+-- Migrations: add topic column to conversations (safe if already exists)
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS topic VARCHAR;
 
 -- ============================================================================
 -- Working Context (LRU + relevance decay window)
@@ -142,4 +146,32 @@ CREATE TABLE IF NOT EXISTS _schema_meta (
 );
 
 INSERT OR IGNORE INTO _schema_meta (key, value) VALUES ('version', '${SCHEMA_VERSION}');
+
+-- ============================================================================
+-- Extraction runs (SYS-II period state — separate from the property graph)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS extraction_runs (
+  period_key          VARCHAR PRIMARY KEY,
+  date                VARCHAR NOT NULL,
+  slot                VARCHAR NOT NULL,
+  status              VARCHAR NOT NULL DEFAULT 'pending',
+  branch_id           VARCHAR,
+  conversation_count  INTEGER NOT NULL DEFAULT 0,
+  extracted_at        BIGINT,
+  compaction          VARCHAR,
+  chat_session_id     VARCHAR,
+  chat_url            VARCHAR,
+  error               VARCHAR,
+  entity_count        INTEGER NOT NULL DEFAULT 0,
+  memory_count        INTEGER NOT NULL DEFAULT 0,
+  goal_count          INTEGER NOT NULL DEFAULT 0,
+  topic_count         INTEGER NOT NULL DEFAULT 0,
+  relationship_count  INTEGER NOT NULL DEFAULT 0,
+  created_at          BIGINT NOT NULL,
+  updated_at          BIGINT NOT NULL
+);
+
+-- Migrations: add relationship_count to extraction_runs (safe if already exists)
+-- Note: ALTER TABLE ADD COLUMN doesn't support constraints in DuckDB WASM
+ALTER TABLE extraction_runs ADD COLUMN IF NOT EXISTS relationship_count INTEGER;
 `

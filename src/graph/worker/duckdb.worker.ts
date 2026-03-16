@@ -106,10 +106,26 @@ async function execSQL(sql: string, params?: unknown[]): Promise<void> {
   }
 }
 
+/**
+ * Convert DuckDB Arrow values to plain JS values.
+ *
+ * DuckDB's JSON type is an alias for VARCHAR — JSON columns come back as
+ * strings. We auto-parse JSON strings here so consumers always get objects.
+ * This is the single point all query results pass through, so parsing here
+ * means no one needs to do `typeof x === 'string' ? JSON.parse(x) : x`.
+ */
 function toPlainValue(val: unknown): unknown {
   if (val === null || val === undefined) return val
   if (typeof val === 'bigint') return Number(val)
-  if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') return val
+  if (typeof val === 'string') {
+    // Auto-parse JSON strings (DuckDB JSON columns return as VARCHAR)
+    const c = val.charCodeAt(0) // 123 = '{', 91 = '['
+    if ((c === 123 || c === 91) && val.length > 1) {
+      try { return JSON.parse(val) } catch { /* not valid JSON, return as string */ }
+    }
+    return val
+  }
+  if (typeof val === 'number' || typeof val === 'boolean') return val
   if (ArrayBuffer.isView(val)) return Array.from(val as unknown as ArrayLike<number>)
   if (Array.isArray(val)) return val.map(toPlainValue)
   if (typeof val === 'object' && typeof (val as { toArray?: unknown }).toArray === 'function') {

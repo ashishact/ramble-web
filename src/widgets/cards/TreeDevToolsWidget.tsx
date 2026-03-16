@@ -141,9 +141,7 @@ export const TreeDevToolsWidget: React.FC<WidgetProps> = () => {
       `SELECT * FROM nodes WHERE list_contains(labels, 'knowledge_node')`
     );
     const data = nodes.map(n => {
-      const props = typeof n.properties === 'string'
-        ? JSON.parse(n.properties as string)
-        : (n.properties ?? {});
+      const props = (n.properties ?? {}) as Record<string, unknown>;
       return {
         id: n.id,
         entityId: props.entityId,

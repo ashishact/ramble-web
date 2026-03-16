@@ -1,6 +1,6 @@
 import type { WidgetProps } from '../types';
 import type { WidgetType } from '../../components/bento/types';
-import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio, GitBranch, Clock, FlaskConical, Activity, DollarSign } from 'lucide-react';
+import { Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio, GitBranch, Clock, FlaskConical, Activity, DollarSign, Compass } from 'lucide-react';
 
 const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'empty': null,
@@ -32,6 +32,7 @@ const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   'google-search': <Search className="w-8 h-8" />,
   'embedding-test': <FlaskConical className="w-8 h-8" />,
   'synthesis': <Brain className="w-8 h-8" />,
+  'knowledge-map': <Compass className="w-8 h-8" />,
 };
 
 const WIDGET_LABELS: Record<WidgetType, string> = {
@@ -64,6 +65,7 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   'google-search': 'Google Search',
   'embedding-test': 'Embedding Test',
   'synthesis': 'Synthesis',
+  'knowledge-map': 'Knowledge Map',
 };
 
 interface PlaceholderWidgetProps extends WidgetProps {

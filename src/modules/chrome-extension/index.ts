@@ -137,4 +137,38 @@ export const rambleExt = {
   async aiConversation(options: AiConversationOptions): Promise<AiConversationResponse> {
     return sendAndWait<AiConversationResponse>("ai_conversation", options)
   },
+
+  /**
+   * Close a ChatGPT tab by its conversation URL (fire-and-forget).
+   * Called after SYS-I session reset or SYS-II extraction completes.
+   */
+  closeTab(chatUrl: string): void {
+    window.postMessage({
+      source: "ramble-web",
+      type: "close_tab",
+      requestId: generateRequestId(),
+      payload: { chatUrl },
+    }, "*")
+  },
+
+
+  /**
+   * Subscribe to chatUrl updates pushed from the extension when a conversation's
+   * ChatGPT tab URL is discovered or changes (via heartbeat).
+   * Each caller gets updates only for its own conversationId — SYS-I and SYS-II
+   * never see each other's URLs.
+   *
+   * @returns unsubscribe function
+   */
+  onConversationUrl(
+    conversationId: string,
+    callback: (chatUrl: string) => void,
+  ): () => void {
+    const handler = (e: Event) => {
+      const { conversationId: id, chatUrl } = (e as CustomEvent).detail
+      if (id === conversationId) callback(chatUrl)
+    }
+    window.addEventListener('ramble:ext:conversation-url', handler)
+    return () => window.removeEventListener('ramble:ext:conversation-url', handler)
+  },
 }

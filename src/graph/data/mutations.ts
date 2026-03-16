@@ -74,9 +74,7 @@ async function updateNodeProperties(
   const node = await reactive.getNode(id)
   if (!node) throw new Error(`Node not found: ${id}`)
 
-  const currentProps = typeof node.properties === 'string'
-    ? JSON.parse(node.properties as unknown as string)
-    : node.properties
+  const currentProps = node.properties ?? {}
 
   const merged = { ...currentProps, ...propertyUpdates }
   await reactive.updateNode(id, { properties: merged })

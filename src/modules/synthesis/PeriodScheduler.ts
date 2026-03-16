@@ -85,12 +85,19 @@ export class PeriodScheduler {
     if (this.processing) return
 
     const periods = endedPeriods()
-    const todo = periods.filter(p => {
+    const todo: Array<{ date: string; slot: PeriodSlot }> = []
+    for (const p of periods) {
       const pKey = periodKey(p.date, p.slot)
-      const state = loadPeriodState(pKey)
-      // Run if never run, or previous attempt errored
-      return !state || state.status === 'pending' || state.status === 'error'
-    })
+      const state = await loadPeriodState(pKey)
+      // Run if: never run, or mid-period test run (interim)
+      if (!state || state.status === 'pending' || state.status === 'interim') { todo.push(p); continue }
+      // Error with no chatUrl: safe to auto-retry (ChatGPT session was never created)
+      // Error with chatUrl: DON'T auto-retry — the ChatGPT session already exists.
+      // User must manually click Re-run, which will resume from the saved chatUrl
+      // instead of opening a duplicate tab.
+      if (state.status === 'error' && !state.chatUrl) { todo.push(p); continue }
+      // Skip: running, done, committed, or error-with-chatUrl
+    }
 
     if (todo.length === 0) return
 

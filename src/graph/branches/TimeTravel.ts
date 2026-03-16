@@ -99,16 +99,14 @@ export class TimeTravel {
    * Call this periodically to bound time-travel replay cost.
    */
   async createSnapshot(nodeId: string): Promise<void> {
-    const node = await this.graph.query<{ properties: string | Record<string, unknown> }>(
+    const node = await this.graph.query<{ properties: Record<string, unknown> }>(
       `SELECT properties FROM nodes WHERE id = $1`,
       [nodeId]
     )
 
     if (node.length === 0) return
 
-    const state = typeof node[0].properties === 'string'
-      ? JSON.parse(node[0].properties)
-      : node[0].properties
+    const state = node[0].properties ?? {}
 
     await this.graph.exec(
       `INSERT INTO snapshots (id, target_id, target_kind, state, timestamp)
@@ -124,16 +122,14 @@ export class TimeTravel {
     if (nodeIds.length === 0) return
 
     const placeholders = nodeIds.map((_, i) => `$${i + 1}`).join(', ')
-    const nodes = await this.graph.query<{ id: string; properties: string | Record<string, unknown> }>(
+    const nodes = await this.graph.query<{ id: string; properties: Record<string, unknown> }>(
       `SELECT id, properties FROM nodes WHERE id IN (${placeholders})`,
       nodeIds
     )
 
     const now = Date.now()
     const statements = nodes.map(node => {
-      const state = typeof node.properties === 'string'
-        ? node.properties
-        : JSON.stringify(node.properties)
+      const state = JSON.stringify(node.properties)
 
       return {
         sql: `INSERT INTO snapshots (id, target_id, target_kind, state, timestamp)

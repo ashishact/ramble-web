@@ -121,6 +121,18 @@ export interface AiConversationOptions {
   systemPrompt?: string
   /** Known ChatGPT conversation URL — web is source of truth, extension uses this to find the tab */
   chatUrl?: string
+  /**
+   * Tab resolution strategy passed to the extension.
+   * 'reuse' (default): find/reuse an existing ChatGPT tab — for SYS-I ongoing conversations.
+   * 'new': always open a fresh tab — for SYS-II extraction runs that must be isolated.
+   */
+  tabMode?: 'reuse' | 'new'
+  /**
+   * Read-only mode: open the tab and read the last assistant message
+   * WITHOUT sending a new prompt. Used for resume — the response is
+   * already in the conversation DOM from a previous run.
+   */
+  readOnly?: boolean
 }
 
 export interface AiConversationResponse {

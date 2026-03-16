@@ -49,7 +49,8 @@ export type WidgetType =
   | 'llm-dashboard'       // LLM token usage and cost tracking
   | 'google-search'       // Google Search via Chrome extension
   | 'embedding-test'      // Embedding model speed comparison test
-  | 'synthesis';          // SYS-II period extraction monitor + manual trigger
+  | 'synthesis'           // SYS-II period extraction monitor + manual trigger
+  | 'knowledge-map';      // Sunburst topic coverage visualization
 
 export interface LeafNode extends BaseNode {
   type: 'leaf';

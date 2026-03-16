@@ -31,9 +31,7 @@ export interface WidgetRecordItem {
 // ============================================================================
 
 function parseRow(row: Record<string, unknown>): WidgetRecordItem {
-  const props = typeof row.properties === 'string'
-    ? JSON.parse(row.properties as string)
-    : (row.properties ?? {}) as Record<string, unknown>
+  const props = (row.properties ?? {}) as Record<string, unknown>
 
   let contentParsed: unknown = null
   try {

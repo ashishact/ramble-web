@@ -87,6 +87,7 @@ export interface GraphConversation {
   speaker: string
   processed: boolean
   intent: string | null
+  topic: string | null
   recording_id: string | null
   batch_id: string | null
   created_at: number

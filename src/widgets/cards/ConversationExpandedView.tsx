@@ -33,6 +33,10 @@ interface ConversationExpandedViewProps {
   isMeetingMode: boolean;
   /** ID of the final conversation that just replaced intermediates (for fadeIn animation) */
   finalConvId: string | null;
+  /** Live streaming text from SYS-I (response section only), null when not streaming */
+  streamingSys1Text: string | null;
+  /** Status from Chrome extension background (e.g. "sending" while ChatGPT is working) */
+  sys1Status: string | null;
 }
 
 /** Minutes of silence before showing a time separator */
@@ -97,10 +101,12 @@ export function ConversationExpandedView({
   pipelineState,
   isMeetingMode,
   finalConvId,
+  streamingSys1Text,
+  sys1Status,
 }: ConversationExpandedViewProps) {
   const [showRawText, setShowRawText] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const prevCountRef = useRef(0);
+  const prevLastIdRef = useRef<string | null>(null);
 
   // Reverse to chronological order (oldest first, newest at bottom)
   const chronological = useMemo(
@@ -108,13 +114,23 @@ export function ConversationExpandedView({
     [conversations]
   );
 
-  // Auto-scroll to bottom when new conversations arrive
+  // Auto-scroll to bottom when a new entry appears at the bottom of the list.
+  // Tracks the last conversation ID instead of count — count-based detection
+  // breaks after recording lifecycle (intermediates inflate count, then get hidden).
   useEffect(() => {
-    if (conversations.length > prevCountRef.current && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const lastEntry = chronological[chronological.length - 1];
+    const lastId = lastEntry?.id ?? null;
+
+    if (lastId && lastId !== prevLastIdRef.current && scrollRef.current) {
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({
+          top: scrollRef.current.scrollHeight,
+          behavior: 'smooth',
+        });
+      });
     }
-    prevCountRef.current = conversations.length;
-  }, [conversations.length]);
+    prevLastIdRef.current = lastId;
+  }, [chronological]);
 
   return (
     <div className="w-full h-full flex flex-col bg-base-100">
@@ -156,7 +172,7 @@ export function ConversationExpandedView({
       {/* Scrollable content */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-8 py-5 space-y-5"
+        className="flex-1 overflow-y-auto px-8 pt-5 pb-16 space-y-5"
       >
         {chronological.length === 0 ? (
           <div className="flex-1 flex items-center justify-center h-full">
@@ -195,17 +211,51 @@ export function ConversationExpandedView({
                   isMeetingMode={isMeetingMode}
                 />
 
-                {/* Extraction card (below source conversation) — skip for interviewer entries */}
-                {extraction && conv.speaker !== 'interviewer' && <ExtractionCard extraction={extraction} />}
+                {/* Extraction card (below source conversation) — skip for SYS-I entries */}
+                {extraction && conv.speaker !== 'sys1' && <ExtractionCard extraction={extraction} />}
               </div>
             );
           })
         )}
 
+        {/* SYS-I thinking indicator (before streaming text arrives) */}
+        {sys1Status === 'sending' && !streamingSys1Text && (
+          <div className="animate-fadeSlideIn">
+            <div className="border-l-2 border-violet-400/60 pl-3 py-1">
+              <div className="flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500" />
+                </span>
+                <span className="text-[11px] font-medium text-violet-500/70">SYS-I</span>
+                <span className="text-[11px] text-violet-400/50">Thinking...</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Streaming SYS-I response (before it lands as a DB record) */}
+        {streamingSys1Text && (
+          <div className="animate-fadeSlideIn">
+            <div className="border-l-2 border-violet-400/60 pl-3 py-1">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500" />
+                </span>
+                <span className="text-[11px] font-medium text-violet-500/70">SYS-I</span>
+              </div>
+              <div className="text-[15px] leading-relaxed text-base-content/80">
+                {streamingSys1Text}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Live pipeline status after newest entry */}
         <LiveStatusBar pipelineState={pipelineState} />
 
-        {/* Meeting companion cards (questions now appear inline as interviewer entries) */}
+        {/* Meeting companion cards (SYS-I responses appear inline as sys1 entries) */}
         <MeetingCompanionCards />
       </div>
 

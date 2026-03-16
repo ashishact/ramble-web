@@ -61,6 +61,11 @@ const TTSWidget = lazy(() =>
   import('../widgets/cards/TTSWidget').then(m => ({ default: m.TTSWidget }))
 );
 
+// Lazy-loaded Knowledge Map Widget (echarts code-split)
+const KnowledgeMapWidget = lazy(() =>
+  import('../widgets/on-demand/knowledge-map').then(m => ({ default: m.KnowledgeMapWidget }))
+);
+
 export const BentoApp: React.FC = () => {
   // Onboarding check
   const { isComplete: isOnboardingComplete, isLoading: isOnboardingLoading } = useOnboarding();
@@ -123,14 +128,14 @@ export const BentoApp: React.FC = () => {
     };
     runMaintenance().catch(console.error);
 
-    // Initialize DuckDB Knowledge Graph + Embedding Listener + Interview Engine (non-blocking)
+    // Initialize DuckDB Knowledge Graph + Embedding Listener + SYS-I Engine (non-blocking)
     getGraphService(profileName ?? 'default')
       .then(async (g) => {
         console.log('[KG] DuckDB graph initialized', g);
         await getEmbeddingListener();
-        // Start interview engine after graph is ready (needs conversationStore)
-        const { getInterviewEngine } = await import('../modules/interview');
-        getInterviewEngine();
+        // Start SYS-I engine after graph is ready (needs conversationStore)
+        const { getSys1Engine } = await import('../modules/sys1');
+        getSys1Engine();
         // Start SYS-II period scheduler (catches up missed periods on startup)
         const { startPeriodScheduler } = await import('../modules/synthesis');
         startPeriodScheduler();
@@ -262,6 +267,17 @@ export const BentoApp: React.FC = () => {
         return <SynthesisWidget {...props} />;
       case 'google-search':
         return <GoogleSearchWidget nodeId={node.id} />;
+      case 'knowledge-map':
+        return (
+          <Suspense fallback={
+            <div className="w-full h-full flex items-center justify-center gap-2">
+              <Loader2 size={14} className="animate-spin opacity-60" />
+              <span className="text-xs opacity-60">Loading Knowledge Map...</span>
+            </div>
+          }>
+            <KnowledgeMapWidget nodeId={node.id} />
+          </Suspense>
+        );
       // Lens Widgets - intercept input on hover, bypass core pipeline
       case 'meta-query':
         return <MetaQueryLensWidget />;

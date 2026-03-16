@@ -1,25 +1,25 @@
 /**
- * QuestionWidget — Interview Mode
+ * QuestionWidget — SYS-I Mode
  *
- * Displays questions from the InterviewEngine. Each time the user speaks,
- * the engine pipes the text to an AI and receives exactly ONE follow-up
- * question. This widget shows:
- *   - The latest question prominently in a hero card
- *   - Previous questions in a timeline below
+ * Displays responses from the Sys1Engine. Each time the user speaks,
+ * the engine pipes the text to an AI and receives a structured response.
+ * This widget shows:
+ *   - The latest response prominently in a hero card
+ *   - Previous responses in a timeline below
  *   - Status indicators for engine state
  *   - Retry button when there are unsent conversations
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { eventBus } from '../../../lib/eventBus';
-import { getInterviewEngine } from '../../../modules/interview';
+import { getSys1Engine } from '../../../modules/sys1';
 import { useWidgetPause } from '../useWidgetPause';
-import type { InterviewQuestion, InterviewState } from '../../../modules/interview/InterviewEngine';
+import type { Sys1Response, Sys1State } from '../../../modules/sys1/Sys1Engine';
 import { MessageCircleQuestion, WifiOff, AlertCircle, RefreshCw, Sparkles, Mic, RotateCcw, History } from 'lucide-react';
 
 export function QuestionWidget({ nodeId }: { nodeId: string }) {
-  const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
-  const [engineState, setEngineState] = useState<InterviewState>('idle');
+  const [questions, setQuestions] = useState<Sys1Response[]>([]);
+  const [engineState, setEngineState] = useState<Sys1State>('idle');
   const [pendingCount, setPendingCount] = useState(0);
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const streamingTextRef = useRef<string | null>(null);
@@ -29,17 +29,17 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
 
   // Load existing state on mount
   useEffect(() => {
-    const engine = getInterviewEngine();
+    const engine = getSys1Engine();
     setQuestions(engine.getHistory());
     setEngineState(engine.getState());
     setPendingCount(engine.getPendingCount());
   }, []);
 
-  // Subscribe to interview events
+  // Subscribe to SYS-I events
   useEffect(() => {
     if (isPaused) return;
 
-    const unsubQuestion = eventBus.on('interview:question', (payload) => {
+    const unsubResponse = eventBus.on('sys1:response', (payload) => {
       const finalText = payload.response?.trim() || '';
       const streamedText = streamingTextRef.current?.trim() || '';
       const responseText = finalText || streamedText;
@@ -55,21 +55,21 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
 
       setStreamingText(null);
       streamingTextRef.current = null;
-      setPendingCount(getInterviewEngine().getPendingCount());
+      setPendingCount(getSys1Engine().getPendingCount());
     });
 
-    const unsubState = eventBus.on('interview:state', (payload) => {
+    const unsubState = eventBus.on('sys1:state', (payload) => {
       setEngineState(payload.state);
-      setPendingCount(getInterviewEngine().getPendingCount());
+      setPendingCount(getSys1Engine().getPendingCount());
     });
 
-    const unsubStream = eventBus.on('interview:stream', (payload) => {
+    const unsubStream = eventBus.on('sys1:stream', (payload) => {
       setStreamingText(payload.text);
       streamingTextRef.current = payload.text;
     });
 
     return () => {
-      unsubQuestion();
+      unsubResponse();
       unsubState();
       unsubStream();
     };
@@ -83,11 +83,11 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
   }, [questions.length]);
 
   const handleRetry = useCallback(() => {
-    getInterviewEngine().retry();
+    getSys1Engine().retry();
   }, []);
 
   const handleNewSession = useCallback(() => {
-    getInterviewEngine().resetSession();
+    getSys1Engine().resetSession();
     setQuestions([]);
     setPendingCount(0);
   }, []);
@@ -95,7 +95,7 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
   const handleRestartWithContext = useCallback(() => {
     setQuestions([]);
     setPendingCount(0);
-    getInterviewEngine().resetSession({ withContext: true });
+    getSys1Engine().resetSession({ withContext: true });
   }, []);
 
   const latest = questions.length > 0 ? questions[questions.length - 1] : null;
@@ -143,7 +143,7 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
     return (
       <div
         className="w-full h-full relative flex flex-col items-center justify-center p-6"
-        data-doc='{"icon":"mdi:help-circle","title":"Interview","desc":"Intelligent interview questions powered by AI. Requires Chrome extension (ChatGPT) or direct LLM API key."}'
+        data-doc='{"icon":"mdi:help-circle","title":"SYS-I","desc":"SYS-I conversation engine. Requires Chrome extension (ChatGPT) or direct LLM API key."}'
       >
         <PauseOverlay />
         <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
@@ -169,7 +169,7 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
     return (
       <div
         className="w-full h-full relative flex flex-col items-center justify-center p-6"
-        data-doc='{"icon":"mdi:help-circle","title":"Interview","desc":"Intelligent interview questions powered by AI. Start speaking and questions will appear."}'
+        data-doc='{"icon":"mdi:help-circle","title":"SYS-I","desc":"SYS-I conversation engine. Start speaking and responses will appear."}'
       >
         <PauseOverlay />
         {engineState === 'sending' ? (
@@ -199,7 +199,7 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
               {isPaused ? 'Paused' : 'Start speaking'}
             </span>
             <span className="text-[10px] text-slate-400 mt-1 max-w-[180px] text-center leading-relaxed">
-              {isPaused ? 'Resume to continue the interview' : 'AI will ask you follow-up questions'}
+              {isPaused ? 'Resume to continue SYS-I' : 'AI will ask you follow-up questions'}
             </span>
           </>
         )}
@@ -218,7 +218,7 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
   return (
     <div
       className="w-full h-full relative flex flex-col overflow-hidden"
-      data-doc='{"icon":"mdi:help-circle","title":"Interview","desc":"AI asks intelligent follow-up questions based on what you say. Questions adapt to the conversation depth and topic."}'
+      data-doc='{"icon":"mdi:help-circle","title":"SYS-I","desc":"SYS-I asks follow-up questions and responds based on what you say. Adapts to conversation depth and topic."}'
     >
       <PauseOverlay />
 

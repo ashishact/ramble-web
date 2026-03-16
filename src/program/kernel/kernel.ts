@@ -3,21 +3,15 @@
  *
  * Singleton that manages:
  * - Session lifecycle
- * - Conversation accumulation (BatchDetector)
- * - Batch processing (SinglePassProcessor → GraphMerger)
+ * - Conversation save to DuckDB
+ * - Recording lifecycle wiring (native events → recordingManager)
  *
- * The Loop:
- * [userinput] → save to DuckDB → accumulate → batch ready → single LLM pass → merge into graph
+ * Knowledge graph extraction is handled by SYS-II PeriodScheduler (every 6 hours),
+ * NOT per-input. The kernel's job is just to save conversations.
  */
 
 import { sessionStore, recordingStore } from '../../db/stores';
 import { conversationStore } from '../../graph/stores/conversationStore';
-import { getGraphService } from '../../graph';
-import { BatchDetector } from '../../graph/stores/batchDetector';
-import { SinglePassProcessor } from '../../graph/llm/SinglePassProcessor';
-import { GraphMerger } from '../../graph/merge/GraphMerger';
-import { ReactiveGraphService } from '../../graph/reactive/ReactiveGraphService';
-import { WorkingContextWindow } from '../../graph/context/WorkingContextWindow';
 import { createLogger } from '../utils/logger';
 import { pipelineStatus } from './pipelineStatus';
 import { recordingManager } from './recordingManager';
@@ -82,12 +76,6 @@ class Kernel {
   private recentRawTexts = new Map<string, string>();
   private readonly DEDUP_TTL_MS = 2 * 60 * 1000;
 
-  // New architecture components (lazy-initialized in initialize())
-  private batchDetector: BatchDetector | null = null;
-  private singlePassProcessor: SinglePassProcessor | null = null;
-  private graphMerger: GraphMerger | null = null;
-  private workingContext: WorkingContextWindow | null = null;
-
   private constructor() {}
 
   static getInstance(): Kernel {
@@ -116,24 +104,6 @@ class Kernel {
       logger.info('Created new session', { id: this.currentSession.id });
     }
 
-    // Initialize graph components
-    const graph = await getGraphService();
-    const reactive = new ReactiveGraphService(graph);
-
-    this.workingContext = new WorkingContextWindow(graph);
-    this.singlePassProcessor = new SinglePassProcessor(graph, this.workingContext);
-    this.graphMerger = new GraphMerger(reactive);
-    // Initialize batch detector — fires onBatchReady when accumulation threshold is met
-    this.batchDetector = new BatchDetector({
-      gapThresholdMs: 30_000,   // 30s silence → process batch
-      maxBatchSize: 10,          // Max 10 conversations per batch
-      maxWaitMs: 60_000,         // Force batch after 60s
-      onBatchReady: (batchId, conversationIds) => {
-        this.processBatch(batchId, conversationIds)
-          .catch(err => logger.error('Batch processing failed', { batchId, error: err }));
-      },
-    });
-
     // Wire recording lifecycle to native events
     this.wireRecordingLifecycle();
 
@@ -148,20 +118,9 @@ class Kernel {
 
     logger.info('Shutting down kernel...');
 
-    // Flush any pending batch before shutdown
-    if (this.batchDetector && this.batchDetector.pendingCount > 0) {
-      this.batchDetector.flush();
-    }
-
     // Unsubscribe recording lifecycle listeners
     this.recordingUnsubscribers.forEach(unsub => unsub());
     this.recordingUnsubscribers = [];
-
-    // Clean up batch detector
-    if (this.batchDetector) {
-      this.batchDetector.destroy();
-      this.batchDetector = null;
-    }
 
     // End current session
     if (this.currentSession) {
@@ -170,9 +129,6 @@ class Kernel {
 
     this.initialized = false;
     this.currentSession = null;
-    this.singlePassProcessor = null;
-    this.graphMerger = null;
-    this.workingContext = null;
     this.notifyListeners();
 
     logger.info('Kernel shut down');
@@ -191,11 +147,6 @@ class Kernel {
     // Create new session
     this.currentSession = await sessionStore.create({});
     this.notifyListeners();
-
-    // Reset processor conversation history for the new session
-    if (this.singlePassProcessor) {
-      this.singlePassProcessor.reset();
-    }
 
     logger.info('Started new session', { id: this.currentSession.id });
     return this.currentSession;
@@ -387,7 +338,7 @@ class Kernel {
       this.notifyListeners();
 
       try {
-        const result = await this.saveAndAccumulate(item.text, item.source, item.recordingId);
+        const result = await this.saveConversation(item.text, item.source, item.recordingId);
         item.resolve(result);
       } catch (error) {
         logger.error('Failed to save input', { error });
@@ -400,15 +351,14 @@ class Kernel {
   }
 
   // ==========================================================================
-  // Save & Accumulate (replaces old processInputItem)
+  // Save Conversation (no LLM — extraction is done by PeriodScheduler)
   // ==========================================================================
 
   /**
-   * Save conversation to DuckDB and feed the batch detector.
-   * No LLM calls here — just save and accumulate.
-   * BatchDetector fires onBatchReady when threshold is met.
+   * Save conversation to DuckDB. No LLM calls — knowledge graph extraction
+   * is handled by SYS-II PeriodScheduler on a 6-hour cadence.
    */
-  private async saveAndAccumulate(
+  private async saveConversation(
     text: string,
     source: 'speech' | 'text' | 'meeting',
     recordingId?: string
@@ -429,7 +379,7 @@ class Kernel {
     // Save conversation to DuckDB
     pipelineStatus.start();
     pipelineStatus.step('input', 'running');
-    telemetry.emit('kernel', 'saveAndAccumulate', 'start', {
+    telemetry.emit('kernel', 'saveConversation', 'start', {
       source,
       chars: text.length,
     });
@@ -453,121 +403,15 @@ class Kernel {
     pipelineStatus.step('save', 'success');
     pipelineStatus.step('done', 'success');
 
-    telemetry.emit('kernel', 'saveAndAccumulate', 'end', {
+    telemetry.emit('kernel', 'saveConversation', 'end', {
       conversationId: conversation.id,
     }, { status: 'success' });
 
-    // Feed batch detector — it will call onBatchReady when threshold is met
-    if (this.batchDetector) {
-      this.batchDetector.add(conversation.id);
-      logger.info('Conversation accumulated', {
-        conversationId: conversation.id,
-        pendingInBatch: this.batchDetector.pendingCount,
-      });
-    }
+    logger.info('Conversation saved', {
+      conversationId: conversation.id,
+    });
 
     return { conversationId: conversation.id };
-  }
-
-  // ==========================================================================
-  // Batch Processing (fired by BatchDetector.onBatchReady)
-  // ==========================================================================
-
-  /**
-   * Process a batch of accumulated conversations through the single-pass pipeline.
-   * Called by BatchDetector when gap/threshold triggers.
-   *
-   * Flow: load conversations → SinglePassProcessor (1 LLM call) → GraphMerger → done
-   */
-  private async processBatch(batchId: string, conversationIds: string[]): Promise<void> {
-    if (!this.singlePassProcessor || !this.graphMerger) {
-      logger.warn('Processor not initialized, skipping batch', { batchId });
-      return;
-    }
-
-    logger.info('Processing batch', { batchId, count: conversationIds.length });
-    pipelineStatus.start();
-    pipelineStatus.step('process', 'running');
-
-    try {
-      // Load conversations from DuckDB
-      const conversations = await Promise.all(
-        conversationIds.map(id => conversationStore.getById(id))
-      );
-      const validConvs = conversations.filter(
-        (c): c is NonNullable<typeof c> => c !== null
-      );
-
-      if (validConvs.length === 0) {
-        logger.warn('No valid conversations found for batch', { batchId });
-        return;
-      }
-
-      // Single LLM pass
-      const result = await this.singlePassProcessor.processBatch({
-        conversations: validConvs.map(c => ({
-          id: c.id,
-          rawText: c.raw_text,
-          source: c.source,
-          speaker: c.speaker,
-        })),
-        recordingId: validConvs[0].recording_id ?? undefined,
-      });
-
-      logger.info('Single-pass extraction complete', {
-        batchId,
-        nodes: result.subset.nodes.length,
-        edges: result.subset.edges.length,
-        searchLoops: result.searchLoops,
-      });
-
-      // Merge KG subset into graph
-      // Embeddings are handled reactively by EmbeddingListener (graph:node:created events)
-      if (result.subset.nodes.length > 0 || result.subset.edges.length > 0) {
-        await this.graphMerger.merge(
-          result.subset,
-          'global',
-          validConvs[0].source,
-          validConvs[0].recording_id ?? undefined
-        );
-
-        logger.info('Graph merge complete', { batchId });
-      }
-
-      // Mark all conversations as processed
-      for (const id of conversationIds) {
-        await conversationStore.markProcessed(id, batchId);
-      }
-
-      pipelineStatus.step('process', 'success');
-      pipelineStatus.step('done', 'success');
-
-      telemetry.emit('kernel', 'processBatch', 'end', {
-        batchId,
-        conversations: conversationIds.length,
-        nodes: result.subset.nodes.length,
-        edges: result.subset.edges.length,
-      }, { status: 'success' });
-
-      // Emit event for UI updates
-      eventBus.emit('processing:complete', {
-        batchId,
-        conversationIds,
-        nodeCount: result.subset.nodes.length,
-      });
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('Batch processing failed', { batchId, error: errorMessage });
-
-      pipelineStatus.step('process', 'error');
-      pipelineStatus.step('done', 'error');
-
-      telemetry.emit('kernel', 'processBatch', 'end', {
-        batchId,
-        error: errorMessage,
-      }, { status: 'error' });
-    }
   }
 
   // ==========================================================================

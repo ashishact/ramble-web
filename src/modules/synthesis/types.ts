@@ -6,7 +6,16 @@
 
 export type PeriodSlot = 'p1' | 'p2' | 'p3' | 'p4'
 
-export type ExtractionStatus = 'pending' | 'running' | 'done' | 'error' | 'committed'
+/**
+ * pending   — never run
+ * running   — in progress
+ * interim   — ran while the period was still active (mid-period test run);
+ *             the scheduler will re-run it automatically once the period ends
+ * done      — ran after the period ended; draft nodes ready to commit
+ * error     — last run failed
+ * committed — user merged the draft into the main graph
+ */
+export type ExtractionStatus = 'pending' | 'running' | 'interim' | 'done' | 'error' | 'committed'
 
 /**
  * Persisted state for a single period extraction run.
@@ -30,10 +39,11 @@ export interface PeriodExtractionState {
     memories: number
     goals: number
     topics: number
+    relationships: number
   }
 }
 
-// ── Memory Slot Templates ────────────────────────────────────────────
+// ── Memory Types ─────────────────────────────────────────────────────
 
 export type MemorySlotType =
   | 'DEADLINE'
@@ -45,25 +55,6 @@ export type MemorySlotType =
   | 'FACT'
   | 'GENERIC'
 
-export interface SlotDeadline   { project: string|null; owner: string|null; deadline: string|null; status: string|null }
-export interface SlotHealth     { person: string|null; condition: string|null; severity: string|null; date: string|null; treatment: string|null }
-export interface SlotRelation   { person: string|null; relationship_type: string|null; context: string|null }
-export interface SlotFinancial  { amount: string|null; currency: string|null; purpose: string|null; date: string|null }
-export interface SlotDecision   { decision: string|null; alternatives: string|null; rationale: string|null; date: string|null }
-export interface SlotEvent      { what: string|null; when: string|null; where: string|null; who: string|null; outcome: string|null }
-export interface SlotFact       { subject: string|null; predicate: string|null; object: string|null }
-export interface SlotGeneric    { [key: string]: string|null }
-
-export type MemorySlotTemplate =
-  | { type: 'DEADLINE';      slots: SlotDeadline   }
-  | { type: 'HEALTH';        slots: SlotHealth      }
-  | { type: 'RELATIONSHIP';  slots: SlotRelation    }
-  | { type: 'FINANCIAL';     slots: SlotFinancial   }
-  | { type: 'DECISION';      slots: SlotDecision    }
-  | { type: 'EVENT';         slots: SlotEvent       }
-  | { type: 'FACT';          slots: SlotFact        }
-  | { type: 'GENERIC';       slots: SlotGeneric     }
-
 // ── Extraction Output ────────────────────────────────────────────────
 
 export interface ExtractedEntity {
@@ -71,31 +62,55 @@ export interface ExtractedEntity {
   type: 'person' | 'organization' | 'location' | 'product' | 'concept' | 'other'
   description?: string
   aliases?: string[]
+  /** Distinguishing qualifiers for disambiguation (e.g. { department: "marketing", company: "Acme" }) */
+  qualifiers?: Record<string, string>
   confidence: number
+  /** Indices into the conversation array sent to the LLM */
+  sourceIndices: number[]
+}
+
+export interface ExtractedRelationship {
+  source: string   // entity name (resolved to node ID at write time)
+  target: string   // entity name (resolved to node ID at write time)
+  type: string     // free-form — LLM chooses (e.g. USES, WORKS_AT, PART_OF)
+  description?: string
+  confidence: number
+  sourceIndices: number[]
 }
 
 export interface ExtractedMemory {
   content: string
   importance: number
   confidence: number
-  slotTemplate: MemorySlotTemplate
+  /** Category of memory — tells us which slot fields apply */
+  type: MemorySlotType
+  /**
+   * Only the fields that are MISSING / unknown.
+   * Known fields are omitted entirely — content already carries them.
+   * e.g. if owner is unknown: { owner: null }
+   * If everything is known: {}
+   */
+  slots: Record<string, null>
   relatedEntityNames: string[]
   /** Indices into the conversation array sent to the LLM */
-  sourceConversationIndices: number[]
+  sourceIndices: number[]
 }
 
 export interface ExtractedGoal {
   statement: string
-  type: 'immediate' | 'short_term' | 'long_term'
+  type: 'short-term' | 'long-term' | 'recurring' | 'milestone'
   motivation?: string
   deadline?: string
   confidence: number
+  /** Indices into the conversation array sent to the LLM */
+  sourceIndices: number[]
 }
 
 export interface ExtractedTopic {
   name: string
-  category?: string
   confidence: number
+  /** Indices into the conversation array sent to the LLM */
+  sourceIndices: number[]
 }
 
 export interface ExtractionSearchRequest {
@@ -109,6 +124,7 @@ export interface ExtractionLLMResponse {
   memories: ExtractedMemory[]
   goals: ExtractedGoal[]
   topics: ExtractedTopic[]
+  relationships: ExtractedRelationship[]
   compaction: string
   search: ExtractionSearchRequest | null
 }
@@ -121,5 +137,6 @@ export interface ExtractionSummary {
   memories: number
   goals: number
   topics: number
+  relationships: number
   compaction: string
 }

@@ -7,7 +7,7 @@
  * 2. LLMApiTransport — Uses the standard callLLM() tier system
  *    (We maintain conversation history locally)
  *
- * Both transports always return a structured SendResult parsed from JSON.
+ * Both transports always return a structured SendResult parsed from markdown sections.
  * Both support injectContext() for search round-trips (LLM requests context,
  * we search the graph, inject results, LLM responds with full answer).
  */
@@ -18,7 +18,7 @@ import type { LLMTier } from '../../program/types/llmTiers'
 import { SYS1_SYSTEM_PROMPT } from './prompt'
 import { createLogger } from '../../program/utils/logger'
 
-const log = createLogger('InterviewTransport')
+const log = createLogger('Sys1Transport')
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ export interface SendResult {
 
 // ─── Transport Interface ────────────────────────────────────────────
 
-export interface InterviewTransport {
+export interface Sys1Transport {
   readonly name: string
   isAvailable(): boolean
   /** Send user speech. Returns structured result (may include search request). */
@@ -62,54 +62,124 @@ export interface InterviewTransport {
   resume(): void
 }
 
-// ─── JSON Parsing Helper ────────────────────────────────────────────
+// ─── Section Parser ──────────────────────────────────────────────────
+
+const VALID_INTENTS: UserIntent[] = ['ASSERT', 'QUERY', 'CORRECT', 'EXPLORE', 'COMMAND', 'SOCIAL']
+const SECTION_KEYS = new Set(['intent', 'response', 'topic', 'search'])
 
 /**
- * Parse the LLM's JSON response into a SendResult.
- * Strips code block fences if present. Falls back to treating the raw
- * text as a plain ASSERT question if JSON parsing fails.
+ * Parse the LLM's section-based response into a SendResult.
+ *
+ * Handles two formats:
+ *
+ * 1. Raw markdown (from clipboard copy):
+ *      ## intent
+ *      ASSERT
+ *      ## response
+ *      What made you decide now?
+ *
+ * 2. Plain text (from DOM .textContent — ChatGPT renders ## as <h2>,
+ *    so textContent strips the ## markers):
+ *      intent
+ *      ASSERT
+ *      response
+ *      What made you decide now?
+ *
+ * In both cases, section keywords (intent, response, topic, search)
+ * appearing alone on a line mark the start of a section.
+ *
+ * Search is extracted separately via pattern match.
  */
 function parseSysIResponse(raw: string): Omit<SendResult, 'chatUrl'> {
-  const stripped = raw.trim()
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim()
-
-  try {
-    const parsed = JSON.parse(stripped)
-    return {
-      intent: parsed.intent ?? 'ASSERT',
-      topic: parsed.topic ?? 'general',
-      response: parsed.response ?? null,
-      question: parsed.question ?? null,
-      search: parsed.search ?? null,
-    }
-  } catch {
-    // Fallback: treat entire response as a plain question
-    log.warn('Failed to parse SYS-I JSON, falling back to raw text')
-    const text = raw.trim()
-    return {
-      intent: 'ASSERT',
-      topic: 'general',
-      response: text,
-      question: text,
-      search: null,
+  // ── Search: pattern match — works with or without ## prefix ──
+  let search: SysISearchRequest | null = null
+  const searchMatch = raw.match(/^(?:##\s*)?search\s*\n(\{[^\n]+\})/im)
+  if (searchMatch) {
+    try {
+      const parsed = JSON.parse(searchMatch[1].trim())
+      if (parsed.query && ['memory', 'entity', 'goal'].includes(parsed.type)) {
+        search = { type: parsed.type, query: parsed.query }
+      }
+    } catch {
+      log.warn('SYS-I: found search section but JSON parse failed:', searchMatch[1])
     }
   }
+
+  // ── Parse sections — handles both "## key" and bare "key" on own line ──
+  // A section header is a known keyword alone on its own line, either:
+  //   - at the very start of the text, OR
+  //   - preceded by a blank line
+  // This prevents false positives from words like "response" in content.
+  // DOM .innerText gives \n\n between block elements — matches this requirement.
+  const sections: Record<string, string> = {}
+  const lines = raw.split('\n')
+  let currentKey: string | null = null
+  let currentLines: string[] = []
+  let prevLineBlank = true  // treat start-of-text as "after blank"
+
+  for (const line of lines) {
+    const stripped = line.replace(/^##\s*/, '').trim().toLowerCase()
+    const isSectionHeader = SECTION_KEYS.has(stripped)
+      && line.trim().split(/\s+/).length === 1
+      && prevLineBlank
+
+    if (isSectionHeader) {
+      // Flush previous section
+      if (currentKey) {
+        sections[currentKey] = currentLines.join('\n').trim()
+      }
+      currentKey = stripped
+      currentLines = []
+    } else {
+      currentLines.push(line)
+    }
+
+    prevLineBlank = line.trim() === ''
+  }
+  // Flush last section
+  if (currentKey) {
+    sections[currentKey] = currentLines.join('\n').trim()
+  }
+
+  // No sections found — treat whole text as a plain response
+  if (Object.keys(sections).length === 0) {
+    log.warn('SYS-I: no sections found, treating as plain response')
+    const text = raw.trim()
+    return { intent: 'ASSERT', topic: 'general', response: text, question: text, search: null }
+  }
+
+  // Intent
+  const intentRaw = sections['intent']?.split('\n')[0].trim().toUpperCase() as UserIntent
+  const intent: UserIntent = VALID_INTENTS.includes(intentRaw) ? intentRaw : 'ASSERT'
+
+  // Topic
+  const topic = sections['topic']?.split('\n')[0].trim() || 'general'
+
+  // Response
+  const response = sections['response'] ?? null
+
+  // Question — derive from response for ASSERT/EXPLORE; null otherwise
+  const question = (intent === 'ASSERT' || intent === 'EXPLORE') ? response : null
+
+  return { intent, topic, response, question, search }
 }
 
 // ─── ChatGPT Transport (via Chrome Extension) ──────────────────────
 
-export class ChatGPTTransport implements InterviewTransport {
+export class ChatGPTTransport implements Sys1Transport {
   readonly name = 'ChatGPT (Extension)'
   private isFirstSend = true
   private chatSessionId: string
   private chatUrl: string | null
+  private unsubUrl: (() => void) | null = null
 
   constructor(chatSessionId: string, chatUrl: string | null = null) {
     this.chatSessionId = chatSessionId
     this.chatUrl = chatUrl
+    // Keep chatUrl in sync when the extension discovers/updates it via heartbeat
+    this.unsubUrl = rambleExt.onConversationUrl(chatSessionId, url => {
+      this.updateChatUrl(url)
+    })
   }
 
   isAvailable(): boolean {
@@ -129,13 +199,15 @@ export class ChatGPTTransport implements InterviewTransport {
       prompt: userSpeech,
       systemPrompt: this.isFirstSend ? SYS1_SYSTEM_PROMPT : undefined,
       chatUrl: this.chatUrl ?? undefined,
+      tabMode: 'reuse',
     })
 
     this.isFirstSend = false
     this.updateChatUrl(response.chatUrl)
 
+    const raw = response.answer?.trim() ?? ''
     return {
-      ...parseSysIResponse(response.answer.trim()),
+      ...parseSysIResponse(raw),
       chatUrl: response.chatUrl ?? undefined,
     }
   }
@@ -148,12 +220,14 @@ export class ChatGPTTransport implements InterviewTransport {
       prompt: content,
       // No systemPrompt — already in the conversation thread
       chatUrl: this.chatUrl ?? undefined,
+      tabMode: 'reuse',
     })
 
     this.updateChatUrl(response.chatUrl)
 
+    const raw = response.answer.trim()
     return {
-      ...parseSysIResponse(response.answer.trim()),
+      ...parseSysIResponse(raw),
       chatUrl: response.chatUrl ?? undefined,
     }
   }
@@ -165,6 +239,11 @@ export class ChatGPTTransport implements InterviewTransport {
 
   resume(): void {
     this.isFirstSend = false
+  }
+
+  dispose(): void {
+    this.unsubUrl?.()
+    this.unsubUrl = null
   }
 
   getChatUrl(): string | null {
@@ -187,7 +266,7 @@ interface Turn {
   userSpeech: string
 }
 
-export class LLMApiTransport implements InterviewTransport {
+export class LLMApiTransport implements Sys1Transport {
   readonly name = 'LLM API'
   private turns: Turn[] = []
   private tier: LLMTier
@@ -219,7 +298,8 @@ export class LLMApiTransport implements InterviewTransport {
       },
     })
 
-    const result = parseSysIResponse(response.content)
+    const raw = response.content
+    const result = parseSysIResponse(raw)
 
     // Only commit to turns when we have a final answer (no search pending)
     if (!result.search) {
@@ -249,7 +329,8 @@ export class LLMApiTransport implements InterviewTransport {
       },
     })
 
-    const result = parseSysIResponse(response.content)
+    const raw = response.content
+    const result = parseSysIResponse(raw)
 
     if (!result.search) {
       this.turns.push({ response: result.response ?? '', question: result.question ?? null, userSpeech: speech })

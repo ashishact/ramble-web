@@ -1,5 +1,5 @@
 /**
- * InterviewEngine (SYS-I) — Pipes user speech into a persistent AI conversation
+ * Sys1Engine (SYS-I) — Pipes user speech into a persistent AI conversation
  *
  * Listens to graph:tables:changed for ['conversations'], fetches the
  * latest conversation, and sends it through the active transport.
@@ -33,14 +33,15 @@ import { graphEventBus } from '../../graph/events/EventBus'
 import { eventBus } from '../../lib/eventBus'
 import { profileStorage } from '../../lib/profileStorage'
 import { createLogger } from '../../program/utils/logger'
-import type { InterviewTransport, UserIntent, SysISearchRequest } from './transports'
+import { rambleExt } from '../chrome-extension'
+import type { Sys1Transport, UserIntent, SysISearchRequest } from './transports'
 import { ChatGPTTransport } from './transports'
 
-const log = createLogger('InterviewEngine')
+const log = createLogger('Sys1Engine')
 
-export type InterviewState = 'idle' | 'sending' | 'error' | 'no-transport'
+export type Sys1State = 'idle' | 'sending' | 'error' | 'no-transport'
 
-export interface InterviewQuestion {
+export interface Sys1Response {
   /** What was spoken to the user */
   response: string
   /** Isolated question text for ASSERT/EXPLORE (same as response). Null for QUERY/CORRECT etc. */
@@ -56,29 +57,50 @@ interface PendingEntry {
   timestamp: number
 }
 
+interface SessionMetrics {
+  turnCount: number
+  charCount: number
+  lastActivityAt: number
+}
+
 const DEBOUNCE_MS = 1000
 const MAX_SEARCH_ROUNDS = 2
 
-const STORAGE_KEY_PENDING = 'interview-pending'
-const STORAGE_KEY_HISTORY = 'interview-history'
-const STORAGE_KEY_PROCESSED = 'interview-last-processed-id'
-const STORAGE_KEY_SESSION_ID = 'interview-chat-session-id'
-const STORAGE_KEY_CHAT_URL = 'interview-chat-url'
+// ── Session auto-reset thresholds ────────────────────────────────────
+// 30k chars ≈ 7.5k OpenAI tokens. For medium turns (~400 chars) this is
+// ~75 turns — the HARD_TURN_CAP fires first. For long turns (~800+ chars)
+// the char budget is the primary limiter (~35 turns).
+const CHAR_BUDGET = 30_000
+const IDLE_RESET_MS = 30 * 60_000 // 30 minutes
+const HARD_TURN_CAP = 60
 
-export class InterviewEngine {
-  private state: InterviewState = 'idle'
+const STORAGE_KEY_PENDING = 'sys1-pending'
+const STORAGE_KEY_HISTORY = 'sys1-history'
+const STORAGE_KEY_PROCESSED = 'sys1-last-processed-id'
+const STORAGE_KEY_SESSION_ID = 'sys1-chat-session-id'
+const STORAGE_KEY_CHAT_URL = 'sys1-chat-url'
+const STORAGE_KEY_METRICS = 'sys1-session-metrics'
+
+export class Sys1Engine {
+  private state: Sys1State = 'idle'
   private lastProcessedId: string | null = null
-  private history: InterviewQuestion[] = []
+  private history: Sys1Response[] = []
   private pending: PendingEntry[] = []
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private unsubGraphEvents: (() => void) | null = null
   private streamHandler: EventListener | null = null
-  private transport: InterviewTransport
+  private statusHandler: EventListener | null = null
+  private transport: Sys1Transport
   private bootstrapped = false
   private chatSessionId: string
   private chatUrl: string | null = null
 
-  constructor(transport?: InterviewTransport) {
+  // Session budget tracking
+  private turnCount = 0
+  private sessionCharCount = 0
+  private lastActivityAt = 0
+
+  constructor(transport?: Sys1Transport) {
     this.chatSessionId = this.loadOrCreateSessionId()
     this.chatUrl = profileStorage.getItem(STORAGE_KEY_CHAT_URL)
     this.transport = transport ?? new ChatGPTTransport(this.chatSessionId, this.chatUrl)
@@ -110,10 +132,18 @@ export class InterviewEngine {
     this.streamHandler = ((e: CustomEvent) => {
       const { conversationId, text } = e.detail || {}
       if (conversationId === this.chatSessionId && text) {
-        eventBus.emit('interview:stream', { text, conversationId })
+        eventBus.emit('sys1:stream', { text, conversationId })
       }
     }) as EventListener
     window.addEventListener('ramble:ext:conversation-stream', this.streamHandler)
+
+    this.statusHandler = ((e: CustomEvent) => {
+      const { conversationId, status } = e.detail || {}
+      if (conversationId === this.chatSessionId) {
+        eventBus.emit('sys1:status', { conversationId, status })
+      }
+    }) as EventListener
+    window.addEventListener('ramble:ext:conversation-status', this.statusHandler)
   }
 
   stop(): void {
@@ -124,13 +154,17 @@ export class InterviewEngine {
       window.removeEventListener('ramble:ext:conversation-stream', this.streamHandler)
       this.streamHandler = null
     }
+    if (this.statusHandler) {
+      window.removeEventListener('ramble:ext:conversation-status', this.statusHandler)
+      this.statusHandler = null
+    }
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer)
       this.debounceTimer = null
     }
   }
 
-  setTransport(transport: InterviewTransport): void {
+  setTransport(transport: Sys1Transport): void {
     log.info('Switching transport to:', transport.name)
     this.transport = transport
     this.updateState(transport.isAvailable() ? 'idle' : 'no-transport')
@@ -140,15 +174,15 @@ export class InterviewEngine {
     return this.transport.name
   }
 
-  getState(): InterviewState {
+  getState(): Sys1State {
     return this.state
   }
 
-  getLastQuestion(): InterviewQuestion | null {
+  getLastResponse(): Sys1Response | null {
     return this.history.length > 0 ? this.history[this.history.length - 1] : null
   }
 
-  getHistory(): InterviewQuestion[] {
+  getHistory(): Sys1Response[] {
     return [...this.history]
   }
 
@@ -172,18 +206,37 @@ export class InterviewEngine {
   }
 
   async resetSession(opts?: { withContext?: boolean }): Promise<void> {
-    log.info('Resetting chat session', { withContext: !!opts?.withContext })
+    log.info('Resetting chat session', {
+      withContext: !!opts?.withContext,
+      prevTurns: this.turnCount,
+      prevChars: this.sessionCharCount,
+    })
+
+    // Close the old ChatGPT tab after a short delay so any in-flight
+    // streaming/heartbeat can finish cleanly
+    if (this.chatUrl) {
+      const urlToClose = this.chatUrl
+      log.info('Scheduling tab close for old session:', urlToClose)
+      setTimeout(() => rambleExt.closeTab(urlToClose), 60_000)
+    }
 
     this.history = []
     this.pending = []
     this.chatUrl = null
     this.lastProcessedId = null
+    this.turnCount = 0
+    this.sessionCharCount = 0
+    this.lastActivityAt = 0
 
     this.chatSessionId = this.generateSessionId()
     profileStorage.setItem(STORAGE_KEY_SESSION_ID, this.chatSessionId)
     profileStorage.removeItem(STORAGE_KEY_CHAT_URL)
     this.saveToStorage()
 
+    // Dispose old transport's subscriptions before creating a new one
+    if (this.transport instanceof ChatGPTTransport) {
+      this.transport.dispose()
+    }
     this.transport.reset()
 
     if (this.transport instanceof ChatGPTTransport) {
@@ -223,15 +276,22 @@ export class InterviewEngine {
     const pending = profileStorage.getJSON<PendingEntry[]>(STORAGE_KEY_PENDING)
     const rawHistory = profileStorage.getJSON<unknown[]>(STORAGE_KEY_HISTORY)
     const lastId = profileStorage.getItem(STORAGE_KEY_PROCESSED)
+    const metrics = profileStorage.getJSON<SessionMetrics>(STORAGE_KEY_METRICS)
 
     if (pending) this.pending = pending
     if (rawHistory) this.history = rawHistory.map(migrateHistoryEntry)
     if (lastId) this.lastProcessedId = lastId
+    if (metrics) {
+      this.turnCount = metrics.turnCount
+      this.sessionCharCount = metrics.charCount
+      this.lastActivityAt = metrics.lastActivityAt
+    }
 
     this.bootstrapped = !!(rawHistory || pending || lastId)
 
     if (this.bootstrapped) {
-      log.info('Restored from storage — pending:', this.pending.length, 'history:', this.history.length)
+      log.info('Restored from storage — pending:', this.pending.length,
+        'history:', this.history.length, 'turns:', this.turnCount, 'chars:', this.sessionCharCount)
     }
   }
 
@@ -241,6 +301,11 @@ export class InterviewEngine {
     if (this.lastProcessedId) {
       profileStorage.setItem(STORAGE_KEY_PROCESSED, this.lastProcessedId)
     }
+    profileStorage.setJSON(STORAGE_KEY_METRICS, {
+      turnCount: this.turnCount,
+      charCount: this.sessionCharCount,
+      lastActivityAt: this.lastActivityAt,
+    } satisfies SessionMetrics)
   }
 
   private async bootstrapFromDB(): Promise<void> {
@@ -257,9 +322,15 @@ export class InterviewEngine {
           timestamp: c.created_at,
         }))
         this.lastProcessedId = userConvs[userConvs.length - 1].id
+
+        // Count bootstrapped chars toward the session budget —
+        // these get combined into a single message sent to ChatGPT
+        const bootstrapChars = userConvs.reduce((sum, c) => sum + c.raw_text.length, 0)
+        this.sessionCharCount += bootstrapChars
+        log.info('Bootstrapped from DB:', this.pending.length, 'conversations,', bootstrapChars, 'chars')
+
         this.bootstrapped = true
         this.saveToStorage()
-        log.info('Bootstrapped from DB:', this.pending.length, 'conversations')
       } else {
         this.bootstrapped = true
         this.saveToStorage()
@@ -272,10 +343,10 @@ export class InterviewEngine {
 
   // ── Event handling ───────────────────────────────────────────────
 
-  private updateState(newState: InterviewState): void {
+  private updateState(newState: Sys1State): void {
     if (this.state === newState) return
     this.state = newState
-    eventBus.emit('interview:state', { state: newState })
+    eventBus.emit('sys1:state', { state: newState })
   }
 
   private onConversationsChanged(): void {
@@ -323,14 +394,24 @@ export class InterviewEngine {
     if (this.state === 'sending') return
     if (this.pending.length === 0) return
 
+    // ── Auto-reset check ──────────────────────────────────────────
+    // If the session has exceeded its budget, silently start a new one.
+    // resetSession({ withContext: true }) re-bootstraps from DB (which
+    // includes whatever we're about to send) and calls flush() internally.
+    if (this.shouldAutoReset()) {
+      await this.resetSession({ withContext: true })
+      return
+    }
+
     this.updateState('sending')
 
     const now = Date.now()
     const combined = this.pending.length === 1
       ? this.pending[0].rawText
-      : this.pending.map((p, i) => `[${i + 1} · ${timeAgo(now - p.timestamp)}] "${p.rawText}"`).join('\n\n')
+      : this.pending.map((p, i) => `[${i + 1} · ${timeAgo(now - p.timestamp)}] ${p.rawText}`).join('\n\n')
 
-    log.info('Flushing', this.pending.length, 'pending to', this.transport.name)
+    log.info('Flushing', this.pending.length, 'pending to', this.transport.name,
+      '| turn:', this.turnCount, '| chars:', this.sessionCharCount)
 
     try {
       // Initial send
@@ -369,7 +450,12 @@ export class InterviewEngine {
 
       this.pending = []
 
-      const entry: InterviewQuestion = {
+      // ── Update session metrics ──────────────────────────────────
+      this.turnCount++
+      this.sessionCharCount += combined.length + response.length
+      this.lastActivityAt = Date.now()
+
+      const entry: Sys1Response = {
         response,
         question: result.question,
         intent: result.intent,
@@ -384,16 +470,17 @@ export class InterviewEngine {
         const conv = await conversationStore.create({
           sessionId: this.chatSessionId,
           rawText: response,
-          source: 'interview',
+          source: 'sys1',
           speaker: 'sys1',
           intent: result.intent.toLowerCase(),
+          topic: result.topic || undefined,
         })
         await conversationStore.markProcessed(conv.id)
       } catch (err) {
         log.error('Failed to store SYS-I response in DuckDB:', err)
       }
 
-      eventBus.emit('interview:question', entry)
+      eventBus.emit('sys1:response', entry)
       if (response) {
         eventBus.emit('tts:speak', { text: response })
       }
@@ -403,6 +490,39 @@ export class InterviewEngine {
       this.saveToStorage()
       this.updateState('error')
     }
+  }
+
+  // ── Session auto-reset ──────────────────────────────────────────
+
+  /**
+   * Check whether the current session should be silently rotated.
+   *
+   * Triggers (in priority order):
+   *  1. Hard turn cap (60) — always reset, even during active conversation
+   *  2. Character budget (20k) — cumulative user speech + LLM responses
+   *  3. Idle timeout (30 min) — only fires after a gap, not during active use
+   */
+  private shouldAutoReset(): boolean {
+    // No completed turns yet — don't reset (avoids infinite loop when
+    // bootstrap chars alone exceed the budget)
+    if (this.turnCount === 0) return false
+
+    if (this.turnCount >= HARD_TURN_CAP) {
+      log.info('Auto-reset: hard turn cap reached', { turns: this.turnCount })
+      return true
+    }
+
+    if (this.sessionCharCount >= CHAR_BUDGET) {
+      log.info('Auto-reset: char budget exceeded', { chars: this.sessionCharCount, turns: this.turnCount })
+      return true
+    }
+
+    if (this.lastActivityAt > 0 && (Date.now() - this.lastActivityAt) >= IDLE_RESET_MS) {
+      log.info('Auto-reset: idle timeout', { idleMs: Date.now() - this.lastActivityAt, turns: this.turnCount })
+      return true
+    }
+
+    return false
   }
 
   // ── Graph Search ─────────────────────────────────────────────────
@@ -462,10 +582,10 @@ function timeAgo(ms: number): string {
  * Migrate old-format history entries ({ question: string, timestamp: number })
  * to the new shape ({ response, question, intent, topic, timestamp }).
  */
-function migrateHistoryEntry(raw: unknown): InterviewQuestion {
+function migrateHistoryEntry(raw: unknown): Sys1Response {
   const entry = raw as Record<string, unknown>
   if (entry.response) {
-    return entry as unknown as InterviewQuestion
+    return entry as unknown as Sys1Response
   }
   // Old format
   const text = (entry.question as string) ?? ''

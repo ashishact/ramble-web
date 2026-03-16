@@ -106,9 +106,7 @@ export function TranscriptReview({ initialText, onSubmit, onCancel, rambleMetada
       );
       setEntities(
         rows.map((row) => {
-          const props = typeof row.properties === 'string'
-            ? JSON.parse(row.properties as string)
-            : (row.properties ?? {}) as Record<string, unknown>;
+          const props = (row.properties ?? {}) as Record<string, unknown>;
           return {
             name: (props.name as string) ?? '',
             type: (props.type as string) ?? '',

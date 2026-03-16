@@ -34,10 +34,8 @@ export interface TreeGap {
 // ============================================================================
 
 function parseKnowledgeNode(row: Record<string, unknown>): KnowledgeNodeItem {
-  const props = typeof row.properties === 'string'
-    ? JSON.parse(row.properties as string)
-    : (row.properties ?? {}) as Record<string, unknown>
-  return { ...row, ...(props as Record<string, unknown>) } as unknown as KnowledgeNodeItem
+  const props = (row.properties ?? {}) as Record<string, unknown>
+  return { ...row, ...props } as unknown as KnowledgeNodeItem
 }
 
 function isDeleted(node: KnowledgeNodeItem): boolean {
@@ -181,10 +179,8 @@ export async function analyzeTreeGaps(
 async function getEntityById(entityId: string): Promise<EntityItem | null> {
   const node = await graphMutations.getNode(entityId)
   if (!node) return null
-  const props = typeof node.properties === 'string'
-    ? JSON.parse(node.properties as unknown as string)
-    : node.properties
-  return { id: node.id, ...(props as Record<string, unknown>) } as unknown as EntityItem
+  const props = (node.properties ?? {}) as Record<string, unknown>
+  return { id: node.id, ...props } as unknown as EntityItem
 }
 
 async function getKnowledgeNodesByEntity(entityId: string): Promise<KnowledgeNodeItem[]> {
@@ -210,9 +206,7 @@ async function getCooccurrenceCluster(entityId: string, minStrength: number): Pr
 
   const results: string[] = []
   for (const row of rows) {
-    const props = typeof row.properties === 'string'
-      ? JSON.parse(row.properties as string)
-      : (row.properties ?? {}) as Record<string, unknown>
+    const props = (row.properties ?? {}) as Record<string, unknown>
     const count = (props.count as number) ?? 0
     if (count >= minStrength) {
       const otherId = (row.start_id as string) === entityId
@@ -246,9 +240,7 @@ async function getCooccurrenceCount(entityIdA: string, entityIdB: string): Promi
     [eA, eB]
   )
   if (rows.length === 0) return 0
-  const props = typeof rows[0].properties === 'string'
-    ? JSON.parse(rows[0].properties as string)
-    : (rows[0].properties ?? {}) as Record<string, unknown>
+  const props = (rows[0].properties ?? {}) as Record<string, unknown>
   return (props.count as number) ?? 0
 }
 

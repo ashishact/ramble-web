@@ -43,7 +43,7 @@ export function ConversationEntry({
   // Entity names for highlighting
   const entityNames = extraction?.entities?.map((e) => e.name) ?? [];
 
-  const isInterviewer = conversation.speaker === 'interviewer';
+  const isSys1 = conversation.speaker === 'sys1';
 
   const isSpeech = conversation.source === 'speech' || conversation.source === 'meeting';
   const timeStr = new Date(conversation.timestamp).toLocaleTimeString([], {
@@ -51,24 +51,24 @@ export function ConversationEntry({
     minute: '2-digit',
   });
 
-  // ── Interviewer entry — distinct violet styling ──────────────────────
-  if (isInterviewer) {
+  // ── SYS-I entry — distinct violet styling ──────────────────────
+  if (isSys1) {
     return (
       <div className="animate-fadeSlideIn">
         <div className="border-l-2 border-violet-400/60 pl-3 py-1">
           {/* Label row */}
           <div className="flex items-center gap-1.5 mb-1">
             <Icon icon="mdi:auto-fix" className="w-3.5 h-3.5 text-violet-500/70" />
-            <span className="text-[11px] font-medium text-violet-500/70">Interview</span>
+            <span className="text-[11px] font-medium text-violet-500/70">SYS-I</span>
           </div>
-          {/* Question text — no truncation, no entity highlighting */}
+          {/* Response text — no truncation, no entity highlighting */}
           <div className="text-[15px] leading-relaxed text-base-content/80">
             {fullText}
           </div>
           {/* Timestamp */}
           <div className="flex justify-end items-center gap-1 mt-1 text-[10px] text-base-content/25">
             <span className="w-1.5 h-1.5 rounded-full bg-violet-400/30" />
-            <span>interview</span>
+            <span>sys-i</span>
             <span>{timeStr}</span>
           </div>
         </div>

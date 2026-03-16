@@ -1,0 +1,1 @@
+export { KnowledgeMapWidget } from './Widget'

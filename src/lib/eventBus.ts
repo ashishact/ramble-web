@@ -226,8 +226,8 @@ export interface EventPayloads {
 	'ext:google-search-result': { query: string; result: string; requestId: string };
 	'ext:google-search-error': { query: string; error: string; requestId: string };
 
-	// Interview engine events (SYS-I)
-	'interview:question': {
+	// SYS-I engine events
+	'sys1:response': {
 		/** What was spoken to the user */
 		response: string;
 		/** Isolated question text for ASSERT/EXPLORE; null for QUERY/CORRECT/etc. */
@@ -236,8 +236,9 @@ export interface EventPayloads {
 		topic: string;
 		timestamp: number;
 	};
-	'interview:stream': { text: string; conversationId: string };
-	'interview:state': { state: 'idle' | 'sending' | 'error' | 'no-transport' };
+	'sys1:stream': { text: string; conversationId: string };
+	'sys1:status': { conversationId: string; status: string };
+	'sys1:state': { state: 'idle' | 'sending' | 'error' | 'no-transport' };
 
 	// Synthesis engine events (SYS-II)
 	'synthesis:scheduler-state': { state: 'idle' | 'running' };

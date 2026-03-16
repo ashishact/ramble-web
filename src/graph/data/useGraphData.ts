@@ -67,9 +67,7 @@ function buildQuery(label: string, options?: GraphDataOptions): string {
  * Spreads JSON properties into the top level.
  */
 function parseRow<T extends BaseNodeRecord>(row: Record<string, unknown>): T {
-  const props = typeof row.properties === 'string'
-    ? JSON.parse(row.properties)
-    : (row.properties ?? {})
+  const props = row.properties ?? {}
 
   return {
     id: row.id as string,

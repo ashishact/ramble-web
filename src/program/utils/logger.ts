@@ -69,9 +69,9 @@ export type LogModule =
   // Knowledge graph
   | 'SinglePassProcessor'
   | 'IdleScheduler'
-  // Interview engine
-  | 'InterviewEngine'
-  | 'InterviewTransport'
+  // SYS-I engine
+  | 'Sys1Engine'
+  | 'Sys1Transport'
   // Synthesis engine (SYS-II)
   | 'ExtractionEngine'
   | 'PeriodScheduler';
@@ -149,8 +149,8 @@ const MODULE_COLORS: Record<LogModule, string> = {
   // Knowledge Graph
   SinglePassProcessor: '#7C4DFF',
   IdleScheduler: '#78909C',
-  InterviewEngine: '#E91E63',
-  InterviewTransport: '#E91E63',
+  Sys1Engine: '#E91E63',
+  Sys1Transport: '#E91E63',
   ExtractionEngine: '#00BCD4',
   PeriodScheduler: '#00897B',
 };

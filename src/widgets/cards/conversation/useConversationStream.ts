@@ -43,10 +43,54 @@ export interface ConversationStreamData {
   isMeetingMode: boolean;
   /** ID of the final conversation that replaced intermediates (for fadeIn animation) */
   finalConvId: string | null;
+  /** Live streaming response text from SYS-I, null when not streaming */
+  streamingSys1Text: string | null;
+  /** Status from Chrome extension background (e.g. "sending" while ChatGPT is working) */
+  sys1Status: string | null;
 }
 
 /** Delay before clearing finalConvId after transition (allows fadeIn animation to play) */
 const FINAL_HIGHLIGHT_DELAY_MS = 600;
+
+/** Known section keywords in SYS-I structured output */
+const SYS1_SECTION_KEYS = new Set(['intent', 'response', 'topic', 'search']);
+
+/**
+ * Extract just the "response" section from a SYS-I streaming text.
+ * Uses the same section-header detection logic as transports.ts:
+ * a known keyword alone on its own line, preceded by a blank line or at start-of-text.
+ * Returns null if no response section found yet (ChatGPT is still outputting intent/topic).
+ */
+function extractResponseFromStream(raw: string): string | null {
+  const lines = raw.split('\n');
+  let currentKey: string | null = null;
+  let responseLines: string[] = [];
+  let prevLineBlank = true;
+
+  for (const line of lines) {
+    const stripped = line.replace(/^##\s*/, '').trim().toLowerCase();
+    const isSectionHeader = SYS1_SECTION_KEYS.has(stripped)
+      && line.trim().split(/\s+/).length === 1
+      && prevLineBlank;
+
+    if (isSectionHeader) {
+      currentKey = stripped;
+      if (currentKey === 'response') {
+        responseLines = [];
+      }
+    } else if (currentKey === 'response') {
+      responseLines.push(line);
+    }
+
+    prevLineBlank = line.trim() === '';
+  }
+
+  if (currentKey === 'response' || responseLines.length > 0) {
+    const text = responseLines.join('\n').trim();
+    return text || null;
+  }
+  return null;
+}
 
 export function useConversationStream(): ConversationStreamData {
   // DuckDB-backed conversation data
@@ -62,6 +106,9 @@ export function useConversationStream(): ConversationStreamData {
   const [isMeetingMode, setIsMeetingMode] = useState(meetingStatus.getState().isActive);
 
   // ── Recording lifecycle state ──────────────────────────────────────────
+  const [streamingSys1Text, setStreamingSys1Text] = useState<string | null>(null);
+  const [sys1Status, setSys1Status] = useState<string | null>(null);
+
   const [activeRecordingId, setActiveRecordingId] = useState<string | null>(null);
   const [intermediateConvIds, setIntermediateConvIds] = useState<Set<string>>(() => new Set());
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -175,6 +222,30 @@ export function useConversationStream(): ConversationStreamData {
     });
   }, []);
 
+  // ── SYS-I streaming: show response text while ChatGPT generates ────
+  useEffect(() => {
+    const unsubStream = eventBus.on('sys1:stream', (payload) => {
+      const response = extractResponseFromStream(payload.text);
+      setStreamingSys1Text(response);
+    });
+
+    const unsubResponse = eventBus.on('sys1:response', () => {
+      // Final DB record will appear as a conversation entry — clear streaming + status
+      setStreamingSys1Text(null);
+      setSys1Status(null);
+    });
+
+    const unsubStatus = eventBus.on('sys1:status', (payload) => {
+      setSys1Status(payload.status);
+    });
+
+    return () => {
+      unsubStream();
+      unsubResponse();
+      unsubStatus();
+    };
+  }, []);
+
   // ── Historical dedup for page reload ──────────────────────────────────
   const hiddenConvIds = useMemo(() => {
     if (activeRecordingId || isTransitioning) return new Set<string>();
@@ -182,10 +253,10 @@ export function useConversationStream(): ConversationStreamData {
     const hidden = new Set<string>();
 
     // recordingId grouping — keep only newest per recording
-    // Skip interviewer entries (they don't participate in recording lifecycle)
+    // Skip SYS-I entries (they don't participate in recording lifecycle)
     const byRecordingId = new Map<string, ConversationRecord[]>();
     for (const conv of conversations) {
-      if (conv.speaker === 'interviewer') continue;
+      if (conv.speaker === 'sys1') continue;
       if (conv.recordingId) {
         const group = byRecordingId.get(conv.recordingId);
         if (group) {
@@ -204,11 +275,11 @@ export function useConversationStream(): ConversationStreamData {
     }
 
     // Exact text match dedup — keep newest
-    // Skip interviewer entries (duplicate questions are valid if asked again)
+    // Skip SYS-I entries (duplicate questions are valid if asked again)
     const seenTexts = new Map<string, string>();
     for (const conv of conversations) {
       if (hidden.has(conv.id)) continue;
-      if (conv.speaker === 'interviewer') continue;
+      if (conv.speaker === 'sys1') continue;
       const text = conv.rawText.trim();
       if (!text) continue;
 
@@ -240,5 +311,7 @@ export function useConversationStream(): ConversationStreamData {
     pipelineState,
     isMeetingMode,
     finalConvId,
+    streamingSys1Text,
+    sys1Status,
   };
 }

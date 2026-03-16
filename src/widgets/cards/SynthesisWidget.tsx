@@ -51,18 +51,35 @@ export function SynthesisWidget({ nodeId: _nodeId }: { nodeId: string }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const logRef = useRef<HTMLDivElement>(null)
 
-  // Build the period list from storage + ended periods
-  const refresh = useCallback(() => {
-    const states = loadAllPeriodStates()
+  // Build the period list — current period first (for testing), then ended periods newest-first
+  const refresh = useCallback(async () => {
+    const states = await loadAllPeriodStates()
     const ended = endedPeriods(3)
-    const rows: PeriodRow[] = ended.map(p => ({
-      date: p.date,
-      slot: p.slot,
-      pKey: periodKey(p.date, p.slot),
-      label: periodLabel(p.date, p.slot),
-      state: states[periodKey(p.date, p.slot)] ?? null,
-    })).reverse() // newest first
-    setPeriods(rows)
+
+    // Current (in-progress) period — always include so it can be manually run
+    const curDate = dateStr()
+    const curSlot = currentSlot()
+    const curKey  = periodKey(curDate, curSlot)
+    const currentRow: PeriodRow = {
+      date: curDate,
+      slot: curSlot,
+      pKey: curKey,
+      label: periodLabel(curDate, curSlot) + ' · current',
+      state: states[curKey] ?? null,
+    }
+
+    const endedRows: PeriodRow[] = ended
+      .filter(p => periodKey(p.date, p.slot) !== curKey) // deduplicate if just ended
+      .map(p => ({
+        date: p.date,
+        slot: p.slot,
+        pKey: periodKey(p.date, p.slot),
+        label: periodLabel(p.date, p.slot),
+        state: states[periodKey(p.date, p.slot)] ?? null,
+      }))
+      .reverse() // newest first
+
+    setPeriods([currentRow, ...endedRows])
   }, [])
 
   useEffect(() => {
@@ -132,13 +149,19 @@ export function SynthesisWidget({ nodeId: _nodeId }: { nodeId: string }) {
     refresh()
   }, [refresh])
 
+  const handleReset = useCallback(async (row: PeriodRow) => {
+    const { getGraphService } = await import('../../graph')
+    const graph = await getGraphService()
+    await graph.exec(
+      "UPDATE extraction_runs SET status = 'error', error = 'Manually reset from stuck running state' WHERE period_key = $1 AND status = 'running'",
+      [row.pKey],
+    )
+    refresh()
+  }, [refresh])
+
   const toggleExpanded = useCallback((pKey: string) => {
     setExpanded(prev => ({ ...prev, [pKey]: !prev[pKey] }))
   }, [])
-
-  // Current period (not yet extractable)
-  const currentPeriod = { date: dateStr(), slot: currentSlot() }
-  const currentPKey = periodKey(currentPeriod.date, currentPeriod.slot)
 
   return (
     <div
@@ -169,14 +192,6 @@ export function SynthesisWidget({ nodeId: _nodeId }: { nodeId: string }) {
           </div>
         </div>
 
-        {/* Current period indicator */}
-        <div className="mt-2 px-2 py-1 rounded-md bg-slate-50 border border-slate-100">
-          <span className="text-[9px] text-slate-400">Current period: </span>
-          <span className="text-[9px] font-medium text-slate-500">
-            {periodLabel(currentPeriod.date, currentPeriod.slot)}
-          </span>
-          <span className="text-[9px] text-slate-300 ml-1">({currentPKey}) — in progress</span>
-        </div>
       </div>
 
       {/* Period list */}
@@ -213,6 +228,7 @@ export function SynthesisWidget({ nodeId: _nodeId }: { nodeId: string }) {
                     <span title="memories">{row.state.counts.memories}m</span>
                     <span title="goals">{row.state.counts.goals}g</span>
                     <span title="topics">{row.state.counts.topics}t</span>
+                    <span title="relationships">{row.state.counts.relationships}r</span>
                   </div>
                 ) : row.state?.conversationCount ? (
                   <span className="text-[9px] text-slate-300 shrink-0">
@@ -224,7 +240,17 @@ export function SynthesisWidget({ nodeId: _nodeId }: { nodeId: string }) {
                 <div className="flex items-center gap-1 shrink-0">
                   {isRunning ? (
                     <Loader2 size={11} className="text-cyan-500 animate-spin" />
-                  ) : row.state?.status === 'done' ? (
+                  ) : row.state?.status === 'running' ? (
+                    /* DB says running but engine isn't — stuck state */
+                    <button
+                      onClick={() => handleReset(row)}
+                      className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 rounded transition-colors"
+                      title="Reset stuck extraction — preserves ChatGPT session for resume"
+                    >
+                      <RefreshCw size={9} />
+                      Reset
+                    </button>
+                  ) : row.state?.status === 'done' || row.state?.status === 'interim' ? (
                     <>
                       <button
                         onClick={() => handleCommit(row)}
@@ -335,6 +361,7 @@ function StatusIcon({
   if (isRunning) return <Loader2 size={12} className="text-cyan-500 animate-spin shrink-0" />
   if (!state || state.status === 'pending') return <Clock size={12} className="text-slate-300 shrink-0" />
   if (state.status === 'running')    return <Loader2 size={12} className="text-cyan-500 animate-spin shrink-0" />
+  if (state.status === 'interim')    return <div className="w-3 h-3 rounded-full bg-amber-300 shrink-0" title="Mid-period draft — will re-run when period ends" />
   if (state.status === 'done')       return <div className="w-3 h-3 rounded-full bg-amber-400 shrink-0" title="Draft — not committed" />
   if (state.status === 'committed')  return <CheckCircle2 size={12} className="text-emerald-500 shrink-0" />
   if (state.status === 'error')      return <XCircle size={12} className="text-red-400 shrink-0" />

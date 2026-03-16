@@ -19,7 +19,7 @@ const EXPANDED_BREAKPOINT = 480;
 export const ConversationWidget: React.FC<WidgetProps> = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  const { conversations, extractionsByConvId, pipelineState, isMeetingMode, finalConvId } =
+  const { conversations, extractionsByConvId, pipelineState, isMeetingMode, finalConvId, streamingSys1Text, sys1Status } =
     useConversationStream();
 
   // Measure container width with ResizeObserver
@@ -51,6 +51,8 @@ export const ConversationWidget: React.FC<WidgetProps> = () => {
           pipelineState={pipelineState}
           isMeetingMode={isMeetingMode}
           finalConvId={finalConvId}
+          streamingSys1Text={streamingSys1Text}
+          sys1Status={sys1Status}
         />
       ) : (
         <ConversationCompactView conversations={conversations} />

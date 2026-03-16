@@ -24,6 +24,7 @@ export const conversationStore = {
     source: string
     speaker?: string
     intent?: string
+    topic?: string
     recordingId?: string | null
     batchId?: string
   }): Promise<GraphConversation> {
@@ -39,14 +40,15 @@ export const conversationStore = {
       speaker: input.speaker ?? 'user',
       processed: false,
       intent: input.intent ?? null,
+      topic: input.topic ?? null,
       recording_id: input.recordingId ?? null,
       batch_id: input.batchId ?? null,
       created_at: now,
     }
 
     await graph.exec(
-      `INSERT INTO conversations (id, session_id, timestamp, raw_text, source, speaker, processed, intent, recording_id, batch_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      `INSERT INTO conversations (id, session_id, timestamp, raw_text, source, speaker, processed, intent, topic, recording_id, batch_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         conv.id,
         conv.session_id,
@@ -56,6 +58,7 @@ export const conversationStore = {
         conv.speaker,
         conv.processed,
         conv.intent,
+        conv.topic,
         conv.recording_id,
         conv.batch_id,
         conv.created_at,
@@ -121,6 +124,88 @@ export const conversationStore = {
       `SELECT * FROM conversations WHERE recording_id = $1 ORDER BY created_at ASC`,
       [recordingId]
     )
+  },
+
+  /**
+   * Get daily conversation counts for the activity heatmap.
+   * Only counts user speech with non-trivial text (matches getByTimeRange filter).
+   * @param sinceMs — epoch ms lower bound (defaults to last 90 days)
+   */
+  async getDailyCounts(sinceMs?: number): Promise<Array<{ day: string; count: number }>> {
+    const graph = await getGraph()
+    const since = sinceMs ?? (Date.now() - 90 * 24 * 60 * 60 * 1000)
+    return graph.query<{ day: string; count: number }>(
+      `SELECT
+        CAST(DATE_TRUNC('day', to_timestamp(created_at / 1000)) AS VARCHAR) AS day,
+        COUNT(*) AS count
+      FROM conversations
+      WHERE speaker = 'user'
+        AND length(trim(raw_text)) > 5
+        AND created_at >= $1
+      GROUP BY day
+      ORDER BY day`,
+      [since]
+    )
+  },
+
+  /**
+   * Get aggregate stats for a specific day (YYYY-MM-DD).
+   * Counts conversations, entities, goals, memories, and topics created that day.
+   */
+  async getDayStats(dayStr: string): Promise<{
+    conversations: number
+    entities: number
+    goals: number
+    memories: number
+    topics: number
+  }> {
+    const graph = await getGraph()
+    const dayStart = new Date(dayStr + 'T00:00:00').getTime()
+    const dayEnd = dayStart + 24 * 60 * 60 * 1000
+    const rows = await graph.query<{
+      conversations: number
+      entities: number
+      goals: number
+      memories: number
+      topics: number
+    }>(
+      `SELECT
+        (SELECT COUNT(*) FROM conversations
+         WHERE speaker = 'user' AND length(trim(raw_text)) > 5
+           AND created_at >= $1 AND created_at < $2) AS conversations,
+        (SELECT COUNT(*) FROM nodes
+         WHERE list_contains(labels, 'entity')
+           AND created_at >= $1 AND created_at < $2) AS entities,
+        (SELECT COUNT(*) FROM nodes
+         WHERE list_contains(labels, 'goal')
+           AND created_at >= $1 AND created_at < $2) AS goals,
+        (SELECT COUNT(*) FROM nodes
+         WHERE list_contains(labels, 'memory')
+           AND created_at >= $1 AND created_at < $2) AS memories,
+        (SELECT COUNT(*) FROM nodes
+         WHERE list_contains(labels, 'topic')
+           AND created_at >= $1 AND created_at < $2) AS topics`,
+      [dayStart, dayEnd]
+    )
+    return rows[0] ?? { conversations: 0, entities: 0, goals: 0, memories: 0, topics: 0 }
+  },
+
+  /**
+   * Get unique non-null topics from SYS-I conversations since a given timestamp.
+   * Used by Knowledge Map to reconstruct live coverage on mount.
+   */
+  async getUniqueTopicsSince(sinceMs: number): Promise<string[]> {
+    const graph = await getGraph()
+    const rows = await graph.query<{ topic: string }>(
+      `SELECT DISTINCT topic FROM conversations
+       WHERE topic IS NOT NULL
+         AND topic != 'general'
+         AND speaker = 'sys1'
+         AND created_at >= $1
+       ORDER BY topic`,
+      [sinceMs]
+    )
+    return rows.map(r => r.topic)
   },
 
   /**

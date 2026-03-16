@@ -69,20 +69,10 @@ export interface LearnedMatch {
 // ============================================================================
 
 function parseRow(row: Record<string, unknown>): CorrectionRecord {
-  const props = typeof row.properties === 'string'
-    ? JSON.parse(row.properties as string)
-    : (row.properties ?? {}) as Record<string, unknown>
+  const props = (row.properties ?? {}) as Record<string, unknown>
 
-  let leftContext: string[] = []
-  let rightContext: string[] = []
-  try {
-    leftContext = Array.isArray(props.leftContext) ? props.leftContext as string[]
-      : typeof props.leftContext === 'string' ? JSON.parse(props.leftContext) : []
-  } catch { /* ignore */ }
-  try {
-    rightContext = Array.isArray(props.rightContext) ? props.rightContext as string[]
-      : typeof props.rightContext === 'string' ? JSON.parse(props.rightContext) : []
-  } catch { /* ignore */ }
+  const leftContext: string[] = Array.isArray(props.leftContext) ? props.leftContext as string[] : []
+  const rightContext: string[] = Array.isArray(props.rightContext) ? props.rightContext as string[] : []
 
   return {
     id: row.id as string,
@@ -124,10 +114,8 @@ export const learnedCorrectionStore = {
       // Update existing — read current count from node
       const node = await graphMutations.getNode(existing[0].id)
       if (node) {
-        const nodeProps = typeof node.properties === 'string'
-          ? JSON.parse(node.properties as unknown as string)
-          : node.properties
-        const currentCount = ((nodeProps as Record<string, unknown>).count as number) ?? 1
+        const nodeProps = (node.properties ?? {}) as Record<string, unknown>
+        const currentCount = (nodeProps.count as number) ?? 1
         const newCount = currentCount + 1
         await graphMutations.updateNodeProperties(existing[0].id, {
           count: newCount,

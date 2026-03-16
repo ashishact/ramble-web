@@ -4,8 +4,8 @@
  * Displays meeting companion cards (questions, insights, decisions, actions)
  * streamed from ChatGPT via the Chrome extension — updates live as ChatGPT streams.
  *
- * Follow-up questions are no longer shown here — interview questions now appear
- * inline in the conversation thread as interviewer entries.
+ * Follow-up questions are no longer shown here — SYS-I responses now appear
+ * inline in the conversation thread as sys1 entries.
  */
 
 import { useState, useEffect } from 'react';
