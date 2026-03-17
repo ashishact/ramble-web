@@ -18,6 +18,7 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from './types'
+import { getCurrentProfile } from '../lib/profile'
 
 // DuckDB WASM prepared statements can't bind JS arrays to VARCHAR[]/FLOAT[] columns.
 // We inline array literals in SQL with proper escaping instead.
@@ -32,14 +33,16 @@ export class GraphService {
   private static currentProfile: string | null = null
   private static initPromise: Promise<GraphService> | null = null
 
-  static async getInstance(profileName = 'default'): Promise<GraphService> {
+  static async getInstance(): Promise<GraphService> {
+    const profile = getCurrentProfile()
+
     // Fast path — already initialized for this profile
-    if (GraphService.instance && GraphService.currentProfile === profileName) {
+    if (GraphService.instance && GraphService.currentProfile === profile) {
       return GraphService.instance
     }
 
     // Profile changed — close old instance
-    if (GraphService.instance && GraphService.currentProfile !== profileName) {
+    if (GraphService.instance && GraphService.currentProfile !== profile) {
       await GraphService.instance.close()
       GraphService.instance = null
       GraphService.currentProfile = null
@@ -49,7 +52,7 @@ export class GraphService {
     // All concurrent callers share one init promise — only one worker created
     if (!GraphService.initPromise) {
       GraphService.initPromise = (async () => {
-        const svc = new GraphService(profileName)
+        const svc = new GraphService(profile)
         try {
           await svc.init()
         } catch (err) {
@@ -58,7 +61,7 @@ export class GraphService {
           throw err
         }
         GraphService.instance = svc
-        GraphService.currentProfile = profileName
+        GraphService.currentProfile = profile
         return svc
       })()
     }

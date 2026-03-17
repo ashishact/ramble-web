@@ -20,6 +20,7 @@ import { getJsDelivrBundles } from '@duckdb/duckdb-wasm'
 
 let db: duckdb.AsyncDuckDB | null = null
 let conn: duckdb.AsyncDuckDBConnection | null = null
+let currentProfileName: string | null = null
 
 // ============================================================================
 // Initialization
@@ -81,6 +82,7 @@ async function initDuckDB(profileName: string): Promise<void> {
   console.log('[DuckDB Worker] Database opened with OPFS persistence')
 
   db = instance
+  currentProfileName = profileName
   conn = await db.connect()
 
   // Cap memory — DuckDB defaults to 80% of system RAM (2GB+ in browser).
@@ -243,8 +245,16 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       }
 
       case 'export': {
-        // Not applicable with opfs:// — data is already persisted
-        respond({ type: 'result', payload: null })
+        if (!conn || !db || !currentProfileName) {
+          respond({ type: 'error', payload: 'DuckDB not initialized' })
+          break
+        }
+        // Flush WAL to main file so we get a consistent snapshot
+        await conn.query('CHECKPOINT')
+        // Copy the database file out of OPFS via DuckDB's internal VFS
+        // Must use the full opfs:// path to match how the DB was opened
+        const bytes = await db.copyFileToBuffer(`opfs://${currentProfileName}.kg.duckdb`)
+        respond({ type: 'result', payload: bytes })
         break
       }
 

@@ -39,14 +39,14 @@ import {
 } from '../widgets';
 import { QuestionWidget, SuggestionWidget, SpeakBetterWidget, MeetingTranscriptionWidget, GoogleSearchWidget } from '../widgets/on-demand';
 import { MetaQueryLensWidget } from '../widgets/lens';
-import { RotateCcw, PencilRuler, Loader2, Settings, Pause, User, Sparkles } from 'lucide-react';
+import { RotateCcw, PencilRuler, Loader2, Settings, Pause } from 'lucide-react';
 import { systemPause } from '../lib/systemPause';
-import { authStore } from '../stores/authStore';
-import { SignupModal } from './auth/SignupModal';
+import { ProfileMenu } from './auth/ProfileMenu';
 import { useShortcut } from '../hooks/useShortcut';
 import { hoveredWidgetStore } from '../stores/hoveredWidgetStore';
 import { toggleWidgetPauseExternal, removeWidgetState } from '../widgets/on-demand/useWidgetPause';
 import { uploadFiles, isSupportedFileType } from '../services/fileUpload';
+import { getCurrentProfile } from '../lib/profile';
 import { useNavigate, useParams } from 'react-router-dom';
 import { GlobalSTTController } from './GlobalSTTController';
 import { RambleNativeStatus } from './RambleNativeStatus';
@@ -80,10 +80,6 @@ export const BentoApp: React.FC = () => {
     systemPause.subscribe,
     () => systemPause.isPaused,
   );
-
-  // Auth state — reactive via useSyncExternalStore
-  const authState = useSyncExternalStore(authStore.subscribe, authStore.getState);
-  const [showSignup, setShowSignup] = useState(false);
 
   // Workspace-aware tree state
   const wsState = useSyncExternalStore(workspaceStore.subscribe, workspaceStore.getState);
@@ -129,7 +125,7 @@ export const BentoApp: React.FC = () => {
     runMaintenance().catch(console.error);
 
     // Initialize DuckDB Knowledge Graph + Embedding Listener + SYS-I Engine (non-blocking)
-    getGraphService(profileName ?? 'default')
+    getGraphService()
       .then(async (g) => {
         console.log('[KG] DuckDB graph initialized', g);
         await getEmbeddingListener();
@@ -139,6 +135,9 @@ export const BentoApp: React.FC = () => {
         // Start SYS-II period scheduler (catches up missed periods on startup)
         const { startPeriodScheduler } = await import('../modules/synthesis');
         startPeriodScheduler();
+        // Start auto-backup (triggers on tab hidden if > 24h since last backup)
+        const { initAutoBackup } = await import('../graph/backup');
+        initAutoBackup(getCurrentProfile());
       })
       .catch(err => {
         console.warn('[KG] DuckDB init failed:', err);
@@ -327,21 +326,7 @@ export const BentoApp: React.FC = () => {
           <CloudSTTStatus />
           <WorkspaceSwitcher onTreeChange={setTree} />
           <SpotlightBar />
-          {/* Auth indicator */}
-          {authState.isAuthenticated ? (
-            <div className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-base-content/40 flex-shrink-0" title={authState.email || ''}>
-              <User size={10} />
-              <span className="max-w-[100px] truncate">{authState.email}</span>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowSignup(true)}
-              className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded transition-colors flex-shrink-0"
-            >
-              <Sparkles size={10} />
-              Sign up for more
-            </button>
-          )}
+          <ProfileMenu />
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={() => setEditMode((prev) => !prev)}
@@ -401,7 +386,6 @@ export const BentoApp: React.FC = () => {
         {/* Help Strip */}
         <HelpStrip />
       </div>
-      <SignupModal isOpen={showSignup} onClose={() => setShowSignup(false)} />
     </GlobalSTTController>
   );
 };

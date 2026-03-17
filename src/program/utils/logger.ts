@@ -74,7 +74,9 @@ export type LogModule =
   | 'Sys1Transport'
   // Synthesis engine (SYS-II)
   | 'ExtractionEngine'
-  | 'PeriodScheduler';
+  | 'PeriodScheduler'
+  // Backup
+  | 'Backup';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -153,6 +155,7 @@ const MODULE_COLORS: Record<LogModule, string> = {
   Sys1Transport: '#E91E63',
   ExtractionEngine: '#00BCD4',
   PeriodScheduler: '#00897B',
+  Backup: '#6D4C41',
 };
 
 interface LogConfig {
