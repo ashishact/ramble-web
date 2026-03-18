@@ -163,6 +163,43 @@ export interface NormalizationHints {
 // ============================================================================
 
 /**
+ * Result of a single extraction pass (System I or System II).
+ * Moved here from processor.ts so event types and widgets can reference it
+ * without depending on the (deleted) processor module.
+ */
+export interface ProcessingResult {
+  entities: Array<{
+    id: string
+    name: string
+    type: string
+    isNew: boolean
+  }>
+  topics: Array<{
+    id: string
+    name: string
+    isNew: boolean
+  }>
+  memories: Array<{
+    id: string
+    content: string
+    type: string
+  }>
+  goalUpdates: Array<{
+    id: string
+    type: 'new' | 'progress' | 'achieved' | 'referenced' | 'edited' | 'abandoned'
+  }>
+  pluginOutputs: Array<{
+    pluginId: string
+    pluginName: string
+    success: boolean
+    output: Record<string, unknown>
+    error?: string
+    processingTimeMs: number
+  }>
+  rawResponse: string
+}
+
+/**
  * Result emitted after consolidation ("sleep") runs.
  * Consolidation merges duplicates, decays old data, and cleans up.
  */

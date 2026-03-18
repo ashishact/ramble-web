@@ -1,17 +1,41 @@
 /**
  * EmbeddingService — In-Browser Text Embeddings
  *
- * Loads a lightweight ONNX model in the browser using @huggingface/transformers
- * (already installed via kokoro-js).
+ * Loads a lightweight ONNX model (BGE-small-en-v1.5) in the browser
+ * using @huggingface/transformers (already installed via kokoro-js).
  *
- * Provides embed() for text → float[] and embedNode() for
- * generating embeddings from node content + relationships.
+ * Provides:
+ *   embed(text) → float[]    — raw text → vector
+ *   embedNode(nodeId)        — generates embedding from node content + relationships,
+ *                               stores in the dedicated 'embeddings' table
  *
- * The ONNX model is loaded lazily on first use. The initial load
- * takes ~2-3 seconds but is cached in OPFS for subsequent loads.
+ * WHY BGE-SMALL:
+ *   - 384-dim vectors (small footprint in DuckDB FLOAT[] columns)
+ *   - ONNX quantized (q8) — ~33MB download, cached in OPFS after first load
+ *   - Good English semantic similarity for the cost
+ *   - Loaded lazily on first use — initial load ~2-3 seconds
+ *
+ * EMBEDDING STORAGE:
+ *   Previously, embeddings were stored in the nodes.embedding column.
+ *   Now they go to the dedicated 'embeddings' table (schema v2), which
+ *   supports multiple entity types (nodes, edges, ontology nodes) and
+ *   tracks the model + source text for re-embedding.
  */
 
 import type { GraphService } from '../GraphService'
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/**
+ * The BGE-small-en model from BAAI, served via Xenova's ONNX conversion.
+ * This is the production model — do not change without re-embedding all vectors.
+ */
+export const EMBEDDING_MODEL = 'Xenova/bge-small-en-v1.5'
+
+/** Short model name for storage (without the Xenova/ prefix) */
+export const EMBEDDING_MODEL_SHORT = 'bge-small-en-v1.5'
 
 // ============================================================================
 // Types
@@ -33,7 +57,7 @@ export class EmbeddingService {
   private loading: Promise<FeatureExtractionPipeline> | null = null
   private modelName: string
 
-  constructor(graph: GraphService, modelName = 'Xenova/bge-small-en-v1.5') {
+  constructor(graph: GraphService, modelName = EMBEDDING_MODEL) {
     this.graph = graph
     this.modelName = modelName
   }
@@ -75,7 +99,13 @@ export class EmbeddingService {
 
   /**
    * Embed a node's content + relationship labels.
-   * Stores the embedding in the node's `embedding` column.
+   *
+   * Writes to the 'embeddings' table (not the legacy nodes.embedding column).
+   * Uses UPSERT pattern: if an embedding for this node already exists,
+   * it gets replaced with the new vector + source text.
+   *
+   * The source text is stored so we can re-embed later if the model changes.
+   * It's composed of: node name/content/description + labels + connected edge types.
    */
   async embedNode(nodeId: string): Promise<void> {
     const node = await this.graph.query<{
@@ -93,31 +123,49 @@ export class EmbeddingService {
     const props = typeof raw === 'string' ? JSON.parse(raw) : (raw ?? {})
     const parts: string[] = []
 
-    // Include name/content/description
+    // Include name/content/description — the primary semantic content
     if (typeof props.name === 'string') parts.push(props.name)
     if (typeof props.content === 'string') parts.push(props.content)
     if (typeof props.description === 'string') parts.push(props.description)
     if (typeof props.statement === 'string') parts.push(props.statement)
 
-    // Include labels for richer embedding
+    // Include labels for richer embedding (e.g., "entity", "memory", "goal")
     parts.push(...node[0].labels)
 
-    // Get connected edge types
+    // Get connected edge types for relationship context
     const edges = await this.graph.query<{ type: string }>(
       `SELECT DISTINCT type FROM edges WHERE start_id = $1 OR end_id = $1`,
       [nodeId]
     )
     parts.push(...edges.map(e => e.type))
 
-    const text = parts.filter(Boolean).join(' ')
-    if (!text.trim()) return
+    const sourceText = parts.filter(Boolean).join(' ')
+    if (!sourceText.trim()) return
 
-    const vector = await this.embed(text)
+    const vector = await this.embed(sourceText)
+    const now = Date.now()
+
+    // UPSERT: delete existing embedding for this node, then insert new one.
+    // DuckDB WASM doesn't support ON CONFLICT for all cases, so we use
+    // DELETE + INSERT which is safe within a single-threaded worker.
+    await this.graph.exec(
+      `DELETE FROM embeddings WHERE target_id = $1 AND target_kind = 'node'`,
+      [nodeId]
+    )
 
     // DuckDB can't bind arrays via prepared statements — inline the literal
-    const literal = `[${vector.join(', ')}]::FLOAT[]`
+    const vecLiteral = `[${vector.join(', ')}]::FLOAT[]`
     await this.graph.exec(
-      `UPDATE nodes SET embedding = ${literal} WHERE id = $1`,
+      `INSERT INTO embeddings (id, target_id, target_kind, vector, model, source_text, created_at)
+       VALUES ($1, $2, 'node', ${vecLiteral}, $3, $4, $5)`,
+      [crypto.randomUUID(), nodeId, EMBEDDING_MODEL_SHORT, sourceText, now]
+    )
+
+    // Also write to legacy nodes.embedding column for backward compatibility.
+    // Existing code (VectorSearch, WorkingMemory) may still read from it
+    // during the migration period. This dual-write is temporary.
+    await this.graph.exec(
+      `UPDATE nodes SET embedding = ${vecLiteral} WHERE id = $1`,
       [nodeId]
     )
   }

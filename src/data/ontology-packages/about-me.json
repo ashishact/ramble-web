@@ -1,0 +1,243 @@
+{
+  "id": "pkg_about-me",
+  "name": "About Me",
+  "version": "1.0.0",
+  "description": "Core personal information — identity, health, lifestyle, and values",
+  "concepts": [
+    {
+      "id": "concept_basic-info",
+      "name": "Basic Info",
+      "description": "Fundamental identity details like name, age, location, and occupation",
+      "priority": 1.0,
+      "slots": [
+        {
+          "id": "slot_name",
+          "name": "name",
+          "description": "What the user prefers to be called",
+          "value_type": "text",
+          "required": true,
+          "examples": ["John", "Sarah", "Alex"],
+          "probes": [
+            {
+              "id": "probe_name_casual",
+              "question": "What should I call you?",
+              "style": "casual"
+            },
+            {
+              "id": "probe_name_direct",
+              "question": "What's your name?",
+              "style": "direct"
+            }
+          ]
+        },
+        {
+          "id": "slot_age",
+          "name": "age",
+          "description": "The user's age or age range",
+          "value_type": "number",
+          "required": false,
+          "constraints": { "min": 1, "max": 150 },
+          "probes": [
+            {
+              "id": "probe_age_casual",
+              "question": "How old are you, if you don't mind sharing?",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_location",
+          "name": "location",
+          "description": "Where the user lives — city, state, or country",
+          "value_type": "text",
+          "required": false,
+          "examples": ["San Francisco", "London", "Tokyo"],
+          "probes": [
+            {
+              "id": "probe_location_casual",
+              "question": "Where are you based?",
+              "style": "casual"
+            },
+            {
+              "id": "probe_location_direct",
+              "question": "What city do you live in?",
+              "style": "direct"
+            }
+          ]
+        },
+        {
+          "id": "slot_occupation",
+          "name": "occupation",
+          "description": "The user's current job or primary occupation",
+          "value_type": "text",
+          "required": false,
+          "examples": ["Software engineer", "Teacher", "Freelance designer"],
+          "probes": [
+            {
+              "id": "probe_occupation_casual",
+              "question": "What do you do for work?",
+              "style": "casual"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept_health-wellness",
+      "name": "Health & Wellness",
+      "description": "Physical health habits including sleep, exercise, and diet",
+      "priority": 0.7,
+      "requires": ["concept_basic-info"],
+      "slots": [
+        {
+          "id": "slot_sleep-habits",
+          "name": "sleep_habits",
+          "description": "The user's typical sleep schedule and quality",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_sleep_casual",
+              "question": "Tell me about your sleep schedule",
+              "style": "casual"
+            },
+            {
+              "id": "probe_sleep_reflective",
+              "question": "How well do you usually sleep?",
+              "style": "reflective"
+            }
+          ]
+        },
+        {
+          "id": "slot_exercise-routine",
+          "name": "exercise_routine",
+          "description": "How often and what type of exercise the user does",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_exercise_casual",
+              "question": "Do you exercise regularly?",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_diet-preferences",
+          "name": "diet_preferences",
+          "description": "Dietary habits, restrictions, or preferences",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_diet_casual",
+              "question": "Any particular diet or food preferences?",
+              "style": "casual"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept_lifestyle",
+      "name": "Lifestyle",
+      "description": "Daily routines, hobbies, and media preferences",
+      "priority": 0.5,
+      "requires": ["concept_basic-info"],
+      "slots": [
+        {
+          "id": "slot_daily-routine",
+          "name": "daily_routine",
+          "description": "What a typical day looks like for the user",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_routine_casual",
+              "question": "What does a typical day look like for you?",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_hobbies",
+          "name": "hobbies",
+          "description": "Activities the user does for fun or relaxation",
+          "value_type": "list",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_hobbies_casual",
+              "question": "What do you do for fun?",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_favorite-media",
+          "name": "favorite_media",
+          "description": "Books, movies, music, podcasts, or shows the user enjoys",
+          "value_type": "list",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_media_reflective",
+              "question": "What kind of books, shows, or music are you into?",
+              "style": "reflective"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept_values-beliefs",
+      "name": "Values & Beliefs",
+      "description": "Core values, life philosophy, and long-term goals",
+      "priority": 0.3,
+      "slots": [
+        {
+          "id": "slot_core-values",
+          "name": "core_values",
+          "description": "What principles matter most to the user",
+          "value_type": "list",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_values_reflective",
+              "question": "What matters most to you in life?",
+              "style": "reflective"
+            }
+          ]
+        },
+        {
+          "id": "slot_life-philosophy",
+          "name": "life_philosophy",
+          "description": "The user's general outlook or approach to life",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_philosophy_reflective",
+              "question": "How would you describe your approach to life?",
+              "style": "reflective"
+            }
+          ]
+        },
+        {
+          "id": "slot_goals-in-life",
+          "name": "goals_in_life",
+          "description": "Big-picture aspirations and life goals",
+          "value_type": "list",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_goals_reflective",
+              "question": "What are some of your biggest goals or dreams?",
+              "style": "reflective"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

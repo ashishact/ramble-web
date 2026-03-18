@@ -43,7 +43,6 @@ export type WidgetType =
   // Knowledge tree widgets (v9)
   | 'knowledge-tree'      // Interactive per-entity knowledge tree viewer
   | 'timeline'            // Chronological timeline event view
-  | 'tree-dev-tools'      // Testing panel: backfill, curation log, stats
   // Observability widgets (v10)
   | 'pipeline-monitor'    // Real-time pipeline telemetry event stream
   | 'llm-dashboard'       // LLM token usage and cost tracking

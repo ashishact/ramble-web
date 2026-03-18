@@ -34,7 +34,7 @@ import { eventBus } from '../../lib/eventBus'
 import { profileStorage } from '../../lib/profileStorage'
 import { createLogger } from '../../program/utils/logger'
 import { rambleExt } from '../chrome-extension'
-import type { Sys1Transport, UserIntent, SysISearchRequest } from './transports'
+import type { Sys1Transport, UserIntent, UserEmotion, SysISearchRequest } from './transports'
 import { ChatGPTTransport } from './transports'
 
 const log = createLogger('Sys1Engine')
@@ -47,6 +47,8 @@ export interface Sys1Response {
   /** Isolated question text for ASSERT/EXPLORE (same as response). Null for QUERY/CORRECT etc. */
   question: string | null
   intent: UserIntent
+  /** Emotional tone of the user's turn (classified by LLM alongside intent) */
+  emotion: UserEmotion
   topic: string
   timestamp: number
 }
@@ -430,7 +432,8 @@ export class Sys1Engine {
       if (result.search) {
         log.warn('Exceeded max search rounds, falling back')
         result = {
-          intent: 'QUERY',
+          intent: 'query',
+          emotion: result.emotion,
           topic: result.topic,
           response: "I couldn't find the relevant context in your knowledge graph.",
           question: null,
@@ -459,20 +462,25 @@ export class Sys1Engine {
         response,
         question: result.question,
         intent: result.intent,
+        emotion: result.emotion,
         topic: result.topic,
         timestamp: Date.now(),
       }
       this.history.push(entry)
       this.saveToStorage()
 
-      // Store in conversation DB so it appears in the unified thread
+      // Store in conversation DB so it appears in the unified thread.
+      // Intent is stored as "INTENT:EMOTION" (e.g., "assert:curious") for
+      // full provenance. Emotion is also stored separately in its own column
+      // for direct querying without parsing.
       try {
         const conv = await conversationStore.create({
           sessionId: this.chatSessionId,
           rawText: response,
           source: 'sys1',
           speaker: 'sys1',
-          intent: result.intent.toLowerCase(),
+          intent: `${result.intent}:${result.emotion}`,
+          emotion: result.emotion,
           topic: result.topic || undefined,
         })
         await conversationStore.markProcessed(conv.id)
@@ -579,20 +587,31 @@ function timeAgo(ms: number): string {
 }
 
 /**
- * Migrate old-format history entries ({ question: string, timestamp: number })
- * to the new shape ({ response, question, intent, topic, timestamp }).
+ * Migrate old-format history entries to the current shape.
+ * Handles two legacy formats:
+ *   1. { question, timestamp } — earliest format
+ *   2. { response, question, intent, topic, timestamp } — v1 format (no emotion)
+ * Current format adds 'emotion' field.
  */
 function migrateHistoryEntry(raw: unknown): Sys1Response {
   const entry = raw as Record<string, unknown>
   if (entry.response) {
-    return entry as unknown as Sys1Response
+    // v1 or current format — ensure emotion exists (default 'neutral' for v1 entries)
+    // Normalize legacy uppercase intents to lowercase
+    const rawIntent = (entry.intent as string) ?? 'assert'
+    return {
+      ...entry,
+      intent: rawIntent.toLowerCase(),
+      emotion: (entry.emotion as string) ?? 'neutral',
+    } as unknown as Sys1Response
   }
-  // Old format
+  // Earliest format: { question, timestamp }
   const text = (entry.question as string) ?? ''
   return {
     response: text,
     question: text,
-    intent: 'ASSERT',
+    intent: 'assert',
+    emotion: 'neutral',
     topic: 'general',
     timestamp: (entry.timestamp as number) ?? Date.now(),
   }

@@ -28,7 +28,7 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { ProcessingResult } from '../../../program/kernel/processor';
+import type { ProcessingResult } from '../../../program/types/recording';
 import type { PipelineState } from '../../../program/kernel/pipelineStatus';
 import { pipelineStatus } from '../../../program/kernel/pipelineStatus';
 import { meetingStatus } from '../../../program/kernel/meetingStatus';

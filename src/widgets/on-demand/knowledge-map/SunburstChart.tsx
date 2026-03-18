@@ -133,7 +133,7 @@ export function SunburstChart({ data, currentTopic }: SunburstChartProps) {
             r0: '8%',
             r: '24%',
             label: {
-              rotate: 0,
+              rotate: 'radial',
               fontSize: domainFontSize,
               fontWeight: 600,
               fontFamily: 'system-ui, -apple-system, sans-serif',

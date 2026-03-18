@@ -23,8 +23,6 @@ import { settingsHelpers } from '../stores/settingsStore'
 import { conversationStore } from '../graph/stores/conversationStore'
 import { getEntityStore, getTopicStore, getMemoryStore, getGoalStore } from '../graph/stores/singletons'
 import { workspaceStore } from '../stores/workspaceStore'
-import { fullEntityMerge, renameEntity as renameEntityFn } from '../program/entityResolution/entityMerge'
-import type { MergeResult } from '../program/entityResolution/types'
 import type { GraphConversation, CognitiveProperties, EntityProperties, TopicProperties, GoalProperties } from '../graph/types'
 
 // ============================================================================
@@ -173,10 +171,6 @@ interface RambleDebug {
   // Workspace export
   exportWorkspaces: () => unknown
 
-  // Entity resolution utilities
-  mergeEntities: (targetIdOrName: string, sourceIdOrName: string, newName?: string) => Promise<MergeResult | null>
-  renameEntity: (idOrName: string, newName: string) => Promise<void>
-
   // Data export (dev only) — returns data
   exportMemories: () => Promise<ExportedMemory[]>
   exportConversations: (limit?: number) => Promise<GraphConversation[]>
@@ -303,76 +297,6 @@ const rambleDebug: RambleDebug = {
   },
 
   // ============================================================================
-  // Entity Resolution Utilities
-  // ============================================================================
-
-  async mergeEntities(targetIdOrName: string, sourceIdOrName: string, newName?: string) {
-    const store = await getEntityStore()
-
-    // Resolve names to IDs
-    const resolveId = async (idOrName: string): Promise<{ id: string; name: string } | null> => {
-      // Try as ID first
-      const byId = await store.getById(idOrName)
-      if (byId) return { id: byId.id, name: byId.name }
-      // Try as name
-      const byName = await store.getByName(idOrName)
-      if (byName) return { id: byName.id, name: byName.name }
-      // Try case-insensitive search
-      const all = await store.getAll()
-      const match = all.find(e => e.name.toLowerCase() === idOrName.toLowerCase())
-      if (match) return { id: match.id, name: match.name }
-      return null
-    }
-
-    const target = await resolveId(targetIdOrName)
-    if (!target) {
-      console.error(`[ramble] Target entity not found: "${targetIdOrName}"`)
-      return null
-    }
-    const source = await resolveId(sourceIdOrName)
-    if (!source) {
-      console.error(`[ramble] Source entity not found: "${sourceIdOrName}"`)
-      return null
-    }
-    if (target.id === source.id) {
-      console.error(`[ramble] Cannot merge entity with itself: "${target.name}"`)
-      return null
-    }
-
-    console.log(`[ramble] Merging "${source.name}" → "${target.name}"${newName ? ` (rename to "${newName}")` : ''}`)
-    const result = await fullEntityMerge(target.id, source.id, newName)
-    console.log(`[ramble] Merge complete:`, result)
-    return result
-  },
-
-  async renameEntity(idOrName: string, newName: string) {
-    const store = await getEntityStore()
-
-    // Resolve name to ID
-    const byId = await store.getById(idOrName)
-    if (byId) {
-      await renameEntityFn(byId.id, newName)
-      console.log(`[ramble] Renamed "${byId.name}" → "${newName}"`)
-      return
-    }
-    const byName = await store.getByName(idOrName)
-    if (byName) {
-      await renameEntityFn(byName.id, newName)
-      console.log(`[ramble] Renamed "${byName.name}" → "${newName}"`)
-      return
-    }
-    // Case-insensitive fallback
-    const all = await store.getAll()
-    const match = all.find(e => e.name.toLowerCase() === idOrName.toLowerCase())
-    if (match) {
-      await renameEntityFn(match.id, newName)
-      console.log(`[ramble] Renamed "${match.name}" → "${newName}"`)
-      return
-    }
-    console.error(`[ramble] Entity not found: "${idOrName}"`)
-  },
-
-  // ============================================================================
   // Data Export (dev only) — graph stores return plain objects, no serialization
   // ============================================================================
 
@@ -471,22 +395,6 @@ function attachDocs(obj: Record<string, unknown>, docs: Record<string, string>) 
 }
 
 attachDocs(rambleDebug as unknown as Record<string, unknown>, {
-  mergeEntities:
-    `Merge two entities into one, relinking ALL references across the graph DB.
-Source entity is deleted after merge. Optional third argument renames the target.
-Accepts entity IDs or names (case-insensitive lookup).
-Params: targetIdOrName: string, sourceIdOrName: string, newName?: string
-Returns: Promise<MergeResult | null> — counts of relinked records per table
-Example: mergeEntities("Pravin", "Praveen")
-Example: mergeEntities("CFR21", "CFR 21", "CFR 21")`,
-
-  renameEntity:
-    `Rename an entity. Old name is preserved as an alias for future matching.
-Accepts entity ID or name (case-insensitive lookup).
-Params: idOrName: string, newName: string
-Returns: Promise<void>
-Example: renameEntity("CFR21", "CFR 21")`,
-
   resetOnboarding:
     `Wipes onboarding progress so the welcome flow replays on next reload.
 Only touches the onboarding state in the data store — user profile, API keys, and DB data are untouched.

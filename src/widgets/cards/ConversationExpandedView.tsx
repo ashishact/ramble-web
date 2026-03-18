@@ -15,11 +15,13 @@
  * Scroll direction: newest at bottom (chat-style).
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Icon } from '@iconify/react';
+import { RotateCcw } from 'lucide-react';
 import type { ConversationRecord } from '../../graph/data';
-import type { ProcessingResult } from '../../program/kernel/processor';
+import type { ProcessingResult } from '../../program/types/recording';
 import type { PipelineState } from '../../program/kernel/pipelineStatus';
+import { getSys1Engine } from '../../modules/sys1';
 import { ConversationEntry } from './conversation/ConversationEntry';
 import { ExtractionCard } from './conversation/ExtractionCard';
 import { LiveStatusBar } from './conversation/LiveStatusBar';
@@ -108,6 +110,14 @@ export function ConversationExpandedView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLastIdRef = useRef<string | null>(null);
 
+  // Start a fresh ChatGPT conversation for SYS-I, seeded with recent context.
+  // Doesn't clear the conversation history shown here (that's in DuckDB) —
+  // only resets the ChatGPT thread. The new chat is bootstrapped with the
+  // last ~10 conversations from DuckDB so the LLM has continuity.
+  const handleNewChat = useCallback(() => {
+    getSys1Engine().resetSession({ withContext: true });
+  }, []);
+
   // Reverse to chronological order (oldest first, newest at bottom)
   const chronological = useMemo(
     () => [...conversations].reverse(),
@@ -145,7 +155,20 @@ export function ConversationExpandedView({
             </span>
           )}
         </div>
-        <div className="flex gap-0.5">
+        <div className="flex items-center gap-1.5">
+          {/* Start a fresh ChatGPT conversation — useful when the current
+              chat was deleted in ChatGPT UI or has gone stale */}
+          <button
+            onClick={handleNewChat}
+            className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] text-base-content/40 hover:bg-base-200/50 rounded transition-colors"
+            title="Start a new ChatGPT conversation for SYS-I"
+          >
+            <RotateCcw size={10} />
+            <span>New Chat</span>
+          </button>
+
+          <div className="w-px h-3 bg-base-300/40" />
+
           <button
             onClick={() => setShowRawText(true)}
             className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${

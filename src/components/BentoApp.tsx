@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef, useSyncExternalStore, Suspense, lazy } from 'react';
-import { runV4PostMigrationIfNeeded } from '../program/services/decayService';
-import { initConsolidation } from '../program/kernel/consolidation';
 import { getGraphService, getEmbeddingListener } from '../graph';
 import {
   BentoNodeComponent,
@@ -29,9 +27,6 @@ import {
   SettingsWidget,
   PlaceholderWidget,
   LearnedCorrectionsWidget,
-  KnowledgeTreeWidget,
-  TimelineWidget,
-  TreeDevToolsWidget,
   PipelineMonitorWidget,
   LLMCostDashboardWidget,
   EmbeddingTestWidget,
@@ -59,6 +54,16 @@ import { OnboardingFlow, useOnboarding } from '../modules/onboarding';
 // Lazy-loaded TTS Widget
 const TTSWidget = lazy(() =>
   import('../widgets/cards/TTSWidget').then(m => ({ default: m.TTSWidget }))
+);
+
+// Lazy-loaded Knowledge Tree Widget (echarts code-split)
+const KnowledgeTreeWidget = lazy(() =>
+  import('../widgets/cards/KnowledgeTreeWidget').then(m => ({ default: m.KnowledgeTreeWidget }))
+);
+
+// Lazy-loaded Timeline Widget
+const TimelineWidget = lazy(() =>
+  import('../widgets/cards/TimelineWidget').then(m => ({ default: m.TimelineWidget }))
 );
 
 // Lazy-loaded Knowledge Map Widget (echarts code-split)
@@ -112,19 +117,8 @@ export const BentoApp: React.FC = () => {
     workspaceStore.saveTree(tree);
   }, [tree]);
 
-  // Run data maintenance on mount (non-blocking fire-and-forget)
-  // Widget migration runs first (so WatermelonDB has data before widgets query),
-  // then the v4 post-migration fix, then consolidation engine init.
-  // Consolidation handles decay + entity dedup + near-duplicate detection,
-  // runs on idle (5 min) or after 24h since last run.
+  // Initialize DuckDB Knowledge Graph + Embedding Listener + SYS-I Engine (non-blocking)
   useEffect(() => {
-    const runMaintenance = async () => {
-      await runV4PostMigrationIfNeeded();
-      initConsolidation();
-    };
-    runMaintenance().catch(console.error);
-
-    // Initialize DuckDB Knowledge Graph + Embedding Listener + SYS-I Engine (non-blocking)
     getGraphService()
       .then(async (g) => {
         console.log('[KG] DuckDB graph initialized', g);
@@ -135,6 +129,9 @@ export const BentoApp: React.FC = () => {
         // Start SYS-II period scheduler (catches up missed periods on startup)
         const { startPeriodScheduler } = await import('../modules/synthesis');
         startPeriodScheduler();
+        // Initialize ontology system (install defaults, start tracker, emit first suggestion)
+        const { initOntology } = await import('../modules/ontology');
+        initOntology().catch(err => console.warn('[Ontology] Init failed:', err));
         // Start auto-backup (triggers on tab hidden if > 24h since last backup)
         const { initAutoBackup } = await import('../graph/backup');
         initAutoBackup(getCurrentProfile());
@@ -248,13 +245,29 @@ export const BentoApp: React.FC = () => {
         );
       case 'meeting-transcription':
         return <MeetingTranscriptionWidget nodeId={node.id} />;
-      // Knowledge tree widgets (v9)
+      // Knowledge tree widgets (v9) — lazy-loaded (echarts code-split)
       case 'knowledge-tree':
-        return <KnowledgeTreeWidget {...props} />;
+        return (
+          <Suspense fallback={
+            <div className="w-full h-full flex items-center justify-center gap-2">
+              <Loader2 size={14} className="animate-spin opacity-60" />
+              <span className="text-xs opacity-60">Loading Knowledge Tree...</span>
+            </div>
+          }>
+            <KnowledgeTreeWidget {...props} />
+          </Suspense>
+        );
       case 'timeline':
-        return <TimelineWidget {...props} />;
-      case 'tree-dev-tools':
-        return <TreeDevToolsWidget {...props} />;
+        return (
+          <Suspense fallback={
+            <div className="w-full h-full flex items-center justify-center gap-2">
+              <Loader2 size={14} className="animate-spin opacity-60" />
+              <span className="text-xs opacity-60">Loading Timeline...</span>
+            </div>
+          }>
+            <TimelineWidget {...props} />
+          </Suspense>
+        );
       // Observability widgets (v10)
       case 'pipeline-monitor':
         return <PipelineMonitorWidget {...props} />;

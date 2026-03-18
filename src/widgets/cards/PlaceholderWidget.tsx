@@ -25,7 +25,6 @@ const WIDGET_ICONS: Record<WidgetType, React.ReactNode> = {
   // Knowledge tree widgets (v9)
   'knowledge-tree': <GitBranch className="w-8 h-8" />,
   'timeline': <Clock className="w-8 h-8" />,
-  'tree-dev-tools': <FlaskConical className="w-8 h-8" />,
   // Observability widgets (v10)
   'pipeline-monitor': <Activity className="w-8 h-8" />,
   'llm-dashboard': <DollarSign className="w-8 h-8" />,
@@ -58,7 +57,6 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   // Knowledge tree widgets (v9)
   'knowledge-tree': 'Knowledge Tree',
   'timeline': 'Timeline',
-  'tree-dev-tools': 'Tree Dev Tools',
   // Observability widgets (v10)
   'pipeline-monitor': 'Pipeline Monitor',
   'llm-dashboard': 'LLM Dashboard',

@@ -1,0 +1,188 @@
+{
+  "id": "pkg_family-home",
+  "name": "Family & Home",
+  "version": "1.0.0",
+  "description": "Family structure, relationships, and home life",
+  "concepts": [
+    {
+      "id": "concept_family-structure",
+      "name": "Family Structure",
+      "description": "Overall family composition — size, marital status, children",
+      "priority": 1.0,
+      "slots": [
+        {
+          "id": "slot_family-size",
+          "name": "family_size",
+          "description": "How many people are in the user's immediate family",
+          "value_type": "number",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_family_casual",
+              "question": "Tell me about your family",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_marital-status",
+          "name": "marital_status",
+          "description": "Whether the user is single, married, partnered, etc.",
+          "value_type": "text",
+          "required": false,
+          "examples": ["Single", "Married", "In a relationship", "Divorced"],
+          "probes": [
+            {
+              "id": "probe_marital_casual",
+              "question": "Are you married or in a relationship?",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_children",
+          "name": "children",
+          "description": "Whether the user has children, and details about them",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_children_casual",
+              "question": "Do you have any kids?",
+              "style": "casual"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept_parents",
+      "name": "Parents",
+      "description": "Details about the user's parents and their relationship",
+      "priority": 0.8,
+      "requires": ["concept_family-structure"],
+      "slots": [
+        {
+          "id": "slot_parents-details",
+          "name": "parents_details",
+          "description": "Information about the user's parents — names, ages, occupations",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_parents_casual",
+              "question": "Tell me about your parents",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_relationship-with-parents",
+          "name": "relationship_with_parents",
+          "description": "The user's current relationship with their parents",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_parent-relationship_reflective",
+              "question": "How's your relationship with your parents?",
+              "style": "reflective"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept_siblings",
+      "name": "Siblings",
+      "description": "Details about the user's brothers and sisters",
+      "priority": 0.7,
+      "requires": ["concept_family-structure"],
+      "slots": [
+        {
+          "id": "slot_siblings-details",
+          "name": "siblings_details",
+          "description": "Information about the user's siblings — names, ages, what they do",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_siblings_casual",
+              "question": "Do you have siblings?",
+              "style": "casual"
+            },
+            {
+              "id": "probe_siblings_direct",
+              "question": "Tell me about your brothers or sisters",
+              "style": "direct"
+            }
+          ]
+        },
+        {
+          "id": "slot_sibling-relationships",
+          "name": "sibling_relationships",
+          "description": "How the user gets along with their siblings",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_sibling-rel_reflective",
+              "question": "Are you close with your siblings?",
+              "style": "reflective"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept_home-life",
+      "name": "Home Life",
+      "description": "Living situation, hometown, and pets",
+      "priority": 0.5,
+      "slots": [
+        {
+          "id": "slot_living-situation",
+          "name": "living_situation",
+          "description": "Where and how the user lives — house, apartment, with roommates, alone",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_living_casual",
+              "question": "Where do you live now?",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_hometown",
+          "name": "hometown",
+          "description": "Where the user grew up or considers home",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_hometown_casual",
+              "question": "Where did you grow up?",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_pets",
+          "name": "pets",
+          "description": "Whether the user has any pets and details about them",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_pets_casual",
+              "question": "Any pets?",
+              "style": "casual"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

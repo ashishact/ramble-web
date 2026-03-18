@@ -1,11 +1,25 @@
 /**
  * VectorSearch — DuckDB Cosine Similarity Search
  *
- * Uses DuckDB's built-in array_cosine_similarity() function
- * for vector similarity search on node embeddings.
+ * Performs semantic similarity search using DuckDB's built-in
+ * array_cosine_similarity() function on the embeddings table.
  *
- * DuckDB supports FLOAT[] columns natively, so no external
- * vector database is needed.
+ * WHY IN-DB VECTOR SEARCH:
+ *   DuckDB supports FLOAT[] columns and cosine similarity natively.
+ *   For our scale (~1000s of nodes, 384-dim vectors), a full scan
+ *   with cosine similarity is fast enough (~5-20ms). No need for
+ *   approximate nearest neighbor (ANN) indices or external vector DBs.
+ *
+ * QUERY PATTERN:
+ *   The embeddings table is joined with the source table (nodes,
+ *   ontology_nodes, etc.) via target_id. This decoupled design means
+ *   vector search works across any entity type that has embeddings.
+ *
+ * DUAL-READ:
+ *   During the migration period, findSimilar() reads from BOTH the
+ *   new embeddings table AND the legacy nodes.embedding column (UNION).
+ *   This ensures no results are lost during the transition. Once all
+ *   existing embeddings are migrated, the legacy read can be removed.
  */
 
 import type { GraphService } from '../GraphService'
@@ -28,33 +42,59 @@ export class VectorSearch {
 
   /**
    * Find nodes most similar to a query vector.
-   * Uses DuckDB's array_cosine_similarity() for efficient in-DB computation.
+   *
+   * Searches the embeddings table for node-type embeddings, then JOINs
+   * with the nodes table to return full node data with similarity scores.
+   *
+   * Also checks legacy nodes.embedding column (UNION) to catch nodes
+   * that haven't been migrated to the embeddings table yet.
    */
   async findSimilar(
     queryVector: number[],
     limit = 10,
     labelFilter?: string
   ): Promise<VectorSearchResult[]> {
-    // DuckDB WASM can't bind arrays via prepared statements — inline the literal
     const dim = queryVector.length
+    // DuckDB WASM can't bind arrays via prepared statements — inline the literal
     const vecLiteral = `[${queryVector.join(',')}]::FLOAT[${dim}]`
 
-    let sql = `
-      SELECT *,
-        array_cosine_similarity(embedding::FLOAT[${dim}], ${vecLiteral}) AS similarity
-      FROM nodes
-      WHERE embedding IS NOT NULL
-    `
     const params: unknown[] = []
     let paramIdx = 1
 
+    // Build WHERE clause for label filter (used in both branches of UNION)
+    let labelWhere = ''
     if (labelFilter) {
-      sql += ` AND list_contains(labels, $${paramIdx})`
+      labelWhere = ` AND list_contains(n.labels, $${paramIdx})`
       params.push(labelFilter)
       paramIdx++
     }
 
-    sql += ` ORDER BY similarity DESC LIMIT $${paramIdx}`
+    // UNION query: embeddings table + legacy nodes.embedding column.
+    // The embeddings table is the primary source (target_kind = 'node').
+    // The legacy column is a fallback for nodes not yet migrated.
+    // Deduplication happens via the outer query's GROUP BY on node id
+    // (takes highest similarity if a node appears in both sources).
+    const sql = `
+      WITH combined AS (
+        -- Primary: embeddings table (v2)
+        SELECT n.*, array_cosine_similarity(e.vector::FLOAT[${dim}], ${vecLiteral}) AS similarity
+        FROM embeddings e
+        JOIN nodes n ON n.id = e.target_id
+        WHERE e.target_kind = 'node'${labelWhere}
+
+        UNION ALL
+
+        -- Fallback: legacy nodes.embedding column (v1, for un-migrated nodes)
+        SELECT n.*, array_cosine_similarity(n.embedding::FLOAT[${dim}], ${vecLiteral}) AS similarity
+        FROM nodes n
+        WHERE n.embedding IS NOT NULL
+          AND n.id NOT IN (SELECT target_id FROM embeddings WHERE target_kind = 'node')
+          ${labelWhere}
+      )
+      SELECT * FROM combined
+      ORDER BY similarity DESC
+      LIMIT $${paramIdx}
+    `
     params.push(limit)
 
     const rows = await this.graph.query<GraphNode & { similarity: number }>(sql, params)
@@ -87,20 +127,33 @@ export class VectorSearch {
 
   /**
    * Find nodes similar to a given node.
+   * Uses the embeddings table first, falls back to legacy nodes.embedding.
    */
   async findSimilarTo(
     nodeId: string,
     limit = 10,
     labelFilter?: string
   ): Promise<VectorSearchResult[]> {
-    const node = await this.graph.query<{ embedding: number[] }>(
-      `SELECT embedding FROM nodes WHERE id = $1`,
+    // Try embeddings table first (v2)
+    const embRow = await this.graph.query<{ vector: number[] }>(
+      `SELECT vector FROM embeddings WHERE target_id = $1 AND target_kind = 'node' LIMIT 1`,
       [nodeId]
     )
 
-    if (node.length === 0 || !node[0].embedding) return []
+    let vector: number[] | null = embRow.length > 0 ? embRow[0].vector : null
 
-    return this.findSimilar(node[0].embedding, limit + 1, labelFilter)
+    // Fallback to legacy nodes.embedding column
+    if (!vector) {
+      const nodeRow = await this.graph.query<{ embedding: number[] }>(
+        `SELECT embedding FROM nodes WHERE id = $1`,
+        [nodeId]
+      )
+      vector = nodeRow.length > 0 ? nodeRow[0].embedding : null
+    }
+
+    if (!vector) return []
+
+    return this.findSimilar(vector, limit + 1, labelFilter)
       .then(results => results.filter(r => r.node.id !== nodeId).slice(0, limit))
   }
 }

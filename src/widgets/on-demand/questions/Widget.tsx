@@ -15,7 +15,16 @@ import { eventBus } from '../../../lib/eventBus';
 import { getSys1Engine } from '../../../modules/sys1';
 import { useWidgetPause } from '../useWidgetPause';
 import type { Sys1Response, Sys1State } from '../../../modules/sys1/Sys1Engine';
-import { MessageCircleQuestion, WifiOff, AlertCircle, RefreshCw, Sparkles, Mic, RotateCcw, History } from 'lucide-react';
+import { MessageCircleQuestion, WifiOff, AlertCircle, RefreshCw, Sparkles, Mic, RotateCcw, History, MessageSquareHeart } from 'lucide-react';
+
+interface OntologySuggestion {
+  questionText: string;
+  style: 'casual' | 'direct' | 'reflective';
+  slotId: string;
+  slotName: string;
+  conceptName: string;
+  packageName: string;
+}
 
 export function QuestionWidget({ nodeId }: { nodeId: string }) {
   const [questions, setQuestions] = useState<Sys1Response[]>([]);
@@ -24,6 +33,7 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const streamingTextRef = useRef<string | null>(null);
   const historyRef = useRef<HTMLDivElement>(null);
+  const [suggestion, setSuggestion] = useState<OntologySuggestion | null>(null);
 
   const { isPaused, PauseButton, PauseOverlay } = useWidgetPause(nodeId, 'Questions');
 
@@ -33,6 +43,12 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
     setQuestions(engine.getHistory());
     setEngineState(engine.getState());
     setPendingCount(engine.getPendingCount());
+
+    // Pull cached ontology suggestion (may have been emitted before we mounted)
+    import('../../../modules/ontology').then(({ getLastSuggestion }) => {
+      const cached = getLastSuggestion();
+      if (cached) setSuggestion(cached);
+    }).catch(() => {});
   }, []);
 
   // Subscribe to SYS-I events
@@ -56,11 +72,20 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
       setStreamingText(null);
       streamingTextRef.current = null;
       setPendingCount(getSys1Engine().getPendingCount());
+
+      // After SYS-I responds, refresh ontology suggestion (coverage may have changed)
+      import('../../../modules/ontology').then(({ emitNextSuggestion }) => {
+        emitNextSuggestion().catch(() => {});
+      }).catch(() => {});
     });
 
     const unsubState = eventBus.on('sys1:state', (payload) => {
       setEngineState(payload.state);
       setPendingCount(getSys1Engine().getPendingCount());
+      // Clear suggestion when user starts talking
+      if (payload.state === 'sending') {
+        setSuggestion(null);
+      }
     });
 
     const unsubStream = eventBus.on('sys1:stream', (payload) => {
@@ -68,10 +93,20 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
       streamingTextRef.current = payload.text;
     });
 
+    // Ontology suggestion events
+    const unsubSuggestion = eventBus.on('ontology:suggestion', (payload) => {
+      setSuggestion(payload);
+    });
+    const unsubSuggestionCleared = eventBus.on('ontology:suggestion-cleared', () => {
+      setSuggestion(null);
+    });
+
     return () => {
       unsubResponse();
       unsubState();
       unsubStream();
+      unsubSuggestion();
+      unsubSuggestionCleared();
     };
   }, [isPaused]);
 
@@ -190,6 +225,21 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
             <span className="text-[12px] font-semibold text-red-500">Couldn't reach AI</span>
             <span className="text-[10px] text-slate-400 mt-1">Tap retry to try again</span>
           </>
+        ) : suggestion && !isPaused ? (
+          <>
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center mb-3">
+              <MessageSquareHeart className="w-5 h-5 text-emerald-500" />
+            </div>
+            <span className="text-[9px] font-medium text-emerald-600/70 uppercase tracking-wider mb-1">
+              {suggestion.conceptName}
+            </span>
+            <span className="text-[14px] font-medium text-slate-700 text-center max-w-[240px] leading-relaxed">
+              {suggestion.questionText}
+            </span>
+            <span className="text-[9px] text-slate-300 mt-1.5">
+              {suggestion.packageName}
+            </span>
+          </>
         ) : (
           <>
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-50 flex items-center justify-center mb-3">
@@ -265,7 +315,7 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
           </div>
 
           {/* Intent chip */}
-          {latest?.intent && latest.intent !== 'ASSERT' && (
+          {latest?.intent && latest.intent !== 'assert' && (
             <span className={`inline-block mb-2 px-2 py-0.5 text-[9px] font-semibold rounded-full uppercase tracking-wide ${intentChipClass(latest.intent)}`}>
               {latest.intent}
             </span>
@@ -295,7 +345,7 @@ export function QuestionWidget({ nodeId }: { nodeId: string }) {
                     <span className="text-[9px] font-semibold text-slate-300">
                       {questions.length - 1 - i}
                     </span>
-                    {q.intent && q.intent !== 'ASSERT' && (
+                    {q.intent && q.intent !== 'assert' && (
                       <span className={`px-1.5 py-px text-[8px] font-semibold rounded-full uppercase tracking-wide ${intentChipClass(q.intent)}`}>
                         {q.intent}
                       </span>
@@ -346,11 +396,11 @@ function formatTime(ts: number): string {
 
 function intentChipClass(intent: string): string {
   switch (intent) {
-    case 'QUERY':   return 'bg-blue-500/10 text-blue-600';
-    case 'CORRECT': return 'bg-amber-500/10 text-amber-600';
-    case 'EXPLORE': return 'bg-violet-500/10 text-violet-600';
-    case 'COMMAND': return 'bg-emerald-500/10 text-emerald-600';
-    case 'SOCIAL':  return 'bg-slate-100 text-slate-400';
+    case 'query':   return 'bg-blue-500/10 text-blue-600';
+    case 'correct': return 'bg-amber-500/10 text-amber-600';
+    case 'explore': return 'bg-violet-500/10 text-violet-600';
+    case 'command': return 'bg-emerald-500/10 text-emerald-600';
+    case 'social':  return 'bg-slate-100 text-slate-400';
     default:        return 'bg-slate-100 text-slate-400';
   }
 }

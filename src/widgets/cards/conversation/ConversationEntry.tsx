@@ -13,7 +13,7 @@
 import { useState } from 'react';
 import { Icon } from '@iconify/react';
 import type { ConversationRecord } from '../../../graph/data';
-import type { ProcessingResult } from '../../../program/kernel/processor';
+import type { ProcessingResult } from '../../../program/types/recording';
 import { AnnotatedText } from './InlineAnnotations';
 
 interface ConversationEntryProps {

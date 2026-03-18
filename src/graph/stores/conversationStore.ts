@@ -24,6 +24,13 @@ export const conversationStore = {
     source: string
     speaker?: string
     intent?: string
+    /**
+     * Emotional tone of the user's turn. Fixed vocabulary:
+     * neutral, excited, frustrated, curious, anxious, confident, hesitant, reflective.
+     * Classified by the LLM alongside intent (same call, format: "INTENT:EMOTION").
+     * Stored separately for direct querying without parsing the intent field.
+     */
+    emotion?: string
     topic?: string
     recordingId?: string | null
     batchId?: string
@@ -41,14 +48,15 @@ export const conversationStore = {
       processed: false,
       intent: input.intent ?? null,
       topic: input.topic ?? null,
+      emotion: input.emotion ?? null,
       recording_id: input.recordingId ?? null,
       batch_id: input.batchId ?? null,
       created_at: now,
     }
 
     await graph.exec(
-      `INSERT INTO conversations (id, session_id, timestamp, raw_text, source, speaker, processed, intent, topic, recording_id, batch_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      `INSERT INTO conversations (id, session_id, timestamp, raw_text, source, speaker, processed, intent, topic, emotion, recording_id, batch_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         conv.id,
         conv.session_id,
@@ -59,6 +67,7 @@ export const conversationStore = {
         conv.processed,
         conv.intent,
         conv.topic,
+        conv.emotion,
         conv.recording_id,
         conv.batch_id,
         conv.created_at,

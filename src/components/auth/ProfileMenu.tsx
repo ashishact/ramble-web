@@ -136,7 +136,7 @@ export const ProfileMenu: React.FC = () => {
       {/* Avatar button */}
       <button
         onClick={() => setIsOpen(v => !v)}
-        className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold transition-colors ${
+        className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold transition-colors ${
           isOpen
             ? 'bg-primary/25 text-primary'
             : 'bg-primary/15 text-primary hover:bg-primary/25'

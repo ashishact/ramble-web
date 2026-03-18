@@ -16,7 +16,7 @@
 
 import type { GraphService } from '../GraphService'
 import { graphEventBus } from '../events'
-import { EmbeddingService } from './EmbeddingService'
+import { EmbeddingService, EMBEDDING_MODEL_SHORT } from './EmbeddingService'
 import { telemetry } from '../../program/telemetry'
 
 // ============================================================================
@@ -141,7 +141,7 @@ export class EmbeddingListener {
       telemetry.emit('embedding', 'embed-nodes', 'start', {
         nodeCount: batch.length,
         queueRemaining: remaining,
-        model: 'bge-small-en-v1.5',
+        model: EMBEDDING_MODEL_SHORT,
       })
 
       try {

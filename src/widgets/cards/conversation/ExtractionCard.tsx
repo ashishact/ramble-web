@@ -9,7 +9,7 @@
  * Only renders if extraction has memories, entities, or topics.
  */
 
-import type { ProcessingResult } from '../../../program/kernel/processor';
+import type { ProcessingResult } from '../../../program/types/recording';
 
 interface ExtractionCardProps {
   extraction: ProcessingResult;

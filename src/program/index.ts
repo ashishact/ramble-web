@@ -9,14 +9,7 @@ export {
   getKernel,
   type KernelState,
   type InputResult,
-  processInput,
-  type ProcessingResult,
   recordingManager,
-  retrieveContext,
-  type RetrievedContext,
-  runConsolidation,
-  runConsolidationIfDue,
-  initConsolidation,
 } from './kernel';
 
 // LLM Client

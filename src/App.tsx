@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { SettingsPageNew } from "./components/v2/SettingsPageNew";
 import { BentoApp } from "./components/BentoApp";
-import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
 import { ProfileSwitcher } from "./components/ProfileSwitcher";
 
 function App() {
@@ -17,7 +16,6 @@ function App() {
         <Route path="/u/:profileName/settings" element={<SettingsPageNew onBack={() => window.history.back()} />} />
       </Routes>
       {/* Global components */}
-      <RestoreConfirmDialog />
       <ProfileSwitcher />
     </BrowserRouter>
   );

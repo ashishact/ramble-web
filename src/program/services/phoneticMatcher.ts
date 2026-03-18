@@ -2,10 +2,10 @@
  * Phonetic Matching for STT Correction
  *
  * Uses Soundex algorithm to find phonetically similar words.
- * Compares input text against known entities.
+ * Compares input text against known entities from DuckDB graph.
  */
 
-import { entityStore } from '../../db/stores';
+import { getEntityStore } from '../../graph/stores/singletons';
 
 export interface PhoneticMatch {
   inputWord: string;
@@ -86,11 +86,7 @@ export function stringSimilarity(a: string, b: string): number {
  * Extract words that might be names (capitalized or standalone)
  */
 function extractPotentialNames(text: string): string[] {
-  // Split on whitespace and punctuation
   const words = text.split(/[\s,.:;!?'"()\[\]{}]+/).filter(w => w.length > 2);
-
-  // Return all words - we'll check them all against entities
-  // Could filter for capitalized words, but STT often doesn't preserve case
   return [...new Set(words)];
 }
 
@@ -100,7 +96,8 @@ function extractPotentialNames(text: string): string[] {
 export async function findPhoneticMatches(inputText: string): Promise<PhoneticMatch[]> {
   const matches: PhoneticMatch[] = [];
 
-  // Get all known entities — phonetic matching needs the full vocabulary
+  // Get all known entities from DuckDB
+  const entityStore = await getEntityStore();
   const entities = await entityStore.getAll();
   if (entities.length === 0) return [];
 
@@ -131,7 +128,6 @@ export async function findPhoneticMatches(inputText: string): Promise<PhoneticMa
         // Don't match if it's exactly the same word
         if (word.toLowerCase() === candidate.matchedWord.toLowerCase()) continue;
 
-        // Calculate confidence based on string similarity to the matched word
         const similarity = stringSimilarity(word, candidate.matchedWord);
 
         // Lower threshold for person names (0.3) vs general entities (0.4)
@@ -184,26 +180,22 @@ ${lines.join('\n')}`;
 export async function findSpellingMatches(inputText: string): Promise<PhoneticMatch[]> {
   const matches: PhoneticMatch[] = [];
 
-  // Get all known entities
+  const entityStore = await getEntityStore();
   const entities = await entityStore.getAll();
   if (entities.length === 0) return [];
 
-  // Extract words from input
   const inputWords = inputText.split(/[\s,.:;!?'"()\[\]{}]+/).filter(w => w.length > 3);
 
   for (const word of inputWords) {
     let bestMatch: PhoneticMatch | null = null;
 
     for (const entity of entities) {
-      // Check every significant word in entity name, not just the first
       const nameWords = entity.name.split(/\s+/).filter(w => w.length > 1);
       for (const nameWord of nameWords) {
-        // Skip if exact match
         if (word.toLowerCase() === nameWord.toLowerCase()) continue;
 
         const similarity = stringSimilarity(word, nameWord);
 
-        // Higher threshold for text (0.7) vs speech (0.4), lower for person names (0.6)
         const threshold = entity.type === 'person' ? 0.6 : 0.7;
 
         if (similarity >= threshold && similarity < 1) {

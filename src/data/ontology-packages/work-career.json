@@ -1,0 +1,218 @@
+{
+  "id": "pkg_work-career",
+  "name": "Work & Career",
+  "version": "1.0.0",
+  "description": "Professional life — current role, skills, projects, and career aspirations",
+  "concepts": [
+    {
+      "id": "concept_current-role",
+      "name": "Current Role",
+      "description": "The user's current job, company, and responsibilities",
+      "priority": 1.0,
+      "slots": [
+        {
+          "id": "slot_job-title",
+          "name": "job_title",
+          "description": "The user's current job title or position",
+          "value_type": "text",
+          "required": true,
+          "examples": ["Senior Software Engineer", "Product Manager", "Freelance Consultant"],
+          "probes": [
+            {
+              "id": "probe_job-title_casual",
+              "question": "What's your current role?",
+              "style": "casual"
+            },
+            {
+              "id": "probe_job-title_direct",
+              "question": "What's your job title?",
+              "style": "direct"
+            }
+          ]
+        },
+        {
+          "id": "slot_company",
+          "name": "company",
+          "description": "The company or organization the user works for",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_company_casual",
+              "question": "What company are you with?",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_industry",
+          "name": "industry",
+          "description": "The industry or sector the user works in",
+          "value_type": "text",
+          "required": false,
+          "examples": ["Tech", "Healthcare", "Finance", "Education"],
+          "probes": [
+            {
+              "id": "probe_industry_casual",
+              "question": "What industry are you in?",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_responsibilities",
+          "name": "responsibilities",
+          "description": "Key duties and responsibilities in the current role",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_responsibilities_casual",
+              "question": "What does your day-to-day work look like?",
+              "style": "casual"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept_skills",
+      "name": "Skills",
+      "description": "Technical and soft skills the user has developed",
+      "priority": 0.8,
+      "requires": ["concept_current-role"],
+      "slots": [
+        {
+          "id": "slot_technical-skills",
+          "name": "technical_skills",
+          "description": "Hard skills and technical competencies",
+          "value_type": "list",
+          "required": false,
+          "examples": ["Python", "React", "Data analysis", "CAD design"],
+          "probes": [
+            {
+              "id": "probe_tech-skills_casual",
+              "question": "What are your strongest technical skills?",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_soft-skills",
+          "name": "soft_skills",
+          "description": "Interpersonal and communication skills",
+          "value_type": "list",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_soft-skills_reflective",
+              "question": "What soft skills do you think set you apart?",
+              "style": "reflective"
+            }
+          ]
+        },
+        {
+          "id": "slot_tools",
+          "name": "tools",
+          "description": "Software tools and platforms the user regularly uses",
+          "value_type": "list",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_tools_casual",
+              "question": "What tools or platforms do you use most?",
+              "style": "casual"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept_projects",
+      "name": "Projects",
+      "description": "Current and past notable projects",
+      "priority": 0.6,
+      "requires": ["concept_current-role"],
+      "slots": [
+        {
+          "id": "slot_current-projects",
+          "name": "current_projects",
+          "description": "Projects the user is currently working on",
+          "value_type": "list",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_projects_casual",
+              "question": "What are you working on right now?",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_past-achievements",
+          "name": "past_achievements",
+          "description": "Notable past projects or professional accomplishments",
+          "value_type": "list",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_achievements_reflective",
+              "question": "What's a project you're most proud of?",
+              "style": "reflective"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept_career-goals",
+      "name": "Career Goals",
+      "description": "Professional aspirations and growth areas",
+      "priority": 0.4,
+      "slots": [
+        {
+          "id": "slot_aspirations",
+          "name": "aspirations",
+          "description": "Where the user wants to go in their career",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_aspirations_reflective",
+              "question": "Where do you see yourself headed career-wise?",
+              "style": "reflective"
+            }
+          ]
+        },
+        {
+          "id": "slot_challenges",
+          "name": "challenges",
+          "description": "Current professional challenges or frustrations",
+          "value_type": "text",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_challenges_casual",
+              "question": "What's the biggest challenge you're facing at work?",
+              "style": "casual"
+            }
+          ]
+        },
+        {
+          "id": "slot_growth-areas",
+          "name": "growth_areas",
+          "description": "Skills or areas the user wants to improve",
+          "value_type": "list",
+          "required": false,
+          "probes": [
+            {
+              "id": "probe_growth_reflective",
+              "question": "What skills are you trying to develop right now?",
+              "style": "reflective"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -84,7 +84,7 @@
  */
 
 import type { Recording, RecordingChunk, NormalizationHints, ConsolidationResult } from '../program/types/recording';
-import type { ProcessingResult } from '../program/kernel/processor';
+import type { ProcessingResult } from '../program/types/recording';
 import type { WorkingMemoryData } from '../program/WorkingMemory';
 
 type EventHandler<T = unknown> = (payload: T) => void;
@@ -232,7 +232,9 @@ export interface EventPayloads {
 		response: string;
 		/** Isolated question text for ASSERT/EXPLORE; null for QUERY/CORRECT/etc. */
 		question: string | null;
-		intent: 'ASSERT' | 'QUERY' | 'CORRECT' | 'EXPLORE' | 'COMMAND' | 'SOCIAL';
+		intent: 'assert' | 'query' | 'correct' | 'explore' | 'command' | 'social';
+		/** Emotional tone classified by LLM alongside intent */
+		emotion: 'neutral' | 'excited' | 'frustrated' | 'curious' | 'anxious' | 'confident' | 'hesitant' | 'reflective';
 		topic: string;
 		timestamp: number;
 	};
@@ -256,6 +258,17 @@ export interface EventPayloads {
 	// Knowledge tree navigation events
 	'navigate:entity': { entityId: string };
 	'highlight:node': { nodeId: string };
+
+	// Ontology suggestion events (proactive questions)
+	'ontology:suggestion': {
+		questionText: string;
+		style: 'casual' | 'direct' | 'reflective';
+		slotId: string;
+		slotName: string;
+		conceptName: string;
+		packageName: string;
+	};
+	'ontology:suggestion-cleared': Record<string, never>;
 
 	// Knowledge tree activity events (pipeline visibility)
 	'tree:activity': {

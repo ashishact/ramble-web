@@ -1,21 +1,24 @@
 /**
- * KnowledgeMapWidget — Coverage Sunburst + Activity Heatmap
+ * KnowledgeMapWidget — Coverage Sunburst + Activity Heatmap + Ontology Browser
  *
- * Two tabs:
+ * Three tabs:
  *   - Coverage: sunburst chart of topic coverage depth
  *   - Activity: GitHub-style calendar heatmap of daily conversation counts
+ *   - Ontology: collapsible package→concept→slot tree with fill status
  */
 
 import { useState, useMemo, useCallback } from 'react'
-import { Map, RefreshCw, Loader2, Compass, CalendarDays } from 'lucide-react'
+import { Map, RefreshCw, Loader2, Compass, CalendarDays, Layers, Package } from 'lucide-react'
 import { useWidgetPause } from '../useWidgetPause'
 import { useKnowledgeMapData } from './useKnowledgeMapData'
 import { buildSunburstData } from './sunburstData'
 import { SunburstChart } from './SunburstChart'
 import { useActivityData } from './useActivityData'
 import { ActivityHeatmap } from './ActivityHeatmap'
+import { useOntologyData } from './useOntologyData'
+import { OntologyBrowser } from './OntologyBrowser'
 
-type Tab = 'coverage' | 'activity'
+type Tab = 'coverage' | 'activity' | 'ontology'
 type TimeFilter = 'all' | 'today' | 'period'
 
 function getStartOfToday(): number {
@@ -30,6 +33,7 @@ export function KnowledgeMapWidget({ nodeId }: { nodeId: string }) {
   const { isPaused, PauseButton, PauseOverlay } = useWidgetPause(nodeId, 'Knowledge Map')
   const { topics, currentTopic, isLoading, recalculate, timings } = useKnowledgeMapData(isPaused)
   const { dailyCounts, isLoading: activityLoading, getDayStats, months } = useActivityData()
+  const { packages: ontologyPackages, isLoading: ontologyLoading } = useOntologyData()
 
   const filteredTopics = useMemo(() => {
     if (timeFilter === 'all') return topics
@@ -134,6 +138,17 @@ export function KnowledgeMapWidget({ nodeId }: { nodeId: string }) {
               <CalendarDays size={11} />
               Activity
             </button>
+            <button
+              onClick={() => tab !== 'ontology' && setTab('ontology')}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                tab === 'ontology'
+                  ? 'bg-white text-slate-600 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-500'
+              }`}
+            >
+              <Layers size={11} />
+              Ontology
+            </button>
           </div>
 
           {tab === 'coverage' && (
@@ -165,18 +180,33 @@ export function KnowledgeMapWidget({ nodeId }: { nodeId: string }) {
       <div className="flex-1 min-h-0">
         {tab === 'coverage' ? (
           <SunburstChart data={sunburstData} currentTopic={currentTopic} />
-        ) : activityLoading ? (
-          <div className="w-full h-full flex items-center justify-center">
-            <Loader2 className="w-5 h-5 text-emerald-500 animate-spin" />
-          </div>
-        ) : dailyCounts.length === 0 ? (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-            <CalendarDays className="w-5 h-5 text-slate-300" />
-            <span className="text-[11px] text-slate-400">No activity yet</span>
-          </div>
-        ) : (
-          <ActivityHeatmap dailyCounts={dailyCounts} months={months} getDayStats={getDayStats} />
-        )}
+        ) : tab === 'activity' ? (
+          activityLoading ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <Loader2 className="w-5 h-5 text-emerald-500 animate-spin" />
+            </div>
+          ) : dailyCounts.length === 0 ? (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+              <CalendarDays className="w-5 h-5 text-slate-300" />
+              <span className="text-[11px] text-slate-400">No activity yet</span>
+            </div>
+          ) : (
+            <ActivityHeatmap dailyCounts={dailyCounts} months={months} getDayStats={getDayStats} />
+          )
+        ) : /* ontology tab */
+          ontologyLoading ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <Loader2 className="w-5 h-5 text-emerald-500 animate-spin" />
+            </div>
+          ) : ontologyPackages.length === 0 ? (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+              <Package className="w-5 h-5 text-slate-300" />
+              <span className="text-[11px] text-slate-400">No packages installed</span>
+            </div>
+          ) : (
+            <OntologyBrowser packages={ontologyPackages} />
+          )
+        }
       </div>
 
       {/* Footer (coverage tab only) */}

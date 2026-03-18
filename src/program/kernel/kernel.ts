@@ -2,7 +2,6 @@
  * Kernel - Core Loop Orchestrator
  *
  * Singleton that manages:
- * - Session lifecycle
  * - Conversation save to DuckDB
  * - Recording lifecycle wiring (native events → recordingManager)
  *
@@ -10,7 +9,6 @@
  * NOT per-input. The kernel's job is just to save conversations.
  */
 
-import { sessionStore, recordingStore } from '../../db/stores';
 import { conversationStore } from '../../graph/stores/conversationStore';
 import { createLogger } from '../utils/logger';
 import { pipelineStatus } from './pipelineStatus';
@@ -19,7 +17,6 @@ import { eventBus } from '../../lib/eventBus';
 import { systemPause } from '../../lib/systemPause';
 import { simpleHash } from '../utils/id';
 import { telemetry } from '../telemetry';
-import type Session from '../../db/models/Session';
 
 const logger = createLogger('Kernel');
 
@@ -29,7 +26,6 @@ const logger = createLogger('Kernel');
 
 export interface KernelState {
   initialized: boolean;
-  currentSession: Session | null;
   isProcessing: boolean;
   queueLength: number;
 }
@@ -47,7 +43,6 @@ class Kernel {
   private static instance: Kernel | null = null;
 
   private initialized = false;
-  private currentSession: Session | null = null;
   private isProcessing = false;
   private inputQueue: Array<{
     text: string;
@@ -94,16 +89,6 @@ class Kernel {
 
     logger.info('Initializing kernel...');
 
-    // Try to resume existing session or create new one
-    const activeSession = await sessionStore.getActive();
-    if (activeSession) {
-      this.currentSession = activeSession;
-      logger.info('Resumed active session', { id: activeSession.id });
-    } else {
-      this.currentSession = await sessionStore.create({});
-      logger.info('Created new session', { id: this.currentSession.id });
-    }
-
     // Wire recording lifecycle to native events
     this.wireRecordingLifecycle();
 
@@ -122,38 +107,10 @@ class Kernel {
     this.recordingUnsubscribers.forEach(unsub => unsub());
     this.recordingUnsubscribers = [];
 
-    // End current session
-    if (this.currentSession) {
-      await sessionStore.endSession(this.currentSession.id);
-    }
-
     this.initialized = false;
-    this.currentSession = null;
     this.notifyListeners();
 
     logger.info('Kernel shut down');
-  }
-
-  // ==========================================================================
-  // Session Management
-  // ==========================================================================
-
-  async startNewSession(): Promise<Session> {
-    // End current session if exists
-    if (this.currentSession) {
-      await sessionStore.endSession(this.currentSession.id);
-    }
-
-    // Create new session
-    this.currentSession = await sessionStore.create({});
-    this.notifyListeners();
-
-    logger.info('Started new session', { id: this.currentSession.id });
-    return this.currentSession;
-  }
-
-  getCurrentSession(): Session | null {
-    return this.currentSession;
   }
 
   // ==========================================================================
@@ -201,7 +158,7 @@ class Kernel {
       eventBus.on('native:recording-ended', () => {
         if (!recordingManager.isRecording) return;
 
-        const { recording, fullText, chunks } = recordingManager.end();
+        const { recording, fullText } = recordingManager.end();
 
         const isMeeting = this.pendingMeetingTranscript !== null;
         const textToProcess = isMeeting ? this.pendingMeetingTranscript! : fullText;
@@ -216,19 +173,6 @@ class Kernel {
         });
 
         if (textToProcess.trim()) {
-          recordingStore.create({
-            type: recording.type,
-            startedAt: recording.startedAt,
-            endedAt: recording.endedAt,
-            fullText: textToProcess,
-            source: 'in-app',
-            audioType: recording.audioType,
-            throughputRate: recording.throughputRate,
-            chunkCount: chunks.length,
-            processingMode: 'system-ii',
-            sessionId: this.currentSession?.id,
-          }).catch(err => logger.error('Failed to save recording', { error: err }));
-
           // Only submit to conversationStore (and knowledge graph) for meetings.
           // Solo/individual native speech is NOT ingested — user must explicitly
           // paste text in ramble-web for it to enter the database.
@@ -254,26 +198,11 @@ class Kernel {
         if (!recordingManager.isRecording) return;
 
         recordingManager.addChunk(payload.text, 'mic');
-        const { recording, fullText, chunks } = recordingManager.end();
+        const { recording, fullText } = recordingManager.end();
         logger.info('Transcription final (solo — not ingested)', {
           id: recording.id,
           chars: fullText.length,
         });
-
-        if (fullText.trim()) {
-          // Save to recordingStore for diagnostics only — no submitInput
-          recordingStore.create({
-            type: recording.type,
-            startedAt: recording.startedAt,
-            endedAt: recording.endedAt,
-            fullText,
-            source: 'in-app',
-            throughputRate: recording.throughputRate,
-            chunkCount: chunks.length,
-            processingMode: 'system-ii',
-            sessionId: this.currentSession?.id,
-          }).catch(err => logger.error('Failed to save recording', { error: err }));
-        }
       })
     );
 
@@ -294,7 +223,7 @@ class Kernel {
       return { conversationId: '' };
     }
 
-    if (!this.initialized || !this.currentSession) {
+    if (!this.initialized) {
       throw new Error('Kernel not initialized');
     }
 
@@ -306,18 +235,6 @@ class Kernel {
       recordingManager.addChunk(text);
       const { recording: ended } = recordingManager.end();
       finalRecordingId = ended.id;
-
-      recordingStore.create({
-        type: ended.type,
-        startedAt: ended.startedAt,
-        endedAt: ended.endedAt,
-        fullText: text,
-        source: 'in-app',
-        throughputRate: ended.throughputRate,
-        chunkCount: 1,
-        processingMode: 'system-ii',
-        sessionId: this.currentSession?.id,
-      }).catch(err => logger.error('Failed to save auto-recording', { error: err }));
     }
 
     return new Promise((resolve, reject) => {
@@ -363,11 +280,6 @@ class Kernel {
     source: 'speech' | 'text' | 'meeting',
     recordingId?: string
   ): Promise<InputResult> {
-    if (!this.currentSession?.id) {
-      throw new Error('No active session');
-    }
-    const sessionId = this.currentSession.id;
-
     // Dedup gate
     const textHash = simpleHash(text);
     const existingConvId = this.recentRawTexts.get(textHash);
@@ -385,7 +297,7 @@ class Kernel {
     });
 
     const conversation = await conversationStore.create({
-      sessionId,
+      sessionId: 'default',
       rawText: text,
       source,
       speaker: 'user',
@@ -395,9 +307,6 @@ class Kernel {
     // Dedup cache
     this.recentRawTexts.set(textHash, conversation.id);
     setTimeout(() => this.recentRawTexts.delete(textHash), this.DEDUP_TTL_MS);
-
-    // Increment session unit count
-    await sessionStore.incrementUnitCount(sessionId);
 
     pipelineStatus.step('input', 'success');
     pipelineStatus.step('save', 'success');
@@ -421,7 +330,6 @@ class Kernel {
   getState(): KernelState {
     return {
       initialized: this.initialized,
-      currentSession: this.currentSession,
       isProcessing: this.isProcessing,
       queueLength: this.inputQueue.length,
     };

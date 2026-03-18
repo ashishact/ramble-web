@@ -13,10 +13,7 @@ export { TextInputWidget } from './cards/TextInputWidget';
 export { WorkingMemoryWidget } from './cards/WorkingMemoryWidget';
 export { SettingsWidget } from './cards/SettingsWidget';
 export { LearnedCorrectionsWidget } from './cards/LearnedCorrectionsWidget';
-export { TTSWidget } from './cards/TTSWidget';
-export { KnowledgeTreeWidget } from './cards/KnowledgeTreeWidget';
-export { TimelineWidget } from './cards/TimelineWidget';
-export { TreeDevToolsWidget } from './cards/TreeDevToolsWidget';
+// TTSWidget, KnowledgeTreeWidget, TimelineWidget are lazy-loaded in BentoApp
 export { PipelineMonitorWidget } from './cards/PipelineMonitorWidget';
 export { LLMCostDashboardWidget } from './cards/LLMCostDashboardWidget';
 export { EmbeddingTestWidget } from './cards/EmbeddingTestWidget';

@@ -50,20 +50,13 @@ export function useKernel() {
     [kernel]
   );
 
-  // Start new session
-  const startNewSession = useCallback(async () => {
-    return kernel.startNewSession();
-  }, [kernel]);
-
   return {
     // State
     isInitialized,
     isProcessing: state.isProcessing,
-    currentSession: state.currentSession,
     queueLength: state.queueLength,
 
     // Actions
     submitInput,
-    startNewSession,
   };
 }

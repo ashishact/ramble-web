@@ -22,8 +22,18 @@ const log = createLogger('Sys1Transport')
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-/** What the user is doing with their input — classified by SYS-I */
-export type UserIntent = 'ASSERT' | 'QUERY' | 'CORRECT' | 'EXPLORE' | 'COMMAND' | 'SOCIAL'
+/**
+ * What the user is doing with their input — classified by SYS-I.
+ * Lowercase for uniformity with emotion vocabulary.
+ */
+export type UserIntent = 'assert' | 'query' | 'correct' | 'explore' | 'command' | 'social'
+
+/**
+ * Emotional tone of the user's turn — classified by SYS-I alongside intent.
+ * Fixed vocabulary prevents free-form LLM hallucination of emotion labels.
+ * Lowercase for uniformity with intent vocabulary.
+ */
+export type UserEmotion = 'neutral' | 'excited' | 'frustrated' | 'curious' | 'anxious' | 'confident' | 'hesitant' | 'reflective'
 
 /** A request from SYS-I to search the knowledge graph for context */
 export interface SysISearchRequest {
@@ -31,9 +41,21 @@ export interface SysISearchRequest {
   type: 'memory' | 'entity' | 'goal'
 }
 
-/** Structured response from SYS-I */
+/**
+ * Structured response from SYS-I.
+ *
+ * Intent and emotion are parsed from the combined "INTENT:EMOTION" format
+ * (e.g., "ASSERT:curious"). This avoids an extra LLM output section —
+ * emotion classification piggybacks on the existing intent line.
+ */
 export interface SendResult {
   intent: UserIntent
+  /**
+   * Emotional tone of the user's turn. Fixed vocabulary:
+   * neutral, excited, frustrated, curious, anxious, confident, hesitant, reflective.
+   * Defaults to 'neutral' if the LLM doesn't provide one.
+   */
+  emotion: UserEmotion
   topic: string
   /** What to say to the user. Null only when requesting a search (response not ready yet). */
   response: string | null
@@ -64,7 +86,8 @@ export interface Sys1Transport {
 
 // ─── Section Parser ──────────────────────────────────────────────────
 
-const VALID_INTENTS: UserIntent[] = ['ASSERT', 'QUERY', 'CORRECT', 'EXPLORE', 'COMMAND', 'SOCIAL']
+const VALID_INTENTS: UserIntent[] = ['assert', 'query', 'correct', 'explore', 'command', 'social']
+const VALID_EMOTIONS: UserEmotion[] = ['neutral', 'excited', 'frustrated', 'curious', 'anxious', 'confident', 'hesitant', 'reflective']
 const SECTION_KEYS = new Set(['intent', 'response', 'topic', 'search'])
 
 /**
@@ -145,12 +168,14 @@ function parseSysIResponse(raw: string): Omit<SendResult, 'chatUrl'> {
   if (Object.keys(sections).length === 0) {
     log.warn('SYS-I: no sections found, treating as plain response')
     const text = raw.trim()
-    return { intent: 'ASSERT', topic: 'general', response: text, question: text, search: null }
+    return { intent: 'assert', emotion: 'neutral', topic: 'general', response: text, question: text, search: null }
   }
 
-  // Intent
-  const intentRaw = sections['intent']?.split('\n')[0].trim().toUpperCase() as UserIntent
-  const intent: UserIntent = VALID_INTENTS.includes(intentRaw) ? intentRaw : 'ASSERT'
+  // Intent + Emotion — parsed from "INTENT:EMOTION" format (e.g., "ASSERT:curious")
+  // Backward compatible: if no colon, emotion defaults to 'neutral'.
+  // This format was chosen to avoid adding another output section to the prompt.
+  const intentLine = sections['intent']?.split('\n')[0].trim() ?? ''
+  const { intent, emotion } = parseIntentEmotion(intentLine)
 
   // Topic
   const topic = sections['topic']?.split('\n')[0].trim() || 'general'
@@ -158,10 +183,36 @@ function parseSysIResponse(raw: string): Omit<SendResult, 'chatUrl'> {
   // Response
   const response = sections['response'] ?? null
 
-  // Question — derive from response for ASSERT/EXPLORE; null otherwise
-  const question = (intent === 'ASSERT' || intent === 'EXPLORE') ? response : null
+  // Question — derive from response for assert/explore; null otherwise
+  const question = (intent === 'assert' || intent === 'explore') ? response : null
 
-  return { intent, topic, response, question, search }
+  return { intent, emotion, topic, response, question, search }
+}
+
+/**
+ * Parse the combined "intent:emotion" string.
+ *
+ * Expected format: "assert:curious", "query:neutral", etc.
+ * Handles edge cases:
+ *   - Missing emotion → defaults to 'neutral'
+ *   - Invalid intent → defaults to 'assert'
+ *   - Invalid emotion → defaults to 'neutral'
+ *   - Legacy format (just "assert") → emotion = 'neutral'
+ *
+ * Both parts use fixed vocabularies to prevent free-form LLM output
+ * from polluting the classification. If the LLM writes something
+ * outside the vocabulary, we fall back to safe defaults.
+ */
+function parseIntentEmotion(raw: string): { intent: UserIntent; emotion: UserEmotion } {
+  const parts = raw.split(':')
+  // Both intent and emotion are normalized to lowercase for uniform storage
+  const intentStr = (parts[0] ?? '').trim().toLowerCase() as UserIntent
+  const emotionStr = (parts[1] ?? '').trim().toLowerCase() as UserEmotion
+
+  const intent: UserIntent = VALID_INTENTS.includes(intentStr) ? intentStr : 'assert'
+  const emotion: UserEmotion = VALID_EMOTIONS.includes(emotionStr) ? emotionStr : 'neutral'
+
+  return { intent, emotion }
 }
 
 // ─── ChatGPT Transport (via Chrome Extension) ──────────────────────

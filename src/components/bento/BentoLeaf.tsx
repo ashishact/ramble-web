@@ -51,7 +51,6 @@ const WIDGET_OPTIONS: { type: WidgetType; label: string; icon: React.ReactNode; 
     { type: 'knowledge-map', label: 'Knowledge Map', icon: <Compass size={16} />, color: 'emerald', category: 'Knowledge' },
     // Tools
     { type: 'settings', label: 'Settings', icon: <Settings size={16} />, color: 'slate', category: 'Tools' },
-    { type: 'tree-dev-tools', label: 'Tree Dev Tools', icon: <FlaskConical size={16} />, color: 'stone', category: 'Tools' },
     { type: 'pipeline-monitor', label: 'Pipeline Monitor', icon: <Activity size={16} />, color: 'zinc', category: 'Tools' },
     { type: 'llm-dashboard', label: 'LLM Dashboard', icon: <DollarSign size={16} />, color: 'neutral', category: 'Tools' },
     { type: 'embedding-test', label: 'Embedding Test', icon: <FlaskConical size={16} />, color: 'violet', category: 'Tools' },

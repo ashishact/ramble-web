@@ -11,61 +11,11 @@
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export type LogModule =
-  | 'Store'
   | 'Pipeline'
-  | 'Extractor'
-  | 'Queue'
-  | 'Observer'
-  | 'Chain'
-  | 'Goal'
   | 'Kernel'
-  | 'API'
-  | 'ConcernObserver'
-  | 'GoalObserver'
-  | 'NarrativeObserver'
-  | 'RelationshipObserver'
-  | 'ConsolidationObserver'
   | 'Consolidation'
-  | 'CorrectionParser'
-  | 'CorrectionApplier'
-  | 'CorrectionService'
-  | 'MemoryService'
-  | 'DecayHandler'
-  | 'Migration'
-  | 'Sync'
-  | 'TinyBaseExport'
-  | 'WatermelonImport'
-  | 'ConversationProcessor'
-  | 'SearchService'
-  | 'SessionManager'
-  | 'PrimitivePipeline'
-  | 'ClaimDeriver'
-  // Event-driven pipeline modules
-  | 'EventBus'
-  | 'EventLoop'
-  | 'PreprocessHandler'
-  | 'ExtractPrimitivesHandler'
-  | 'ResolveAndDeriveHandler'
-  | 'NonLLMObserversHandler'
-  | 'LLMObserversHandler'
-  // Queue-based pipeline
-  | 'PipelineQueue'
-  | 'UnitPipeline'
-  // Unified pipeline (v7)
   | 'RecordingManager'
   | 'FileUpload'
-  | 'MemoryDedup'
-  // Knowledge tree
-  | 'TreeCuration'
-  | 'TreeEditor'
-  | 'TreeEditorCtx'
-  // Timeline extraction
-  | 'TimelineExtractor'
-  // Entity resolution
-  | 'EntityResolver'
-  | 'EntityMerge'
-  // DB stores
-  | 'KnowledgeNodeStore'
   // Knowledge graph
   | 'SinglePassProcessor'
   | 'IdleScheduler'
@@ -76,7 +26,11 @@ export type LogModule =
   | 'ExtractionEngine'
   | 'PeriodScheduler'
   // Backup
-  | 'Backup';
+  | 'Backup'
+  // Ontology system
+  | 'OntologyStore'
+  | 'OntologyInstaller'
+  | 'OntologyNavigator';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -95,60 +49,11 @@ const LOG_STYLES: Record<LogLevel, string> = {
 };
 
 const MODULE_COLORS: Record<LogModule, string> = {
-  Store: '#4CAF50',
   Pipeline: '#9C27B0',
-  Extractor: '#FF5722',
-  Queue: '#00BCD4',
-  Observer: '#E91E63',
-  Chain: '#3F51B5',
-  Goal: '#8BC34A',
   Kernel: '#607D8B',
-  API: '#FFC107',
-  ConcernObserver: '#E91E63',
-  GoalObserver: '#8BC34A',
-  NarrativeObserver: '#9C27B0',
-  RelationshipObserver: '#00BCD4',
-  ConsolidationObserver: '#607D8B',
   Consolidation: '#546E7A',
-  CorrectionParser: '#FF9800',
-  CorrectionApplier: '#FF9800',
-  CorrectionService: '#FF9800',
-  MemoryService: '#2196F3',
-  DecayHandler: '#607D8B',
-  Migration: '#9E9E9E',
-  Sync: '#00BCD4',
-  TinyBaseExport: '#9E9E9E',
-  WatermelonImport: '#9E9E9E',
-  ConversationProcessor: '#9C27B0',
-  SearchService: '#2196F3',
-  SessionManager: '#607D8B',
-  PrimitivePipeline: '#4CAF50',
-  ClaimDeriver: '#9C27B0',
-  // Event-driven pipeline modules
-  EventBus: '#00BCD4',
-  EventLoop: '#00BCD4',
-  PreprocessHandler: '#9C27B0',
-  ExtractPrimitivesHandler: '#FF5722',
-  ResolveAndDeriveHandler: '#4CAF50',
-  NonLLMObserversHandler: '#E91E63',
-  LLMObserversHandler: '#E91E63',
-  // Queue-based pipeline
-  PipelineQueue: '#00BCD4',
-  UnitPipeline: '#9C27B0',
-  // Unified pipeline (v7)
   RecordingManager: '#009688',
   FileUpload: '#795548',
-  MemoryDedup: '#FF5722',
-  TreeCuration: '#4DB6AC',
-  TreeEditor: '#26A69A',
-  TreeEditorCtx: '#26A69A',
-  TimelineExtractor: '#FF7043',
-  // Entity resolution
-  EntityResolver: '#AB47BC',
-  EntityMerge: '#AB47BC',
-  // DB stores
-  KnowledgeNodeStore: '#78909C',
-  // Knowledge Graph
   SinglePassProcessor: '#7C4DFF',
   IdleScheduler: '#78909C',
   Sys1Engine: '#E91E63',
@@ -156,6 +61,9 @@ const MODULE_COLORS: Record<LogModule, string> = {
   ExtractionEngine: '#00BCD4',
   PeriodScheduler: '#00897B',
   Backup: '#6D4C41',
+  OntologyStore: '#00897B',
+  OntologyInstaller: '#00897B',
+  OntologyNavigator: '#26A69A',
 };
 
 interface LogConfig {
@@ -268,21 +176,18 @@ export function setLogLevel(module: LogModule, level: LogLevel): void {
 export function enableDebugLogging(): void {
   const config: LogConfig = {};
   const modules: LogModule[] = [
-    'Store',
     'Pipeline',
-    'Extractor',
-    'Queue',
-    'Observer',
-    'Chain',
-    'Goal',
     'Kernel',
-    'API',
-    'ConcernObserver',
-    'GoalObserver',
-    'NarrativeObserver',
-    'RelationshipObserver',
-    'ConsolidationObserver',
     'Consolidation',
+    'RecordingManager',
+    'FileUpload',
+    'SinglePassProcessor',
+    'IdleScheduler',
+    'Sys1Engine',
+    'Sys1Transport',
+    'ExtractionEngine',
+    'PeriodScheduler',
+    'Backup',
   ];
   for (const module of modules) {
     config[module] = 'debug';

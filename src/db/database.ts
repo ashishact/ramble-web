@@ -1,15 +1,28 @@
 /**
  * WatermelonDB Database Initialization
  *
- * Core Loop Architecture - Profile-based database isolation
- * Each profile gets its own database for complete data isolation.
+ * Minimal skeleton — kept for future use.
+ * Data lives in DuckDB; WatermelonDB is initialized with
+ * a single placeholder table so the library stays functional.
  */
 
 import { Database } from '@nozbe/watermelondb'
 import LokiJSAdapter from '@nozbe/watermelondb/adapters/lokijs'
-import { schema, migrations } from './schema'
-import * as models from './models'
+import { appSchema, tableSchema } from '@nozbe/watermelondb'
 import { getCurrentProfile, getDatabaseName } from '../lib/profile'
+
+// Minimal schema — one placeholder table
+const schema = appSchema({
+  version: 1,
+  tables: [
+    tableSchema({
+      name: '_placeholder',
+      columns: [
+        { name: 'created_at', type: 'number' },
+      ],
+    }),
+  ],
+})
 
 // Current database instance
 let currentDatabase: Database | null = null
@@ -30,7 +43,6 @@ export function initializeDatabase(profile?: string): Database {
   // Create new adapter and database for this profile
   const adapter = new LokiJSAdapter({
     schema,
-    migrations,
     useWebWorker: false,
     useIncrementalIndexedDB: true,
     dbName,
@@ -38,7 +50,7 @@ export function initializeDatabase(profile?: string): Database {
 
   currentDatabase = new Database({
     adapter,
-    modelClasses: Object.values(models),
+    modelClasses: [],
   })
 
   currentProfile = targetProfile
@@ -64,39 +76,4 @@ export function getDatabase(): Database {
  */
 export function getActiveProfile(): string {
   return currentProfile ?? getCurrentProfile()
-}
-
-// Export database getter (lazy initialization)
-export const database = new Proxy({} as Database, {
-  get(_, prop) {
-    const db = getDatabase()
-    return (db as unknown as Record<string | symbol, unknown>)[prop]
-  }
-})
-
-// Export collections (lazy, uses current database)
-export const collections = {
-  get sessions() { return getDatabase().get('sessions') },
-  get conversations() { return getDatabase().get('conversations') },
-  get tasks() { return getDatabase().get('tasks') },
-  get entities() { return getDatabase().get('entities') },
-  get topics() { return getDatabase().get('topics') },
-  get memories() { return getDatabase().get('memories') },
-  get goals() { return getDatabase().get('goals') },
-  get plugins() { return getDatabase().get('plugins') },
-  get corrections() { return getDatabase().get('corrections') },
-  get learnedCorrections() { return getDatabase().get('learned_corrections') },
-  get extractionLogs() { return getDatabase().get('extraction_logs') },
-  get data() { return getDatabase().get('data') },
-  get widgetRecords() { return getDatabase().get('widget_records') },
-  get recordings() { return getDatabase().get('recordings') },
-  get uploadedFiles() { return getDatabase().get('uploaded_files') },
-  get knowledgeNodes() { return getDatabase().get('knowledge_nodes') },
-  get entityCooccurrences() { return getDatabase().get('entity_cooccurrences') },
-  get timelineEvents() { return getDatabase().get('timeline_events') },
-}
-
-// Type-safe collection getters
-export function getCollection<T extends keyof typeof collections>(name: T) {
-  return collections[name]
 }
