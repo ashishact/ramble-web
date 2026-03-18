@@ -25,6 +25,7 @@
 import type { GraphService } from '../GraphService'
 import type { EmbeddingService } from './EmbeddingService'
 import type { GraphNode } from '../types'
+import { rerankSearchResults, type RerankOptions } from './rerank'
 
 export interface VectorSearchResult {
   node: GraphNode
@@ -114,15 +115,30 @@ export class VectorSearch {
   }
 
   /**
-   * Search by text query — embeds the query string, then finds similar nodes.
+   * Search by text query — embeds the query, finds similar nodes, then
+   * re-ranks with BM25 to filter out semantic false positives.
+   *
+   * Over-fetches from the vector index (2x limit) to give the re-ranker
+   * enough candidates, then returns the top `limit` after fusion scoring.
+   *
+   * Pass rerank: false to skip re-ranking (raw semantic order).
    */
   async searchByText(
     query: string,
     limit = 10,
-    labelFilter?: string
+    labelFilter?: string,
+    options?: { rerank?: boolean, rerankOptions?: RerankOptions },
   ): Promise<VectorSearchResult[]> {
     const queryVector = await this.embeddings.embed(query)
-    return this.findSimilar(queryVector, limit, labelFilter)
+
+    if (options?.rerank === false) {
+      return this.findSimilar(queryVector, limit, labelFilter)
+    }
+
+    // Over-fetch to give re-ranker enough candidates
+    const candidates = await this.findSimilar(queryVector, limit * 2, labelFilter)
+    const ranked = rerankSearchResults(query, candidates, options?.rerankOptions)
+    return ranked.slice(0, limit)
   }
 
   /**

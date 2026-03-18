@@ -205,33 +205,19 @@ function parseExtractionResponse(raw: string): ExtractionLLMResponse {
   return empty
 }
 
-// ── Graph Search (same as SYS-I) ─────────────────────────────────────
+// ── Graph Search (shared pipeline: BM25 re-rank + broaden + enrich) ──
 
 async function runGraphSearch(req: ExtractionSearchRequest): Promise<string> {
   try {
-    const [{ getGraphService }, { EmbeddingService }, { VectorSearch }] = await Promise.all([
+    const [{ getGraphService }, { EmbeddingService }, { searchAndEnrich }] = await Promise.all([
       import('../../graph'),
       import('../../graph/embeddings/EmbeddingService'),
-      import('../../graph/embeddings/VectorSearch'),
+      import('../../graph/embeddings/searchAndEnrich'),
     ])
 
     const graph = await getGraphService()
     const embeddings = new EmbeddingService(graph)
-    const vs = new VectorSearch(graph, embeddings)
-
-    const labelFilter = req.type === 'entity' ? 'entity'
-      : req.type === 'goal' ? 'goal'
-      : 'memory'
-
-    const results = await vs.searchByText(req.query, 8, labelFilter)
-
-    if (results.length === 0) return `No ${req.type} results found for: "${req.query}"`
-
-    return results.map(r => {
-      const props = r.node.properties as Record<string, unknown>
-      const content = props.content ?? props.name ?? props.title ?? r.node.id
-      return `[${req.type}] ${String(content)} (relevance: ${r.similarity.toFixed(2)})`
-    }).join('\n')
+    return await searchAndEnrich(req, graph, embeddings, 8)
   } catch (err) {
     log.warn('Graph search failed:', err)
     return 'Search unavailable.'
