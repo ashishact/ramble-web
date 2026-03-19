@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { nid } from '../../../program/utils/id';
 import { eventBus } from '../../../lib/eventBus';
 import { profileStorage } from '../../../lib/profileStorage';
 import { useWidgetPause } from '../useWidgetPause';
@@ -96,7 +97,7 @@ export function GoogleSearchWidget({ nodeId }: { nodeId: string }) {
   const fireSearch = useCallback((q: string, auto = false) => {
     if (!q.trim() || loading) return;
 
-    const requestId = `gs_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const requestId = nid.request();
     pendingRequestRef.current = requestId;
     setLoading(true);
     setError(null);

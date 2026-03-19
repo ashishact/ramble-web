@@ -86,7 +86,9 @@ Confidence scale: 0.3–0.5 for first extraction. The system will increase confi
 ## When You Need Graph Context
 If a conversation references something (person, project, topic) that you need prior context on, set search:
   { "query": "what to look up", "type": "entity" | "memory" | "goal" }
-and return partial results. After receiving <search-res>...</search-res>, complete the extraction.
+Optional "limit": int, default 2 — max results to return.
+Optional "relevance": 0-1, default 0.6 — min score cutoff. Higher (0.7-0.8) for precise lookups, lower (0.4-0.5) for exploratory.
+After receiving <search-res>...</search-res>, complete the extraction.
 
 ## Compaction
 At the end, write a compaction (150–200 words) that captures:

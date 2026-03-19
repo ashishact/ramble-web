@@ -7,13 +7,7 @@
 
 import type { GraphNode, EntityProperties } from '../types'
 import type { ReactiveGraphService } from '../reactive/ReactiveGraphService'
-
-let idCounter = 0
-
-function generateId(): string {
-  idCounter++
-  return `ent_${Date.now()}_${idCounter}`
-}
+import { nid } from '../../program/utils/id'
 
 export class EntityStore {
   private graph: ReactiveGraphService
@@ -28,7 +22,7 @@ export class EntityStore {
     aliases?: string[]
     description?: string
   }): Promise<{ id: string } & EntityProperties> {
-    const id = generateId()
+    const id = nid.entity()
     const now = Date.now()
     const props: EntityProperties = {
       name: data.name,

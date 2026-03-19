@@ -8,6 +8,7 @@
 import { getGraphService } from '../index'
 import { graphEventBus } from '../events'
 import type { GraphConversation } from '../types'
+import { nid } from '../../program/utils/id'
 
 async function getGraph() {
   return getGraphService()
@@ -37,7 +38,7 @@ export const conversationStore = {
   }): Promise<GraphConversation> {
     const graph = await getGraph()
     const now = Date.now()
-    const id = crypto.randomUUID()
+    const id = nid.conversation()
     const conv: GraphConversation = {
       id,
       session_id: input.sessionId,

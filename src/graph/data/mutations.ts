@@ -20,6 +20,7 @@ import { ReactiveGraphService } from '../reactive/ReactiveGraphService'
 import { getGraphService } from '../index'
 import { graphEventBus } from '../events'
 import type { GraphNode, GraphEdge } from '../types'
+import { nid } from '../../program/utils/id'
 
 // ============================================================================
 // Singleton ReactiveGraphService
@@ -39,8 +40,9 @@ async function getReactive(): Promise<ReactiveGraphService> {
 // Node Mutations
 // ============================================================================
 
+/** Generate a generic graph ID. Callers with a known type should use nid.entity() etc. */
 function generateId(): string {
-  return crypto.randomUUID()
+  return nid('n')
 }
 
 /**

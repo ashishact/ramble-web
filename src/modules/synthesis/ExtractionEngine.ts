@@ -20,7 +20,9 @@
 
 import { profileStorage } from '../../lib/profileStorage'
 import { createLogger } from '../../program/utils/logger'
-import { callLLM } from '../../program/llmClient'
+import { nid } from '../../program/utils/id'
+import { generateText, type ModelMessage } from 'ai'
+import { models } from '../../services/aiProviders'
 import { rambleExt } from '../chrome-extension'
 import { buildSys2Prompt } from './prompt'
 import { periodMs, periodKey, dateStr } from './periodUtils'
@@ -217,7 +219,7 @@ async function runGraphSearch(req: ExtractionSearchRequest): Promise<string> {
 
     const graph = await getGraphService()
     const embeddings = new EmbeddingService(graph)
-    return await searchAndEnrich(req, graph, embeddings, 8)
+    return await searchAndEnrich(req, graph, embeddings)
   } catch (err) {
     log.warn('Graph search failed:', err)
     return 'Search unavailable.'
@@ -237,10 +239,6 @@ async function writeNodesToGraph(
   const graph = await getGraphService()
 
   const now = Date.now()
-  let entityCount = 0
-  let memoryCount = 0
-  let goalCount = 0
-  let topicCount = 0
   let relationshipCount = 0
 
   // Case-insensitive entity name → node ID map (for resolving relationship edges)
@@ -248,7 +246,7 @@ async function writeNodesToGraph(
 
   // Write entities
   for (const e of result.entities) {
-    const id = `ent_${now}_${++entityCount}_${Math.random().toString(36).slice(2, 5)}`
+    const id = nid.entity()
     const sourceCids = (e.sourceIndices ?? [])
       .map(i => conversationIds[i])
       .filter(Boolean)
@@ -290,7 +288,7 @@ async function writeNodesToGraph(
   // Write memories
   const memoryIds: Array<{ id: string; relatedEntityNames: string[] }> = []
   for (const m of result.memories) {
-    const id = `mem_${now}_${++memoryCount}_${Math.random().toString(36).slice(2, 5)}`
+    const id = nid.memory()
     const sourceCids = (m.sourceIndices ?? [])
       .map(i => conversationIds[i])
       .filter(Boolean)
@@ -327,7 +325,7 @@ async function writeNodesToGraph(
 
   // Write goals
   for (const g of result.goals) {
-    const id = `goal_${now}_${++goalCount}_${Math.random().toString(36).slice(2, 5)}`
+    const id = nid.goal()
     const sourceCids = (g.sourceIndices ?? [])
       .map(i => conversationIds[i])
       .filter(Boolean)
@@ -359,7 +357,7 @@ async function writeNodesToGraph(
 
   // Write topics
   for (const t of result.topics) {
-    const id = `topic_${now}_${++topicCount}_${Math.random().toString(36).slice(2, 5)}`
+    const id = nid.topic()
     const sourceCids = (t.sourceIndices ?? [])
       .map(i => conversationIds[i])
       .filter(Boolean)
@@ -395,7 +393,7 @@ async function writeNodesToGraph(
       continue
     }
 
-    const edgeId = `edge_${now}_${++relationshipCount}_${Math.random().toString(36).slice(2, 5)}`
+    const edgeId = nid.edge()
     await graph.createEdge({
       id: edgeId,
       branchId,
@@ -408,6 +406,7 @@ async function writeNodesToGraph(
         extractionPeriodKey: pKey,
       },
     })
+    relationshipCount++
   }
 
   // ── Write ABOUT edges from memory → related entities ───────────────
@@ -416,7 +415,7 @@ async function writeNodesToGraph(
       const entityId = entityNameToId.get(entityName.toLowerCase())
       if (!entityId) continue
 
-      const edgeId = `edge_${now}_${++relationshipCount}_${Math.random().toString(36).slice(2, 5)}`
+      const edgeId = nid.edge()
       await graph.createEdge({
         id: edgeId,
         branchId,
@@ -427,14 +426,15 @@ async function writeNodesToGraph(
           extractionPeriodKey: pKey,
         },
       })
+      relationshipCount++
     }
   }
 
   return {
-    entities: entityCount,
-    memories: memoryCount,
-    goals: goalCount,
-    topics: topicCount,
+    entities: result.entities.length,
+    memories: result.memories.length,
+    goals: result.goals.length,
+    topics: result.topics.length,
     relationships: relationshipCount,
   }
 }
@@ -543,7 +543,7 @@ export class ExtractionEngine {
       }
 
       // ── Create new draft branch ──────────────────────────────────
-      const branchId = `branch_ext_${pKey}_${Date.now()}`
+      const branchId = nid.branch()
       await graph.exec(
         `INSERT INTO branches (id, name, parent_branch_id, created_at, status)
          VALUES ($1, $2, 'global', $3, 'active')`,
@@ -581,7 +581,7 @@ export class ExtractionEngine {
           // We just open the tab and scrape the last assistant message — zero LLM calls.
           progress(`Resuming from previous ChatGPT session: ${resumeChatUrl}`)
 
-          const sessionId = resumeSessionId ?? `sys2-${pKey}-resume-${Date.now()}`
+          const sessionId = resumeSessionId ?? nid.chat()
           state.chatSessionId = sessionId
           await savePeriodState(state)
 
@@ -610,7 +610,7 @@ export class ExtractionEngine {
 
         } else {
           // ── Normal: new ChatGPT session ──
-          const sessionId = `sys2-${pKey}-${Date.now()}`
+          const sessionId = nid.chat()
           state.chatSessionId = sessionId
           await savePeriodState(state)
 
@@ -646,9 +646,9 @@ export class ExtractionEngine {
 
             response = await rambleExt.aiConversation({
               conversationId: sessionId,
-              prompt: `<search-res>\n${searchText}\n</search-res>`,
+              prompt: `[Auto search results — not user speech. Use this context to complete extraction.]\n<search-res>\n${searchText}\n</search-res>`,
               chatUrl: state.chatUrl ?? undefined,
-              tabMode: 'new',
+              tabMode: 'reuse',
             })
 
             if (response.chatUrl && response.chatUrl !== state.chatUrl) {
@@ -661,32 +661,42 @@ export class ExtractionEngine {
           }
         }
       } else {
-        // ── Direct LLM API (Cloudflare Gateway) ──
-        progress('Sending to LLM API...')
-        let llmResponse = await callLLM({
-          tier: 'large',
-          prompt,
-          systemPrompt,
-          category: 'sys2-extraction',
+        // ── AI SDK multi-turn conversation (proxy → provider API) ──
+        // System prompt is passed as a top-level parameter, NOT in the messages
+        // array. The Google provider converts this to `systemInstruction` —
+        // pushing it into messages[] silently drops it for some providers.
+        progress('Sending to AI SDK (Gemini)...')
+
+        const messages: ModelMessage[] = [
+          { role: 'user', content: prompt },
+        ]
+
+        let result = await generateText({
+          model: models.medium,
+          system: systemPrompt,
+          messages,
         })
 
-        extracted = parseExtractionResponse(llmResponse.content)
+        messages.push({ role: 'assistant', content: result.text })
+        extracted = parseExtractionResponse(result.text)
 
-        // Search round-trips
+        // Search round-trips (same logic as ChatGPT path)
         let searchRounds = 0
         while (extracted.search && searchRounds < MAX_SEARCH_ROUNDS) {
           progress(`LLM requesting search: ${extracted.search.type} → "${extracted.search.query}"`)
           const searchText = await runGraphSearch(extracted.search)
           progress(`Search returned ${searchText.split('\n').length} results`)
 
-          llmResponse = await callLLM({
-            tier: 'large',
-            prompt: `<search-res>\n${searchText}\n</search-res>`,
-            systemPrompt,
-            category: 'sys2-extraction-search',
+          messages.push({ role: 'user', content: `[Auto search results — not user speech. Use this context to complete extraction.]\n<search-res>\n${searchText}\n</search-res>` })
+
+          result = await generateText({
+            model: models.medium,
+            system: systemPrompt,
+            messages,
           })
 
-          extracted = parseExtractionResponse(llmResponse.content)
+          messages.push({ role: 'assistant', content: result.text })
+          extracted = parseExtractionResponse(result.text)
           searchRounds++
         }
       }

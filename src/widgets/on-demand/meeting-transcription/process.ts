@@ -11,8 +11,8 @@
  * The user is typically in another app while this runs.
  *
  * Trigger cadence:
- *   - Main loop: every 8s minimum (LLM_THROTTLE_MS), or when MIN_ACCUMULATED_CHARS
- *     is reached (80 chars), or after STALE_TEXT_TIMEOUT_MS silence (20s).
+ *   - Main loop: every 30s minimum (LLM_THROTTLE_MS), or when MIN_ACCUMULATED_CHARS
+ *     is reached (400 chars), or after STALE_TEXT_TIMEOUT_MS silence (45s).
  *   - End-of-meeting: generateMeetingEndSummary() fires once after recording ends
  *     (the designated slot for post-meeting batch features: title, decisions, etc.)
  *
@@ -55,6 +55,7 @@
  */
 
 import { z } from 'zod';
+import { nid } from '../../../program/utils/id';
 import { callLLM } from '../../../program/llmClient';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
 import { profileStorage } from '../../../lib/profileStorage';
@@ -72,13 +73,17 @@ const MEETING_WIDGET_TYPE = 'meeting';
 const MEETING_SUBTYPE_ACTIVE = 'active';
 const MEETING_SUBTYPE_ARCHIVE = 'archive';
 
-/** Min chars accumulated since last LLM call before we bother calling again */
-export const MIN_ACCUMULATED_CHARS = 80;
+/** Min chars accumulated since last LLM call before we bother calling again.
+ * Set high (400) because real-time meeting results aren't critical — better to
+ * accumulate a meaningful chunk before spending an LLM call. */
+export const MIN_ACCUMULATED_CHARS = 400;
 
-/** After this ms of silence, fire LLM even if accumulated text is short */
-export const STALE_TEXT_TIMEOUT_MS = 20_000;
+/** After this ms of silence, fire LLM even if accumulated text is short.
+ * 45s gives the speaker time to pause without wasting an LLM call on fragments. */
+export const STALE_TEXT_TIMEOUT_MS = 45_000;
 
-const LLM_THROTTLE_MS = 8_000;
+/** Minimum ms between LLM calls (even when MIN_ACCUMULATED_CHARS is reached). */
+const LLM_THROTTLE_MS = 30_000;
 const MAX_HISTORY = 20;
 const MAX_ARCHIVE = 50;
 const LLM_HISTORY_WINDOW = 8;
@@ -147,6 +152,13 @@ export interface TalkTime {
   systemMs: number;
 }
 
+/** A ~2s speaker-check within a single transcription segment */
+export interface SpeakerTimelineEntry {
+  timestampMs: number;
+  speakerIndex: number;
+  durationMs: number;
+}
+
 export interface FeedEntry {
   id: string;
   text: string;
@@ -154,6 +166,8 @@ export interface FeedEntry {
   ts: number;
   /** Speaker index from native diarization (0, 1, 2...). Undefined when not available. */
   speakerIndex?: number;
+  /** Per-~2s speaker attribution within this segment. Null/absent in solo mode. */
+  speakerTimeline?: SpeakerTimelineEntry[];
 }
 
 export interface HistorySegment {
@@ -235,12 +249,19 @@ const SummaryTreeSchema = z.object({
   now: SummaryLevelSchema,
 });
 
+const SpeakerTimelineEntrySchema = z.object({
+  timestampMs: z.number(),
+  speakerIndex: z.number(),
+  durationMs: z.number(),
+});
+
 const FeedEntrySchema = z.object({
   id: z.string(),
   text: z.string(),
   audioType: z.enum(['mic', 'system']),
   ts: z.number(),
   speakerIndex: z.number().optional(),
+  speakerTimeline: z.array(SpeakerTimelineEntrySchema).optional(),
 });
 
 const HistorySegmentSchema = z.object({
@@ -756,7 +777,7 @@ export async function processMeetingUpdate(
               newActionItems = [
                 ...newActionItems,
                 {
-                  id: `ai-${now}-${Math.random().toString(36).slice(2, 7)}`,
+                  id: nid('ai'),
                   text: item.text.trim(),
                   owner: typeof item.owner === 'string' && item.owner.trim() ? item.owner.trim() : undefined,
                   deadline: typeof item.deadline === 'string' && item.deadline.trim() ? item.deadline.trim() : undefined,

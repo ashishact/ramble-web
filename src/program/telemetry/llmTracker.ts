@@ -65,9 +65,10 @@ let cachedSnapshot: LLMUsageSnapshot | null = null
 // ID Generation
 // ============================================================================
 
-let _counter = 0
+import { nid } from '../utils/id'
+
 function nextId(): string {
-  return `llm_${Date.now()}_${++_counter}`
+  return nid.llm()
 }
 
 // ============================================================================

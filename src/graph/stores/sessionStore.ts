@@ -3,9 +3,7 @@
  */
 
 import type { ReactiveGraphService } from '../reactive/ReactiveGraphService'
-
-let idCounter = 0
-function generateId(): string { return `sess_${Date.now()}_${++idCounter}` }
+import { nid } from '../../program/utils/id'
 
 export class SessionStore {
   private graph: ReactiveGraphService
@@ -15,7 +13,7 @@ export class SessionStore {
   }
 
   async create(): Promise<{ id: string; startedAt: number }> {
-    const id = generateId()
+    const id = nid.session()
     const now = Date.now()
     await this.graph.createNode({
       id,

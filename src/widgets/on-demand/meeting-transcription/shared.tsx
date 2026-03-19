@@ -3,7 +3,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { type FeedEntry } from './process';
+import { type FeedEntry, type SpeakerTimelineEntry } from './process';
 
 // ============================================================================
 // Speaker color palette — maximally distinct colors per speaker index
@@ -62,6 +62,45 @@ export function formatDurationBetween(startedAt: number, endedAt: number): strin
 }
 
 // ============================================================================
+// Speaker timeline bar — compact colored bar showing speaker transitions
+// ============================================================================
+
+/** Thin inline bar showing proportional speaker blocks within a segment */
+function SpeakerTimelineBar({
+  timeline,
+  speakerNames,
+  audioType,
+}: {
+  timeline: SpeakerTimelineEntry[];
+  speakerNames?: Record<string, string>;
+  audioType: 'mic' | 'system';
+}) {
+  const totalMs = timeline.reduce((sum, t) => sum + t.durationMs, 0);
+  if (totalMs === 0) return null;
+
+  const sourceLabel = audioType === 'mic' ? 'mic' : 'sys';
+
+  return (
+    <span className="inline-flex items-center gap-px h-[5px] w-10 rounded-sm overflow-hidden" title="Speaker timeline">
+      {timeline.map((t, i) => {
+        const color = speakerColor(t.speakerIndex);
+        const widthPct = (t.durationMs / totalMs) * 100;
+        const key = `${sourceLabel}:${t.speakerIndex}`;
+        const name = speakerNames?.[key] || `S${t.speakerIndex}`;
+        return (
+          <span
+            key={i}
+            className={`${color.dot} h-full flex-shrink-0`}
+            style={{ width: `${widthPct}%`, minWidth: '2px' }}
+            title={`${name}: ${(t.durationMs / 1000).toFixed(1)}s`}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+// ============================================================================
 // Feed table — proper table layout so columns always align
 // ============================================================================
 
@@ -89,6 +128,11 @@ export function FeedTable({
           const speakerName = speakerKey && speakerNames?.[speakerKey];
           const speakerLabel = hasSpeaker ? (speakerName || `S${entry.speakerIndex}`) : null;
 
+          // Show timeline bar when multiple distinct speakers are present
+          const timeline = entry.speakerTimeline;
+          const hasMultiSpeaker = timeline && timeline.length > 1
+            && new Set(timeline.map(t => t.speakerIndex)).size > 1;
+
           return (
             <tr key={entry.id} className={`align-top ${i % 2 === 1 ? 'bg-base-200/30' : ''}`}>
               <td className="text-[9px] text-base-content/25 font-mono tabular-nums whitespace-nowrap pr-1.5 py-[2px]">
@@ -103,9 +147,15 @@ export function FeedTable({
                 </span>
               </td>
               <td className="text-[8px] font-semibold whitespace-nowrap pr-1.5 py-[2px]">
-                {speakerLabel && (
+                {hasMultiSpeaker ? (
+                  <SpeakerTimelineBar
+                    timeline={timeline}
+                    speakerNames={speakerNames}
+                    audioType={entry.audioType}
+                  />
+                ) : speakerLabel ? (
                   <span className={color.text}>{speakerLabel}</span>
-                )}
+                ) : null}
               </td>
               <td className="text-[10px] font-mono text-base-content/70 leading-[1.4] py-[2px]">
                 {entry.text}

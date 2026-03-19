@@ -44,6 +44,8 @@
  */
 
 import { eventBus } from '../../lib/eventBus';
+import { getNativeEnabled } from '../../lib/serviceToggles';
+import { nid } from '../../program/utils/id';
 
 // Ramble native app states
 // 'enhancing' = native app is post-processing the transcription (LLM grammar pass)
@@ -81,6 +83,8 @@ interface RambleIntermediateTextEvent {
     recordingId?: string;
     /** Speaker index in meeting mode (0, 1, 2...). Omitted in solo mode or when attribution fails. */
     speakerIndex?: number;
+    /** Per-~2s speaker attribution within this segment. Null/absent in solo mode. */
+    speakerTimeline?: Array<{ timestampMs: number; speakerIndex: number; durationMs: number }>;
   };
 }
 
@@ -263,10 +267,11 @@ class RambleNative {
   }
 
   /**
-   * Check if Ramble native app is available (connected)
+   * Check if Ramble native app is available (connected and enabled)
    * This is the main check used by other parts of the app
    */
   isRambleAvailable(): boolean {
+    if (!getNativeEnabled()) return false
     return this.isConnected;
   }
 
@@ -289,7 +294,7 @@ class RambleNative {
     }
 
     const message = {
-      id: crypto.randomUUID(),
+      id: nid.request(),
       type: 'set_mode',
       payload: { mode, ts: Date.now() },
     };
@@ -390,6 +395,7 @@ class RambleNative {
             speechEndMs: event.payload.speechEndMs,
             recordingId: event.payload.recordingId,
             speakerIndex: event.payload.speakerIndex,
+            speakerTimeline: event.payload.speakerTimeline,
           });
           break;
         }

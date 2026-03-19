@@ -38,10 +38,7 @@ const logger = createLogger('RecordingManager')
 // Maximum throughputRate to prevent Infinity from instant paste/upload
 const MAX_THROUGHPUT_RATE = 1000
 
-let nextId = 1
-function generateRecordingId(): string {
-  return `rec_${Date.now()}_${nextId++}`
-}
+import { nid } from '../utils/id'
 
 // ============================================================================
 // RecordingManager
@@ -82,7 +79,7 @@ export class RecordingManager {
     }
 
     const recording: Recording = {
-      id: generateRecordingId(),
+      id: nid.recording(),
       type,
       startedAt: Date.now(),
       audioType: options?.audioType,

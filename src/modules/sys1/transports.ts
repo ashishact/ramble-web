@@ -3,19 +3,19 @@
  *
  * Two implementations:
  * 1. ChatGPTTransport — Uses Chrome extension to pipe into ChatGPT conversation
- *    (ChatGPT maintains full conversation history natively)
- * 2. LLMApiTransport — Uses the standard callLLM() tier system
- *    (We maintain conversation history locally)
+ *    (ChatGPT maintains full conversation history natively, markdown section format)
+ * 2. APIConversationTransport — Uses AI SDK v6 streamText() for multi-turn
+ *    conversations via our proxy (JSON output format for reliable parsing)
  *
- * Both transports always return a structured SendResult parsed from markdown sections.
  * Both support injectContext() for search round-trips (LLM requests context,
  * we search the graph, inject results, LLM responds with full answer).
  */
 
 import { rambleExt } from '../chrome-extension'
-import { callLLM } from '../../program/llmClient'
-import type { LLMTier } from '../../program/types/llmTiers'
-import { SYS1_SYSTEM_PROMPT } from './prompt'
+import { streamText, type ModelMessage } from 'ai'
+import { models } from '../../services/aiProviders'
+import { SYS1_MARKDOWN_PROMPT, SYS1_JSON_PROMPT } from './prompt'
+import { eventBus } from '../../lib/eventBus'
 import { createLogger } from '../../program/utils/logger'
 
 const log = createLogger('Sys1Transport')
@@ -39,6 +39,10 @@ export type UserEmotion = 'neutral' | 'excited' | 'frustrated' | 'curious' | 'an
 export interface SysISearchRequest {
   query: string
   type: 'memory' | 'entity' | 'goal'
+  /** Max results to return (after relevance filtering). Optional, default 2 */
+  limit?: number
+  /** Minimum relevance score 0–1 — results below this are excluded. Optional, default 0.6 */
+  relevance?: number
 }
 
 /**
@@ -65,6 +69,8 @@ export interface SendResult {
   search: SysISearchRequest | null
   /** ChatGPT conversation URL (ChatGPT transport only) */
   chatUrl?: string
+  /** Raw LLM output before section parsing (for debug view) */
+  rawOutput?: string
 }
 
 // ─── Transport Interface ────────────────────────────────────────────
@@ -122,6 +128,8 @@ function parseSysIResponse(raw: string): Omit<SendResult, 'chatUrl'> {
       const parsed = JSON.parse(searchMatch[1].trim())
       if (parsed.query && ['memory', 'entity', 'goal'].includes(parsed.type)) {
         search = { type: parsed.type, query: parsed.query }
+        if (typeof parsed.limit === 'number' && parsed.limit > 0) search.limit = parsed.limit
+        if (typeof parsed.relevance === 'number' && parsed.relevance >= 0 && parsed.relevance <= 1) search.relevance = parsed.relevance
       }
     } catch {
       log.warn('SYS-I: found search section but JSON parse failed:', searchMatch[1])
@@ -215,6 +223,71 @@ function parseIntentEmotion(raw: string): { intent: UserIntent; emotion: UserEmo
   return { intent, emotion }
 }
 
+// ─── JSON Parser (API transport) ────────────────────────────────────
+
+/**
+ * Parse a JSON response from the API transport.
+ *
+ * Expected shape:
+ *   { "intent": "assert:curious", "topic": "...", "response": "...", "search": null }
+ *
+ * Fallback strategy:
+ *   1. Try JSON.parse(raw)
+ *   2. If that fails, try to extract JSON from markdown code fences (```json ... ```)
+ *   3. If that fails, treat the whole text as a plain response
+ */
+function parseJsonSysIResponse(raw: string): Omit<SendResult, 'chatUrl'> {
+  let json: Record<string, unknown> | null = null
+
+  // Attempt 1: direct parse
+  try {
+    json = JSON.parse(raw)
+  } catch {
+    // Attempt 2: extract from code fences
+    const fenceMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/)
+    if (fenceMatch) {
+      try {
+        json = JSON.parse(fenceMatch[1].trim())
+      } catch {
+        // fall through
+      }
+    }
+  }
+
+  if (!json || typeof json !== 'object') {
+    // Fallback: treat as plain response
+    log.warn('SYS-I JSON: parse failed, treating as plain response')
+    const text = raw.trim()
+    return { intent: 'assert', emotion: 'neutral', topic: 'general', response: text, question: text, search: null }
+  }
+
+  // Parse intent:emotion
+  const intentLine = typeof json.intent === 'string' ? json.intent : ''
+  const { intent, emotion } = parseIntentEmotion(intentLine)
+
+  // Topic
+  const topic = typeof json.topic === 'string' ? json.topic.trim() : 'general'
+
+  // Response
+  const response = typeof json.response === 'string' ? json.response : null
+
+  // Search
+  let search: SysISearchRequest | null = null
+  if (json.search && typeof json.search === 'object') {
+    const s = json.search as Record<string, unknown>
+    if (typeof s.query === 'string' && ['memory', 'entity', 'goal'].includes(s.type as string)) {
+      search = { query: s.query, type: s.type as SysISearchRequest['type'] }
+      if (typeof s.limit === 'number' && s.limit > 0) search.limit = s.limit
+      if (typeof s.relevance === 'number' && s.relevance >= 0 && s.relevance <= 1) search.relevance = s.relevance
+    }
+  }
+
+  // Question — derive from response for assert/explore; null otherwise
+  const question = (intent === 'assert' || intent === 'explore') ? response : null
+
+  return { intent, emotion, topic, response, question, search }
+}
+
 // ─── ChatGPT Transport (via Chrome Extension) ──────────────────────
 
 export class ChatGPTTransport implements Sys1Transport {
@@ -248,7 +321,7 @@ export class ChatGPTTransport implements Sys1Transport {
     const response = await rambleExt.aiConversation({
       conversationId: this.chatSessionId,
       prompt: userSpeech,
-      systemPrompt: this.isFirstSend ? SYS1_SYSTEM_PROMPT : undefined,
+      systemPrompt: this.isFirstSend ? SYS1_MARKDOWN_PROMPT : undefined,
       chatUrl: this.chatUrl ?? undefined,
       tabMode: 'reuse',
     })
@@ -260,6 +333,7 @@ export class ChatGPTTransport implements Sys1Transport {
     return {
       ...parseSysIResponse(raw),
       chatUrl: response.chatUrl ?? undefined,
+      rawOutput: raw,
     }
   }
 
@@ -280,6 +354,7 @@ export class ChatGPTTransport implements Sys1Transport {
     return {
       ...parseSysIResponse(raw),
       chatUrl: response.chatUrl ?? undefined,
+      rawOutput: raw,
     }
   }
 
@@ -309,107 +384,128 @@ export class ChatGPTTransport implements Sys1Transport {
   }
 }
 
-// ─── LLM API Transport (via callLLM tier system) ───────────────────
+// ─── API Conversation Transport (AI SDK v6 streamText) ──────────────
 
-interface Turn {
-  response: string
-  question: string | null
-  userSpeech: string
-}
+/**
+ * Multi-turn conversation transport using the Vercel AI SDK.
+ *
+ * Maintains a proper ModelMessage[] array and uses streamText() for
+ * real-time token streaming. Emits sys1:stream events for live UI updates.
+ *
+ * Replaces the old LLMApiTransport which stuffed history into a single prompt.
+ */
+export class APIConversationTransport implements Sys1Transport {
+  readonly name = 'API (Gemini)'
+  private messages: ModelMessage[] = []
+  private model = models.conversation
+  private abortController: AbortController | null = null
 
-export class LLMApiTransport implements Sys1Transport {
-  readonly name = 'LLM API'
-  private turns: Turn[] = []
-  private tier: LLMTier
-  /** Tracks the current in-flight user speech for search round-trips */
-  private pendingSpeech: string | null = null
-
-  constructor(tier: LLMTier = 'medium') {
-    this.tier = tier
-  }
+  /** Max conversation turns before compacting */
+  private static readonly MAX_TURNS = 30
 
   isAvailable(): boolean {
     return true
   }
 
   async send(userSpeech: string): Promise<SendResult> {
-    log.info('[LLM API] Sending:', userSpeech.slice(0, 80))
+    log.info('[API] Sending →', { len: userSpeech.length, msgCount: this.messages.length })
 
-    this.pendingSpeech = userSpeech
-    const prompt = this.buildPrompt(userSpeech)
+    this.messages.push({ role: 'user', content: userSpeech })
 
-    const response = await callLLM({
-      tier: this.tier,
-      prompt,
-      systemPrompt: SYS1_SYSTEM_PROMPT,
-      category: 'sys1',
-      options: {
-        temperature: 0.7,
-        max_tokens: 500,
-      },
-    })
-
-    const raw = response.content
-    const result = parseSysIResponse(raw)
-
-    // Only commit to turns when we have a final answer (no search pending)
-    if (!result.search) {
-      this.turns.push({ response: result.response ?? '', question: result.question ?? null, userSpeech })
-      if (this.turns.length > 20) this.turns = this.turns.slice(-20)
-      this.pendingSpeech = null
-    }
-
-    return result
+    return this.streamAndParse()
   }
 
   async injectContext(content: string): Promise<SendResult> {
-    const speech = this.pendingSpeech ?? ''
-    log.info('[LLM API] Injecting context for speech:', speech.slice(0, 40))
+    log.info('[API] Injecting context →', { len: content.length })
 
-    // Rebuild the original prompt with the injected content appended
-    const prompt = this.buildPrompt(speech) + '\n\n' + content
+    this.messages.push({ role: 'user', content })
 
-    const response = await callLLM({
-      tier: this.tier,
-      prompt,
-      systemPrompt: SYS1_SYSTEM_PROMPT,
-      category: 'sys1',
-      options: {
-        temperature: 0.7,
-        max_tokens: 500,
-      },
-    })
-
-    const raw = response.content
-    const result = parseSysIResponse(raw)
-
-    if (!result.search) {
-      this.turns.push({ response: result.response ?? '', question: result.question ?? null, userSpeech: speech })
-      if (this.turns.length > 20) this.turns = this.turns.slice(-20)
-      this.pendingSpeech = null
-    }
-
-    return result
+    return this.streamAndParse()
   }
 
   reset(): void {
-    this.turns = []
-    this.pendingSpeech = null
+    this.abortInFlight()
+    this.messages = []
   }
 
   resume(): void {
-    // LLM API always sends system prompt — no-op
+    // No-op for API transport — system prompt is always sent via
+    // the top-level `system` parameter, not in the messages array
   }
 
-  private buildPrompt(currentSpeech: string): string {
-    if (this.turns.length === 0) {
-      return `The user just said:\n\n"${currentSpeech}"`
+  private abortInFlight(): void {
+    if (this.abortController) {
+      this.abortController.abort()
+      this.abortController = null
+    }
+  }
+
+  private async streamAndParse(): Promise<SendResult> {
+    // Abort previous in-flight request
+    this.abortInFlight()
+    this.abortController = new AbortController()
+
+    // Compact if conversation is getting long
+    if (this.messages.length > APIConversationTransport.MAX_TURNS * 2) {
+      this.compact()
     }
 
-    const history = this.turns.map(t =>
-      `You responded: ${t.response}\nUser said: "${t.userSpeech}"`
-    ).join('\n\n')
+    try {
+      // System prompt is passed as a top-level parameter, NOT in the messages
+      // array. The Google provider converts this to `systemInstruction` in the
+      // Gemini API — pushing it into messages[] was silently dropping it.
+      const result = streamText({
+        model: this.model,
+        system: SYS1_JSON_PROMPT,
+        messages: this.messages,
+        abortSignal: this.abortController.signal,
+        temperature: 0.7,
+        maxOutputTokens: 500,
+      })
 
-    return `Previous conversation:\n---\n${history}\n---\n\nThe user just said:\n\n"${currentSpeech}"`
+      // Stream tokens for live UI updates — emit accumulated text (not deltas)
+      // so the stream handler can progressively extract the response field
+      let fullText = ''
+      for await (const delta of result.textStream) {
+        fullText += delta
+        eventBus.emit('sys1:stream', { text: fullText, conversationId: '' })
+      }
+
+      // Append assistant response to conversation history
+      this.messages.push({ role: 'assistant', content: fullText })
+
+      const raw = fullText.trim()
+      return { ...parseJsonSysIResponse(raw), rawOutput: raw }
+    } finally {
+      this.abortController = null
+    }
+  }
+
+  /**
+   * Compact conversation history to prevent context overflow.
+   * Keeps last 5 turns, summarizes the rest.
+   * System prompt is not in the messages array — it's always sent
+   * via the top-level `system` parameter.
+   */
+  private compact(): void {
+    log.info('[API] Compacting conversation', { from: this.messages.length })
+
+    const recentMessages = this.messages.slice(-10) // last 5 turns (user+assistant pairs)
+    const middleMessages = this.messages.slice(0, -10)
+
+    if (middleMessages.length === 0) return
+
+    // Build a summary of the middle section
+    const middleText = middleMessages
+      .map(m => `${m.role}: ${typeof m.content === 'string' ? m.content.slice(0, 200) : '(complex)'}`)
+      .join('\n')
+
+    const summary: ModelMessage = {
+      role: 'user',
+      content: `[CONVERSATION SUMMARY — earlier exchanges condensed]\n${middleText.slice(0, 2000)}\n[END SUMMARY]`,
+    }
+
+    this.messages = [summary, ...recentMessages]
+    log.info('[API] Compacted to', this.messages.length, 'messages')
   }
 }

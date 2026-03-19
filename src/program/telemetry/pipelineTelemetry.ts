@@ -48,13 +48,14 @@ let activeCorrelationId: string | null = null
 // ID Generation
 // ============================================================================
 
-let _counter = 0
+import { nid } from '../utils/id'
+
 function nextId(): string {
-  return `t_${Date.now()}_${++_counter}`
+  return nid.telemetry()
 }
 
 function newCorrelationId(): string {
-  return `run_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+  return nid.run()
 }
 
 // ============================================================================

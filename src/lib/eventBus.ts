@@ -143,6 +143,8 @@ export interface EventPayloads {
 		recordingId?: string;
 		/** Speaker index in meeting mode (0, 1, 2...). Omitted in solo or when attribution fails. */
 		speakerIndex?: number;
+		/** Per-~2s speaker attribution within this segment. Null/absent in solo mode. */
+		speakerTimeline?: Array<{ timestampMs: number; speakerIndex: number; durationMs: number }>;
 	};
 	// Async entity extraction results (sent independently of text segments)
 	'native:intermediate-entities': {
@@ -241,6 +243,7 @@ export interface EventPayloads {
 	'sys1:stream': { text: string; conversationId: string };
 	'sys1:status': { conversationId: string; status: string };
 	'sys1:state': { state: 'idle' | 'sending' | 'error' | 'no-transport' };
+	'sys1:transport': { name: string };
 
 	// Synthesis engine events (SYS-II)
 	'synthesis:scheduler-state': { state: 'idle' | 'running' };

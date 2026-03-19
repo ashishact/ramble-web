@@ -11,6 +11,7 @@ import { ontologyStore } from '../../graph/stores/ontologyStore'
 import { EmbeddingService, EMBEDDING_MODEL_SHORT } from '../../graph/embeddings/EmbeddingService'
 import { getGraphService } from '../../graph'
 import { createLogger } from '../../program/utils/logger'
+import { nid } from '../../program/utils/id'
 import type {
   OntologyNode,
   OntologyEdge,
@@ -222,7 +223,7 @@ export class PackageInstaller {
           await graph.exec(
             `INSERT INTO embeddings (id, target_id, target_kind, vector, model, source_text, created_at)
              VALUES ($1, $2, 'ontology_node', ${vecLiteral}, $3, $4, $5)`,
-            [crypto.randomUUID(), slotId, EMBEDDING_MODEL_SHORT, text, now]
+            [nid.embedding(), slotId, EMBEDDING_MODEL_SHORT, text, now]
           )
           embeddedCount++
         } catch (err) {

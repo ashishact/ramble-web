@@ -92,6 +92,52 @@ function extractResponseFromStream(raw: string): string | null {
   return null;
 }
 
+/**
+ * Extract the "response" field value from a partial JSON stream.
+ *
+ * As the API transport streams tokens, we receive an increasingly complete
+ * JSON string. This function extracts the response value progressively
+ * without waiting for the full JSON to be valid.
+ *
+ * Strategy: regex to find `"response"` key, then extract the string value
+ * (handling escaped characters). Returns null if the response field hasn't
+ * started yet (model still outputting intent/topic).
+ */
+function extractResponseFromJsonStream(raw: string): string | null {
+  // Find the start of the "response" value
+  const match = raw.match(/"response"\s*:\s*"/);
+  if (!match || match.index === undefined) return null;
+
+  const valueStart = match.index + match[0].length;
+  const rest = raw.slice(valueStart);
+
+  // Extract string content, handling escapes
+  // Walk character by character until we find an unescaped " or end of string
+  let result = '';
+  let i = 0;
+  while (i < rest.length) {
+    if (rest[i] === '\\' && i + 1 < rest.length) {
+      // Escaped character
+      const next = rest[i + 1];
+      if (next === '"') result += '"';
+      else if (next === 'n') result += '\n';
+      else if (next === 't') result += '\t';
+      else if (next === '\\') result += '\\';
+      else if (next === '/') result += '/';
+      else result += next;
+      i += 2;
+    } else if (rest[i] === '"') {
+      // End of string value
+      break;
+    } else {
+      result += rest[i];
+      i++;
+    }
+  }
+
+  return result || null;
+}
+
 export function useConversationStream(): ConversationStreamData {
   // DuckDB-backed conversation data
   const { data: conversations } = useConversationData({
@@ -225,7 +271,12 @@ export function useConversationStream(): ConversationStreamData {
   // ── SYS-I streaming: show response text while ChatGPT generates ────
   useEffect(() => {
     const unsubStream = eventBus.on('sys1:stream', (payload) => {
-      const response = extractResponseFromStream(payload.text);
+      // Auto-detect format: JSON (API transport) starts with '{', markdown (ChatGPT) doesn't
+      const text = payload.text;
+      const isJson = text.trimStart().startsWith('{');
+      const response = isJson
+        ? extractResponseFromJsonStream(text)
+        : extractResponseFromStream(text);
       setStreamingSys1Text(response);
     });
 

@@ -11,12 +11,7 @@
  * - maxWaitMs: force batch after this time since first item (default: 60s)
  */
 
-let batchCounter = 0
-
-function generateBatchId(): string {
-  batchCounter++
-  return `batch_${Date.now()}_${batchCounter}`
-}
+import { nid } from '../../program/utils/id'
 
 export interface BatchDetectorConfig {
   gapThresholdMs: number
@@ -42,7 +37,7 @@ export class BatchDetector {
 
   constructor(config: Partial<BatchDetectorConfig> & Pick<BatchDetectorConfig, 'onBatchReady'>) {
     this.config = { ...DEFAULT_CONFIG, ...config }
-    this.currentBatchId = generateBatchId()
+    this.currentBatchId = nid.batch()
   }
 
   /**
@@ -90,7 +85,7 @@ export class BatchDetector {
       this.conversationIds = []
       this.firstItemTime = null
       this.lastItemTime = null
-      this.currentBatchId = generateBatchId()
+      this.currentBatchId = nid.batch()
 
       // Invoke callback
       this.config.onBatchReady(batchId, ids)

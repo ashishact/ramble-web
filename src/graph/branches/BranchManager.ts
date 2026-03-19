@@ -14,13 +14,7 @@
 
 import type { GraphService } from '../GraphService'
 import type { GraphBranch } from '../types'
-
-let branchIdCounter = 0
-
-function generateBranchId(name: string): string {
-  branchIdCounter++
-  return `branch_${name}_${Date.now()}_${branchIdCounter}`
-}
+import { nid } from '../../program/utils/id'
 
 export class BranchManager {
   private graph: GraphService
@@ -37,7 +31,7 @@ export class BranchManager {
    * Create a named branch under a parent.
    */
   async createBranch(name: string, parentBranchId = 'global'): Promise<GraphBranch> {
-    const id = generateBranchId(name)
+    const id = nid.branch()
     const now = Date.now()
 
     await this.graph.exec(

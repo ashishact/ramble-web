@@ -31,24 +31,55 @@ import type {
   ExtensionStatus,
 } from "./protocol"
 
+import { getExtensionEnabled } from '../../lib/serviceToggles'
+
 export type { AiQueryOptions, AiRawOptions, AiConversationOptions, AiResponse, AiConversationResponse, ExtensionStatus }
 export type { AiTarget } from "./protocol"
 
-let extensionReady = false
+let lastHeartbeat = 0
 let extensionVersion = ""
+let previousAvailable = false
+const HEARTBEAT_STALE_MS = 5000
 
-// Listen for ext_ready event from content script
+type AvailabilityCallback = (available: boolean) => void
+const availabilityCallbacks = new Set<AvailabilityCallback>()
+
+function updateHeartbeat(version: string): void {
+  lastHeartbeat = Date.now()
+  extensionVersion = version
+}
+
+// Listen for ext_ready + heartbeat from content script
 window.addEventListener("message", (event) => {
   if (event.source !== window) return
-  if (event.data?.source === "ramble-ext" && event.data?.type === "ext_ready") {
-    extensionReady = true
-    extensionVersion = event.data.payload?.version || ""
-    console.log("[ramble-ext] Extension detected, version:", extensionVersion)
+  const data = event.data
+  if (data?.source !== "ramble-ext") return
+
+  if (data.type === "ext_ready" || data.type === "heartbeat") {
+    updateHeartbeat(data.payload?.version || "")
+    if (data.type === "ext_ready") {
+      console.log("[ramble-ext] Extension detected, version:", extensionVersion)
+    }
   }
 })
 
+// Poll availability transitions every 3 seconds (uses gated getter so
+// disabling the toggle is reflected in availability callbacks)
+setInterval(() => {
+  const currentAvailable = rambleExt.isAvailable
+  if (currentAvailable !== previousAvailable) {
+    previousAvailable = currentAvailable
+    console.log("[ramble-ext] Availability changed:", currentAvailable)
+    for (const cb of availabilityCallbacks) {
+      try { cb(currentAvailable) } catch {}
+    }
+  }
+}, 3000)
+
+import { nid } from '../../program/utils/id'
+
 function generateRequestId(): string {
-  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return nid.request()
 }
 
 function sendAndWait<T>(type: string, payload: unknown, timeoutMs = 120000): Promise<T> {
@@ -91,14 +122,24 @@ function sendAndWait<T>(type: string, payload: unknown, timeoutMs = 120000): Pro
 }
 
 export const rambleExt = {
-  /** Whether the extension content script has announced itself */
+  /** Whether the extension is actively present and enabled */
   get isAvailable(): boolean {
-    return extensionReady
+    if (!getExtensionEnabled()) return false
+    return lastHeartbeat > 0 && (Date.now() - lastHeartbeat) < HEARTBEAT_STALE_MS
   },
 
   /** Extension version (empty string if not detected yet) */
   get version(): string {
     return extensionVersion
+  },
+
+  /**
+   * Subscribe to availability transitions (available ↔ unavailable).
+   * @returns unsubscribe function
+   */
+  onAvailabilityChange(cb: AvailabilityCallback): () => void {
+    availabilityCallbacks.add(cb)
+    return () => { availabilityCallbacks.delete(cb) }
   },
 
   /**

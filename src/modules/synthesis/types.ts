@@ -116,6 +116,8 @@ export interface ExtractedTopic {
 export interface ExtractionSearchRequest {
   query: string
   type: 'memory' | 'entity' | 'goal'
+  limit?: number
+  relevance?: number
 }
 
 /** Full JSON response from SYS-II LLM call */

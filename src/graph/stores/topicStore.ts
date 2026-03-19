@@ -4,9 +4,7 @@
 
 import type { GraphNode, TopicProperties } from '../types'
 import type { ReactiveGraphService } from '../reactive/ReactiveGraphService'
-
-let idCounter = 0
-function generateId(): string { return `topic_${Date.now()}_${++idCounter}` }
+import { nid } from '../../program/utils/id'
 
 export class TopicStore {
   private graph: ReactiveGraphService
@@ -16,7 +14,7 @@ export class TopicStore {
   }
 
   async create(data: { name: string; category?: string }): Promise<{ id: string } & TopicProperties> {
-    const id = generateId()
+    const id = nid.topic()
     const now = Date.now()
     const props: TopicProperties = {
       name: data.name,

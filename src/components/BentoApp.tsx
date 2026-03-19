@@ -45,6 +45,7 @@ import { getCurrentProfile } from '../lib/profile';
 import { useNavigate, useParams } from 'react-router-dom';
 import { GlobalSTTController } from './GlobalSTTController';
 import { RambleNativeStatus } from './RambleNativeStatus';
+import { ExtensionStatus } from './ExtensionStatus';
 import { CloudSTTStatus } from './CloudSTTStatus';
 import { HelpStrip } from './HelpStrip';
 import { SpotlightBar } from '../modules/spotlight';
@@ -336,6 +337,7 @@ export const BentoApp: React.FC = () => {
             }
           </button>
           <RambleNativeStatus />
+          <ExtensionStatus />
           <CloudSTTStatus />
           <WorkspaceSwitcher onTreeChange={setTree} />
           <SpotlightBar />

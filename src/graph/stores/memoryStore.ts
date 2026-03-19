@@ -5,9 +5,7 @@
 import type { GraphNode, CognitiveProperties, MemoryOrigin } from '../types'
 import type { ReactiveGraphService } from '../reactive/ReactiveGraphService'
 import { confidencePrior, ownershipPrior, applyReinforcement, compositeScore } from '../merge/cognitiveHelpers'
-
-let idCounter = 0
-function generateId(): string { return `mem_${Date.now()}_${++idCounter}` }
+import { nid } from '../../program/utils/id'
 
 export class MemoryStore {
   private graph: ReactiveGraphService
@@ -27,7 +25,7 @@ export class MemoryStore {
     validFrom?: number
     validUntil?: number
   }): Promise<{ id: string } & CognitiveProperties> {
-    const id = generateId()
+    const id = nid.memory()
     const origin = data.origin ?? 'typed'
     const now = Date.now()
 

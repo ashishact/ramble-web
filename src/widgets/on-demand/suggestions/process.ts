@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { nid } from '../../../program/utils/id';
 import { callLLM } from '../../../program/llmClient';
 import { workingMemory } from '../../../program/WorkingMemory';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
@@ -251,7 +252,7 @@ function normalizeSuggestions(data: unknown): Suggestion[] {
   const validPriorities = ['high', 'medium', 'low'];
 
   return rawSuggestions
-    .map((s, index) => {
+    .map((s) => {
       if (!s || typeof s !== 'object') return null;
 
       const suggestion = s as Record<string, unknown>;
@@ -266,7 +267,7 @@ function normalizeSuggestions(data: unknown): Suggestion[] {
       }
 
       return {
-        id: `suggestion-${index}-${Date.now()}`,
+        id: nid('sg'),
         text,
         topic: topic || 'General',
         category: validCategories.includes(suggestion.category as string)

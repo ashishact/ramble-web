@@ -53,5 +53,5 @@ export type { STTProvider as ConcreteSTTProvider } from './types/llmTiers';
 
 // Utils
 export { createLogger } from './utils/logger';
-export { generateId } from './utils/id';
+export { nid } from './utils/id';
 export { now, formatRelativeTime } from './utils/time';

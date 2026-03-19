@@ -4,9 +4,7 @@
 
 import type { GraphNode, GoalProperties } from '../types'
 import type { ReactiveGraphService } from '../reactive/ReactiveGraphService'
-
-let idCounter = 0
-function generateId(): string { return `goal_${Date.now()}_${++idCounter}` }
+import { nid } from '../../program/utils/id'
 
 export class GoalStore {
   private graph: ReactiveGraphService
@@ -21,7 +19,7 @@ export class GoalStore {
     entityIds?: string[]
     topicIds?: string[]
   }): Promise<{ id: string } & GoalProperties> {
-    const id = generateId()
+    const id = nid.goal()
     const props: GoalProperties = {
       statement: data.statement,
       type: data.type,

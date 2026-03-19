@@ -23,6 +23,7 @@
  */
 
 import type { GraphService } from '../GraphService'
+import { nid } from '../../program/utils/id'
 
 // ============================================================================
 // Constants
@@ -158,7 +159,7 @@ export class EmbeddingService {
     await this.graph.exec(
       `INSERT INTO embeddings (id, target_id, target_kind, vector, model, source_text, created_at)
        VALUES ($1, $2, 'node', ${vecLiteral}, $3, $4, $5)`,
-      [crypto.randomUUID(), nodeId, EMBEDDING_MODEL_SHORT, sourceText, now]
+      [nid.embedding(), nodeId, EMBEDDING_MODEL_SHORT, sourceText, now]
     )
 
     // Also write to legacy nodes.embedding column for backward compatibility.

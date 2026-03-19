@@ -23,9 +23,12 @@
  * the right ChatGPT tab across page reloads and service worker restarts.
  * Ramble-web is the source of truth for all session state.
  *
- * Transports:
- *   - ChatGPTTransport: Chrome extension → ChatGPT tab (history maintained by ChatGPT)
- *   - LLMApiTransport: Direct API call via callLLM() tier system
+ * Transport selection:
+ *   - ChatGPTTransport: Chrome extension → ChatGPT tab (when extension is available)
+ *   - APIConversationTransport: AI SDK v6 → proxy → provider API (fallback)
+ *
+ * Transport is auto-selected at session boundaries (start/reset).
+ * Never switches mid-session to avoid conversation state confusion.
  */
 
 import { conversationStore } from '../../graph/stores/conversationStore'
@@ -33,9 +36,11 @@ import { graphEventBus } from '../../graph/events/EventBus'
 import { eventBus } from '../../lib/eventBus'
 import { profileStorage } from '../../lib/profileStorage'
 import { createLogger } from '../../program/utils/logger'
+import { nid } from '../../program/utils/id'
 import { rambleExt } from '../chrome-extension'
 import type { Sys1Transport, UserIntent, UserEmotion, SysISearchRequest } from './transports'
-import { ChatGPTTransport } from './transports'
+import { ChatGPTTransport, APIConversationTransport } from './transports'
+import { setDebugTrace, type Sys1SearchTrace } from './debugStore'
 
 const log = createLogger('Sys1Engine')
 
@@ -90,12 +95,16 @@ export class Sys1Engine {
   private pending: PendingEntry[] = []
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private unsubGraphEvents: (() => void) | null = null
+  private unsubAvailability: (() => void) | null = null
   private streamHandler: EventListener | null = null
   private statusHandler: EventListener | null = null
   private transport: Sys1Transport
   private bootstrapped = false
   private chatSessionId: string
   private chatUrl: string | null = null
+
+  /** Set when extension availability changes — applied on next session reset */
+  private transportSwitchPending = false
 
   // Session budget tracking
   private turnCount = 0
@@ -105,13 +114,27 @@ export class Sys1Engine {
   constructor(transport?: Sys1Transport) {
     this.chatSessionId = this.loadOrCreateSessionId()
     this.chatUrl = profileStorage.getItem(STORAGE_KEY_CHAT_URL)
-    this.transport = transport ?? new ChatGPTTransport(this.chatSessionId, this.chatUrl)
+    this.transport = transport ?? this.createTransportForCurrentState()
+  }
+
+  /**
+   * Select the appropriate transport based on current extension availability.
+   * Called at construction and on session reset.
+   */
+  private createTransportForCurrentState(): Sys1Transport {
+    if (rambleExt.isAvailable) {
+      log.info('Extension available → ChatGPTTransport')
+      return new ChatGPTTransport(this.chatSessionId, this.chatUrl)
+    }
+    log.info('Extension not available → APIConversationTransport')
+    return new APIConversationTransport()
   }
 
   async start(): Promise<void> {
     if (this.unsubGraphEvents) return
 
     log.info('Starting with transport:', this.transport.name, 'session:', this.chatSessionId)
+    eventBus.emit('sys1:transport', { name: this.transport.name })
 
     this.loadFromStorage()
 
@@ -128,6 +151,16 @@ export class Sys1Engine {
     this.unsubGraphEvents = graphEventBus.on('graph:tables:changed', (payload) => {
       if (payload.tables.includes('conversations')) {
         this.onConversationsChanged()
+      }
+    })
+
+    // Track extension availability changes — never switch mid-session
+    this.unsubAvailability = rambleExt.onAvailabilityChange((available) => {
+      const currentIsChatGPT = this.transport instanceof ChatGPTTransport
+      const shouldSwitch = available !== currentIsChatGPT
+      if (shouldSwitch) {
+        this.transportSwitchPending = true
+        log.info('Extension availability changed, transport switch pending →', available ? 'ChatGPT' : 'API')
       }
     })
 
@@ -152,6 +185,8 @@ export class Sys1Engine {
     log.info('Stopping')
     this.unsubGraphEvents?.()
     this.unsubGraphEvents = null
+    this.unsubAvailability?.()
+    this.unsubAvailability = null
     if (this.streamHandler) {
       window.removeEventListener('ramble:ext:conversation-stream', this.streamHandler)
       this.streamHandler = null
@@ -241,7 +276,14 @@ export class Sys1Engine {
     }
     this.transport.reset()
 
-    if (this.transport instanceof ChatGPTTransport) {
+    // Apply pending transport switch (extension became available/unavailable)
+    if (this.transportSwitchPending) {
+      this.transportSwitchPending = false
+      const newTransport = this.createTransportForCurrentState()
+      log.info('Transport switch applied:', this.transport.name, '→', newTransport.name)
+      this.transport = newTransport
+      eventBus.emit('sys1:transport', { name: newTransport.name })
+    } else if (this.transport instanceof ChatGPTTransport) {
       this.transport = new ChatGPTTransport(this.chatSessionId, null)
     }
 
@@ -269,7 +311,7 @@ export class Sys1Engine {
   }
 
   private generateSessionId(): string {
-    return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    return nid.chat()
   }
 
   // ── Persistence ──────────────────────────────────────────────────
@@ -415,6 +457,9 @@ export class Sys1Engine {
     log.info('Flushing', this.pending.length, 'pending to', this.transport.name,
       '| turn:', this.turnCount, '| chars:', this.sessionCharCount)
 
+    const startTime = Date.now()
+    const searchTraces: Sys1SearchTrace[] = []
+
     try {
       // Initial send
       let result = await this.transport.send(combined)
@@ -424,7 +469,15 @@ export class Sys1Engine {
       while (result.search && searchRounds < MAX_SEARCH_ROUNDS) {
         log.info('LLM requesting search:', result.search)
         const searchText = await this.runGraphSearch(result.search)
-        result = await this.transport.injectContext(`<search-res>\n${searchText}\n</search-res>`)
+        searchTraces.push({
+          query: result.search.query,
+          type: result.search.type,
+          limit: result.search.limit,
+          relevance: result.search.relevance,
+          resultsLength: searchText.length,
+          resultPreview: searchText.slice(0, 300),
+        })
+        result = await this.transport.injectContext(`[Auto search results — not user speech. Answer the user's original question using this context.]\n<search-res>\n${searchText}\n</search-res>`)
         searchRounds++
       }
 
@@ -473,6 +526,7 @@ export class Sys1Engine {
       // Intent is stored as "INTENT:EMOTION" (e.g., "assert:curious") for
       // full provenance. Emotion is also stored separately in its own column
       // for direct querying without parsing.
+      let convId: string | null = null
       try {
         const conv = await conversationStore.create({
           sessionId: this.chatSessionId,
@@ -483,9 +537,24 @@ export class Sys1Engine {
           emotion: result.emotion,
           topic: result.topic || undefined,
         })
+        convId = conv.id
         await conversationStore.markProcessed(conv.id)
       } catch (err) {
         log.error('Failed to store SYS-I response in DuckDB:', err)
+      }
+
+      // ── Store debug trace ───────────────────────────────────────
+      if (convId) {
+        setDebugTrace(convId, {
+          transport: this.transport.name,
+          rawOutput: result.rawOutput ?? '',
+          parsedIntent: result.intent,
+          parsedEmotion: result.emotion,
+          parsedTopic: result.topic,
+          userInput: combined,
+          searches: searchTraces,
+          totalDurationMs: Date.now() - startTime,
+        })
       }
 
       eventBus.emit('sys1:response', entry)
@@ -549,7 +618,7 @@ export class Sys1Engine {
 
       const graph = await getGraphService()
       const embeddings = new EmbeddingService(graph)
-      return await searchAndEnrich(req, graph, embeddings, 5)
+      return await searchAndEnrich(req, graph, embeddings)
     } catch (err) {
       log.warn('Graph search failed:', err)
       return 'Search unavailable.'

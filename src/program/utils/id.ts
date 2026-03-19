@@ -1,22 +1,53 @@
 /**
  * ID Generation Utilities
  *
- * Generate unique identifiers for various entities in the system.
+ * Central nanoid-based ID generator for the entire codebase.
+ * Format: {prefix}-{6-char alphanumeric}  e.g. "e-uxf9g6"
+ *
+ * Every subsystem imports `nid` instead of rolling its own IDs.
+ * With 36^6 ≈ 2.17 billion possibilities per prefix, collision
+ * probability stays negligible for personal knowledge graphs.
  */
 
+import { customAlphabet } from 'nanoid'
+
+const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789'
+const nanoid = customAlphabet(alphabet, 6)
+
 /**
- * Generate a unique ID using crypto.randomUUID
+ * Generate a short prefixed ID.
+ *
+ *   nid('e')  → "e-k4x9m2"
+ *   nid('br') → "br-a7f3q1"
  */
-export function generateId(): string {
-  return crypto.randomUUID();
+export function nid(prefix: string): string {
+  return `${prefix}-${nanoid()}`
 }
 
 /**
- * Generate a prefixed ID for better debugging
+ * Typed ID generators for every entity type.
+ *
+ * Usage: `nid.entity()` → "e-k4x9m2"
  */
-export function generatePrefixedId(prefix: string): string {
-  return `${prefix}_${generateId()}`;
-}
+nid.entity       = () => nid('e')
+nid.memory       = () => nid('m')
+nid.goal         = () => nid('g')
+nid.topic        = () => nid('t')
+nid.session      = () => nid('s')
+nid.conversation = () => nid('c')
+nid.recording    = () => nid('r')
+nid.batch        = () => nid('b')
+nid.edge         = () => nid('x')
+nid.snapshot     = () => nid('sn')
+nid.event        = () => nid('ev')
+nid.branch       = () => nid('br')
+nid.embedding    = () => nid('em')
+nid.chat         = () => nid('ch')
+nid.request      = () => nid('rq')
+nid.telemetry    = () => nid('tm')
+nid.llm          = () => nid('lm')
+nid.run          = () => nid('rn')
+nid.widget       = () => nid('w')
 
 /**
  * Fast djb2 string hash — returns a short hex string.
@@ -29,55 +60,3 @@ export function simpleHash(str: string): string {
   }
   return (hash >>> 0).toString(16);
 }
-
-/**
- * ID prefixes for different entity types
- */
-export const ID_PREFIX = {
-  CONVERSATION_UNIT: 'cu',
-  CLAIM: 'cl',
-  ENTITY: 'en',
-  THOUGHT_CHAIN: 'tc',
-  GOAL: 'go',
-  TASK: 'tk',
-  SESSION: 'se',
-  OBSERVER_OUTPUT: 'oo',
-  CLAIM_SOURCE: 'cs',
-  CHAIN_CLAIM: 'cc',
-  CONTRADICTION: 'ct',
-  VALUE: 'va',
-  PATTERN: 'pa',
-  MILESTONE: 'mi',
-  BLOCKER: 'bl',
-  EXTENSION: 'ex',
-  SYNTHESIS_CACHE: 'sc',
-  EXTRACTION_PROGRAM: 'ep',
-  OBSERVER_PROGRAM: 'op',
-  CORRECTION: 'cr',
-} as const;
-
-/**
- * Generate IDs for specific entity types
- */
-export const id = {
-  conversationUnit: () => generatePrefixedId(ID_PREFIX.CONVERSATION_UNIT),
-  claim: () => generatePrefixedId(ID_PREFIX.CLAIM),
-  entity: () => generatePrefixedId(ID_PREFIX.ENTITY),
-  thoughtChain: () => generatePrefixedId(ID_PREFIX.THOUGHT_CHAIN),
-  goal: () => generatePrefixedId(ID_PREFIX.GOAL),
-  task: () => generatePrefixedId(ID_PREFIX.TASK),
-  session: () => generatePrefixedId(ID_PREFIX.SESSION),
-  observerOutput: () => generatePrefixedId(ID_PREFIX.OBSERVER_OUTPUT),
-  claimSource: () => generatePrefixedId(ID_PREFIX.CLAIM_SOURCE),
-  chainClaim: () => generatePrefixedId(ID_PREFIX.CHAIN_CLAIM),
-  contradiction: () => generatePrefixedId(ID_PREFIX.CONTRADICTION),
-  value: () => generatePrefixedId(ID_PREFIX.VALUE),
-  pattern: () => generatePrefixedId(ID_PREFIX.PATTERN),
-  milestone: () => generatePrefixedId(ID_PREFIX.MILESTONE),
-  blocker: () => generatePrefixedId(ID_PREFIX.BLOCKER),
-  extension: () => generatePrefixedId(ID_PREFIX.EXTENSION),
-  synthesisCache: () => generatePrefixedId(ID_PREFIX.SYNTHESIS_CACHE),
-  extractionProgram: () => generatePrefixedId(ID_PREFIX.EXTRACTION_PROGRAM),
-  observerProgram: () => generatePrefixedId(ID_PREFIX.OBSERVER_PROGRAM),
-  correction: () => generatePrefixedId(ID_PREFIX.CORRECTION),
-};

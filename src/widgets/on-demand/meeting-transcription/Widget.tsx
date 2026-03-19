@@ -13,6 +13,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '@iconify/react';
 import { Radio, RefreshCw, Clock, ChevronLeft, Plus, Settings } from 'lucide-react';
+import { nid } from '../../../program/utils/id';
 import { eventBus } from '../../../lib/eventBus';
 import { rambleNative } from '../../../services/stt/rambleNative';
 import { useWidgetPause } from '../useWidgetPause';
@@ -45,6 +46,7 @@ import { MeetingDetailView } from './MeetingDetailView';
 // ============================================================================
 
 import { FeedTable, SpeakerLabels, type SpeakerKey, formatShortDate, formatDurationBetween } from './shared';
+import type { SpeakerTimelineEntry } from './process';
 
 function formatLiveDuration(startedAt: number): string {
   const ms = Date.now() - startedAt;
@@ -397,16 +399,18 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
       segmentStartMs?: number,
       speechDurationMs?: number,
       speakerIndex?: number,
+      speakerTimeline?: SpeakerTimelineEntry[],
     ) => {
       if (isPausedRef.current) return;
 
       const now = Date.now();
       const newEntry: FeedEntry = {
-        id: `${now}-${Math.random().toString(36).slice(2, 7)}`,
+        id: nid('f'),
         text,
         audioType,
         ts: segmentStartMs ?? now,
         speakerIndex,
+        speakerTimeline,
       };
 
       const currentState = stateRef.current;
@@ -592,6 +596,7 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
         payload.speechStartMs ?? payload.ts,
         speechDurationMs,
         payload.speakerIndex,
+        payload.speakerTimeline,
       );
     });
 

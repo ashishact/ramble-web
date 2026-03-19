@@ -16,14 +16,9 @@
 import type { GraphService } from '../GraphService'
 import type { EmbeddingService } from './EmbeddingService'
 import { VectorSearch, type VectorSearchResult } from './VectorSearch'
+import type { GraphNode } from '../types'
 
 // ── Thresholds ───────────────────────────────────────────────────────
-
-/** Results above this are "strong" — triggers truncation of weak tail */
-const STRONG_THRESHOLD = 0.7
-
-/** When we have a strong hit, drop results below this */
-const WEAK_CUTOFF = 0.45
 
 /** Relevance penalty applied to broadened (cross-type) results */
 const BROADEN_PENALTY = 0.85
@@ -31,11 +26,120 @@ const BROADEN_PENALTY = 0.85
 /** Minimum combined score from filtered search to skip broadening */
 const BROADEN_SKIP_THRESHOLD = 0.5
 
+/** Minimum fuzzy score to consider a name/alias match */
+const FUZZY_THRESHOLD = 0.8
+
+// ── Phase 0: Fuzzy Name/Alias Match ─────────────────────────────────
+
+/** Jaro-Winkler string similarity (0–1, higher = more similar) */
+function jaroWinkler(a: string, b: string): number {
+  if (a === b) return 1
+  if (!a.length || !b.length) return 0
+
+  const range = Math.max(0, Math.floor(Math.max(a.length, b.length) / 2) - 1)
+  const aMatched = new Array<boolean>(a.length).fill(false)
+  const bMatched = new Array<boolean>(b.length).fill(false)
+  let matches = 0
+
+  for (let i = 0; i < a.length; i++) {
+    const lo = Math.max(0, i - range)
+    const hi = Math.min(b.length - 1, i + range)
+    for (let j = lo; j <= hi; j++) {
+      if (bMatched[j] || a[i] !== b[j]) continue
+      aMatched[i] = true
+      bMatched[j] = true
+      matches++
+      break
+    }
+  }
+  if (matches === 0) return 0
+
+  let transpositions = 0
+  let k = 0
+  for (let i = 0; i < a.length; i++) {
+    if (!aMatched[i]) continue
+    while (!bMatched[k]) k++
+    if (a[i] !== b[k]) transpositions++
+    k++
+  }
+
+  const jaro = (
+    matches / a.length +
+    matches / b.length +
+    (matches - transpositions / 2) / matches
+  ) / 3
+
+  // Winkler boost for common prefix (up to 4 chars)
+  let prefix = 0
+  for (let i = 0; i < Math.min(4, a.length, b.length); i++) {
+    if (a[i] === b[i]) prefix++
+    else break
+  }
+  return jaro + prefix * 0.1 * (1 - jaro)
+}
+
+/**
+ * Phase 0: Direct name/alias text match.
+ * Catches exact, substring, and fuzzy (Jaro-Winkler) matches that
+ * embedding search misses — especially short proper names like "Asis".
+ */
+async function findByNameOrAlias(
+  query: string,
+  graph: GraphService,
+  labelFilter: string,
+  limit: number,
+): Promise<VectorSearchResult[]> {
+  const q = query.toLowerCase().trim()
+  if (!q) return []
+
+  // Fetch all named nodes of the requested type.
+  // For <1000 nodes this is sub-millisecond; precise scoring happens in JS.
+  const rows = await graph.query<GraphNode>(`
+    SELECT * FROM nodes
+    WHERE json_extract_string(properties, '$.name') IS NOT NULL
+      AND list_contains(labels, $1)
+  `, [labelFilter])
+
+  const results: VectorSearchResult[] = []
+
+  for (const node of rows) {
+    const props = node.properties as Record<string, unknown>
+    const name = String(props.name ?? '').toLowerCase()
+    const aliases = (Array.isArray(props.aliases) ? props.aliases as string[] : [])
+      .map(a => String(a).toLowerCase())
+
+    let best = 0
+
+    // Name: exact → substring → fuzzy
+    if (name === q) best = 1.0
+    else if (name.includes(q) || q.includes(name)) best = Math.max(best, 0.95)
+    best = Math.max(best, jaroWinkler(name, q))
+
+    // Aliases: same scoring ladder
+    for (const alias of aliases) {
+      if (alias === q) { best = 1.0; break }
+      if (alias.includes(q) || q.includes(alias)) best = Math.max(best, 0.95)
+      best = Math.max(best, jaroWinkler(alias, q))
+    }
+
+    if (best >= FUZZY_THRESHOLD) {
+      results.push({ node, similarity: best })
+    }
+  }
+
+  results.sort((a, b) => b.similarity - a.similarity)
+  return results.slice(0, limit)
+}
+
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface SearchRequest {
   query: string
   type: 'entity' | 'memory' | 'goal'
+  /** Max results to return (after relevance filtering). Default: 2 */
+  limit?: number
+  /** Minimum composite similarity score (0–1). Results below this are excluded. Default: 0.6 */
+  relevance?: number
 }
 
 // ── Main Pipeline ────────────────────────────────────────────────────
@@ -44,16 +148,32 @@ export async function searchAndEnrich(
   req: SearchRequest,
   graph: GraphService,
   embeddings: EmbeddingService,
-  maxResults: number,
 ): Promise<string> {
   const vs = new VectorSearch(graph, embeddings)
+  const limit = req.limit ?? 2
+  const relevance = req.relevance ?? 0.6
+
+  // Internal candidate limit — fetch generously so relevance filtering has a good pool
+  const candidateLimit = Math.max(limit * 3, 10)
 
   const labelFilter = req.type === 'entity' ? 'entity'
     : req.type === 'goal' ? 'goal'
     : 'memory'
 
-  // Phase 1: Filtered search (requested type)
-  let results = await vs.searchByText(req.query, maxResults, labelFilter)
+  // Phase 0: Fuzzy name/alias text match (catches short proper names
+  // that produce weak embedding vectors, e.g. "Asis", "Ashish")
+  const nameMatches = await findByNameOrAlias(req.query, graph, labelFilter, candidateLimit)
+
+  // Phase 1: Filtered vector search (requested type)
+  let results = await vs.searchByText(req.query, candidateLimit, labelFilter)
+
+  // Merge Phase 0 + Phase 1 (name matches take priority on dedup)
+  if (nameMatches.length > 0) {
+    const nameIds = new Set(nameMatches.map(r => r.node.id))
+    const vectorOnly = results.filter(r => !nameIds.has(r.node.id))
+    results = [...nameMatches, ...vectorOnly]
+    results.sort((a, b) => b.similarity - a.similarity)
+  }
 
   // Phase 2: Broadening — if no strong candidates in filtered results,
   // search without type filter to find relevant info in other node types
@@ -61,7 +181,7 @@ export async function searchAndEnrich(
   const bestFiltered = results.length > 0 ? results[0].similarity : 0
 
   if (bestFiltered < BROADEN_SKIP_THRESHOLD) {
-    const broadened = await vs.searchByText(req.query, maxResults)
+    const broadened = await vs.searchByText(req.query, candidateLimit)
 
     // Deduplicate (filtered results take priority)
     const seenIds = new Set(results.map(r => r.node.id))
@@ -81,8 +201,9 @@ export async function searchAndEnrich(
     return `No results found for: "${req.query}"`
   }
 
-  // Phase 3: Quality-aware truncation
-  results = truncateByQuality(results, maxResults)
+  // Phase 3: Relevance floor + limit cap
+  // Filter by minimum similarity, then cap at requested limit
+  results = truncateByQuality(results, relevance, limit)
 
   // Phase 4: Enrich with properties + edges
   const sections = await Promise.all(results.map(r =>
@@ -93,29 +214,23 @@ export async function searchAndEnrich(
 }
 
 // ── Quality-Aware Truncation ─────────────────────────────────────────
-// If the top result is strong (>0.7), we don't need mediocre results
-// polluting the LLM context. Aggressively trim the tail.
+// Applies the relevance floor (drop results below threshold) then caps
+// at the requested limit. Always returns at least 1 result if any exist.
 
 function truncateByQuality(
   results: VectorSearchResult[],
-  maxResults: number,
+  relevance: number,
+  limit: number,
 ): VectorSearchResult[] {
   if (results.length === 0) return results
 
-  const topScore = results[0].similarity
-  const hasStrongHit = topScore >= STRONG_THRESHOLD
+  // Filter by relevance floor
+  const filtered = results.filter(r => r.similarity >= relevance)
 
-  if (hasStrongHit) {
-    // Keep only results above weak cutoff
-    const strong = results.filter(r => r.similarity >= WEAK_CUTOFF)
-    // But always keep at least 1, at most maxResults
-    return strong.length > 0
-      ? strong.slice(0, maxResults)
-      : results.slice(0, 1)
-  }
+  // Always keep at least 1 result if we had candidates
+  if (filtered.length === 0) return results.slice(0, 1)
 
-  // No strong hit — return all up to limit
-  return results.slice(0, maxResults)
+  return filtered.slice(0, limit)
 }
 
 // ── Result Enrichment ────────────────────────────────────────────────

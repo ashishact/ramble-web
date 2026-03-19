@@ -1,7 +1,8 @@
 import type { BentoTree, LeafNode, SplitNode, Direction, WidgetType } from './types';
+import { nid } from '../../program/utils/id';
 
 // Generate a simple unique ID
-export const generateId = (): string => Math.random().toString(36).substring(2, 9);
+export const generateId = (): string => nid.widget();
 
 export const getRandomColor = () => {
   const colors = [

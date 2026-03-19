@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { nid } from '../../../program/utils/id';
 import { callLLM } from '../../../program/llmClient';
 import { workingMemory } from '../../../program/WorkingMemory';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
@@ -285,7 +286,7 @@ function normalizeQuestions(data: unknown): Question[] {
                        Array.isArray(obj.suggestions) ? obj.suggestions : [];
 
   return rawQuestions
-    .map((s, index) => {
+    .map((s) => {
       if (!s || typeof s !== 'object') return null;
 
       const question = s as Record<string, unknown>;
@@ -306,7 +307,7 @@ function normalizeQuestions(data: unknown): Question[] {
         : 'follow_up';
 
       return {
-        id: `question-${index}-${Date.now()}`,
+        id: nid('q'),
         text,
         topic: topic || 'General',
         category,

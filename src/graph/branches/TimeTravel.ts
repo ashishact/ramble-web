@@ -11,13 +11,7 @@
 
 import type { GraphService } from '../GraphService'
 import type { GraphSnapshot, GraphEvent } from '../types'
-
-let snapshotIdCounter = 0
-
-function generateSnapshotId(): string {
-  snapshotIdCounter++
-  return `snap_${Date.now()}_${snapshotIdCounter}`
-}
+import { nid } from '../../program/utils/id'
 
 export class TimeTravel {
   private graph: GraphService
@@ -111,7 +105,7 @@ export class TimeTravel {
     await this.graph.exec(
       `INSERT INTO snapshots (id, target_id, target_kind, state, timestamp)
        VALUES ($1, $2, 'node', $3, $4)`,
-      [generateSnapshotId(), nodeId, JSON.stringify(state), Date.now()]
+      [nid.snapshot(), nodeId, JSON.stringify(state), Date.now()]
     )
   }
 
@@ -134,7 +128,7 @@ export class TimeTravel {
       return {
         sql: `INSERT INTO snapshots (id, target_id, target_kind, state, timestamp)
               VALUES ($1, $2, 'node', $3, $4)`,
-        params: [generateSnapshotId(), node.id, state, now],
+        params: [nid.snapshot(), node.id, state, now],
       }
     })
 
@@ -156,7 +150,7 @@ export class TimeTravel {
     source: string
     recordingId?: string
   }): Promise<void> {
-    const id = `evt_${Date.now()}_${++snapshotIdCounter}`
+    const id = nid.event()
 
     await this.graph.exec(
       `INSERT INTO events (id, target_id, target_kind, op, delta, timestamp, source, recording_id)

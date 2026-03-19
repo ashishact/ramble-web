@@ -10,11 +10,12 @@
  * - Fade+slide animation for new entries
  */
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Icon } from '@iconify/react';
 import type { ConversationRecord } from '../../../graph/data';
 import type { ProcessingResult } from '../../../program/types/recording';
 import { AnnotatedText } from './InlineAnnotations';
+import { getDebugTrace, subscribe as subscribeDebugStore } from '../../../modules/sys1/debugStore';
 
 interface ConversationEntryProps {
   conversation: ConversationRecord;
@@ -45,6 +46,13 @@ export function ConversationEntry({
 
   const isSys1 = conversation.speaker === 'sys1';
 
+  // Debug trace for SYS-I entries (useSyncExternalStore for reactive updates)
+  const debugTrace = useSyncExternalStore(
+    subscribeDebugStore,
+    () => getDebugTrace(conversation.id),
+  );
+  const [debugOpen, setDebugOpen] = useState(false);
+
   const isSpeech = conversation.source === 'speech' || conversation.source === 'meeting';
   const timeStr = new Date(conversation.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
@@ -65,12 +73,48 @@ export function ConversationEntry({
           <div className="text-[15px] leading-relaxed text-base-content/80">
             {fullText}
           </div>
-          {/* Timestamp */}
+          {/* Timestamp + debug toggle */}
           <div className="flex justify-end items-center gap-1 mt-1 text-[10px] text-base-content/25">
+            {debugTrace && (
+              <button
+                onClick={() => setDebugOpen(o => !o)}
+                className="text-violet-400/60 hover:text-violet-400 font-mono mr-1"
+              >
+                [{debugOpen ? 'hide' : 'debug'}]
+              </button>
+            )}
             <span className="w-1.5 h-1.5 rounded-full bg-violet-400/30" />
             <span>sys-i</span>
             <span>{timeStr}</span>
           </div>
+
+          {/* Debug panel — collapsible */}
+          {debugTrace && debugOpen && (
+            <div className="mt-2 p-2 bg-base-200 rounded-lg text-[11px] font-mono text-base-content/50 space-y-1.5">
+              <div><span className="text-base-content/30">transport</span> {debugTrace.transport}</div>
+              <div><span className="text-base-content/30">duration</span> {debugTrace.totalDurationMs}ms</div>
+              <div><span className="text-base-content/30">intent</span> {debugTrace.parsedIntent}:{debugTrace.parsedEmotion}</div>
+              <div><span className="text-base-content/30">topic</span> {debugTrace.parsedTopic}</div>
+              <div><span className="text-base-content/30">input</span> {debugTrace.userInput.slice(0, 200)}{debugTrace.userInput.length > 200 ? '...' : ''}</div>
+              {debugTrace.searches.length > 0 && (
+                <div className="space-y-1">
+                  <span className="text-base-content/30">searches</span>
+                  {debugTrace.searches.map((s, i) => (
+                    <div key={i} className="pl-2 border-l border-violet-400/20">
+                      <div>{s.type}: "{s.query}" ({s.resultsLength} chars)</div>
+                      {s.resultPreview && <div className="text-base-content/30 truncate">{s.resultPreview.slice(0, 200)}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div>
+                <span className="text-base-content/30">raw output</span>
+                <pre className="mt-0.5 p-1.5 bg-base-300/50 rounded max-h-40 overflow-auto whitespace-pre-wrap break-all text-[10px]">
+                  {debugTrace.rawOutput}
+                </pre>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
