@@ -477,7 +477,7 @@ export class Sys1Engine {
           resultsLength: searchText.length,
           resultPreview: searchText.slice(0, 300),
         })
-        result = await this.transport.injectContext(`[Auto search results — not user speech. Answer the user's original question using this context.]\n<search-res>\n${searchText}\n</search-res>`)
+        result = await this.transport.injectContext(`<search-res>\n${searchText}\n</search-res>`)
         searchRounds++
       }
 

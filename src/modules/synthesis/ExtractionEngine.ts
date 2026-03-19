@@ -646,7 +646,7 @@ export class ExtractionEngine {
 
             response = await rambleExt.aiConversation({
               conversationId: sessionId,
-              prompt: `[Auto search results — not user speech. Use this context to complete extraction.]\n<search-res>\n${searchText}\n</search-res>`,
+              prompt: `<search-res>\n${searchText}\n</search-res>`,
               chatUrl: state.chatUrl ?? undefined,
               tabMode: 'reuse',
             })
@@ -687,7 +687,7 @@ export class ExtractionEngine {
           const searchText = await runGraphSearch(extracted.search)
           progress(`Search returned ${searchText.split('\n').length} results`)
 
-          messages.push({ role: 'user', content: `[Auto search results — not user speech. Use this context to complete extraction.]\n<search-res>\n${searchText}\n</search-res>` })
+          messages.push({ role: 'user', content: `<search-res>\n${searchText}\n</search-res>` })
 
           result = await generateText({
             model: models.medium,
