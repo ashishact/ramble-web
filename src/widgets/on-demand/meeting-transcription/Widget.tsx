@@ -12,13 +12,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '@iconify/react';
-import { Radio, RefreshCw, Clock, ChevronLeft, Plus, Settings } from 'lucide-react';
+import { Radio, Clock, ChevronLeft, Plus, Settings } from 'lucide-react';
 import { nid } from '../../../program/utils/id';
 import { eventBus } from '../../../lib/eventBus';
 import { rambleNative } from '../../../services/stt/rambleNative';
 import { useWidgetPause } from '../useWidgetPause';
 import {
-  processMeetingUpdate,
   generateMeetingEndSummary,
   loadMeetingState,
   loadArchivedMeetings,
@@ -28,8 +27,6 @@ import {
   createInitialMeetingState,
   saveMeetingState,
   NEW_MEETING_GAP_MS,
-  MIN_ACCUMULATED_CHARS,
-  STALE_TEXT_TIMEOUT_MS,
   type MeetingState,
   type ArchivedMeeting,
   type FeedEntry,
@@ -310,11 +307,6 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pendingTextRef = useRef('');
-  const latestAudioTypeRef = useRef<'mic' | 'system'>('mic');
-  const latestSpeakerIndexRef = useRef<number | undefined>(undefined);
-  const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isLLMRunningRef = useRef(false);
   // Gate: only accept transcription events when in meeting mode.
   // Set to true when native:mode-changed fires with 'meeting', reset on recording end.
   // Without this, every regular speech input would be treated as a meeting segment.
@@ -336,58 +328,6 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
       setTopicStartedAt(Date.now());
     }
   }, [meetingState.summaryTree.topic.text]);
-
-  // -------------------------------------------------------------------------
-  // Core LLM trigger
-  // -------------------------------------------------------------------------
-  const triggerLLM = useCallback(async (forceImmediate = false) => {
-    // Only run the meeting LLM once we know this is a meeting recording.
-    // Text accumulates in pendingTextRef regardless — once meeting mode is
-    // confirmed, the next triggerLLM call picks up all accumulated text.
-    if (!isMeetingRecordingRef.current) return;
-    if (isLLMRunningRef.current) return;
-    const pendingText = pendingTextRef.current;
-    if (pendingText.length === 0) return;
-    if (!forceImmediate && pendingText.length < MIN_ACCUMULATED_CHARS) return;
-
-    if (staleTimerRef.current) {
-      clearTimeout(staleTimerRef.current);
-      staleTimerRef.current = null;
-    }
-
-    pendingTextRef.current = '';
-    const audioType = latestAudioTypeRef.current;
-    const spkIdx = latestSpeakerIndexRef.current;
-
-    isLLMRunningRef.current = true;
-    setIsLLMRunning(true);
-    try {
-      const { state: newState, llmRan } = await processMeetingUpdate(
-        stateRef.current,
-        pendingText,
-        audioType,
-        settingsRef.current,
-        forceImmediate,
-        spkIdx,
-      );
-      if (llmRan) {
-        const merged: MeetingState = {
-          ...newState,
-          displayFeed: stateRef.current.displayFeed,
-          fullFeed: stateRef.current.fullFeed,
-          segmentCount: stateRef.current.segmentCount,
-          talkTime: stateRef.current.talkTime,
-        };
-        stateRef.current = merged;
-        setMeetingState(merged);
-      }
-    } catch {
-      // process.ts handles and logs errors internally
-    } finally {
-      isLLMRunningRef.current = false;
-      setIsLLMRunning(false);
-    }
-  }, []);
 
   // -------------------------------------------------------------------------
   // Handle a new transcription segment
@@ -439,24 +379,8 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
       };
       stateRef.current = updated;
       setMeetingState(updated);
-
-      pendingTextRef.current = pendingTextRef.current
-        ? `${pendingTextRef.current} ${text}`
-        : text;
-      latestAudioTypeRef.current = audioType;
-      latestSpeakerIndexRef.current = speakerIndex;
-
-      if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
-      staleTimerRef.current = setTimeout(() => {
-        staleTimerRef.current = null;
-        triggerLLM(true);
-      }, STALE_TEXT_TIMEOUT_MS);
-
-      if (pendingTextRef.current.length >= MIN_ACCUMULATED_CHARS) {
-        triggerLLM();
-      }
     },
-    [triggerLLM]
+    []
   );
 
   // -------------------------------------------------------------------------
@@ -473,8 +397,6 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
       if (isNewMeeting) {
         const updatedArchive = await archiveCurrentMeeting(state);
         setArchivedMeetings(updatedArchive);
-        pendingTextRef.current = '';
-        if (staleTimerRef.current) { clearTimeout(staleTimerRef.current); staleTimerRef.current = null; }
         const fresh = createInitialMeetingState();
         saveMeetingState(fresh);
         setMeetingState(fresh);
@@ -488,34 +410,17 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
       })();
     });
 
-    async function flushPending() {
-      const state = stateRef.current;
-      if (pendingTextRef.current.length > 0) {
-        await triggerLLM(true);
-      } else if (state.lastUpdatedAt > state.lastLLMCallAt) {
-        const latest = state.displayFeed[state.displayFeed.length - 1];
-        if (latest) {
-          pendingTextRef.current = latest.text;
-          latestAudioTypeRef.current = latest.audioType;
-          latestSpeakerIndexRef.current = latest.speakerIndex;
-          await triggerLLM(true);
-        }
-      }
-    }
-
     // recording-ended:
-    //   1. Flush any pending transcription text (last LLM update)
-    //   2. Archive immediately — data is safe regardless of what follows
-    //   3. Generate meeting title (best-effort, small LLM call)
-    //   4. If title succeeds, patch the already-saved archive entry + update state
+    //   1. Archive immediately — data is safe regardless of what follows
+    //   2. Generate title + summary (one-shot end-of-meeting analysis)
+    //   3. If analysis succeeds, patch the already-saved archive entry
+    //   4. Reset to fresh state
     const unsubEnd = eventBus.on('native:recording-ended', () => {
       const wasMeeting = isMeetingRecordingRef.current;
       isMeetingRecordingRef.current = false;
       setIsMeetingMode(false);
       if (!wasMeeting) {
-        // Solo recording — discard accumulated text/feed that was never processed
-        pendingTextRef.current = '';
-        if (staleTimerRef.current) { clearTimeout(staleTimerRef.current); staleTimerRef.current = null; }
+        // Solo recording — discard accumulated feed
         const fresh = createInitialMeetingState();
         stateRef.current = fresh;
         setMeetingState(fresh);
@@ -525,15 +430,13 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
         if (isPausedRef.current) return;
         if (stateRef.current.segmentCount === 0) return;
 
-        // Step 1: flush
-        await flushPending();
-
-        // Step 2: archive now — safe even if step 3 fails
+        // Step 1: archive now — safe even if step 2 fails
         const meetingId = `meeting-${stateRef.current.startedAt}`;
         const savedArchive = await archiveCurrentMeeting(stateRef.current);
         setArchivedMeetings(savedArchive);
 
-        // Step 3 + 4: generate title + summary, then patch archive
+        // Step 2 + 3: one-shot end-of-meeting analysis, then patch archive
+        setIsLLMRunning(true);
         try {
           const updatedState = await generateMeetingEndSummary(stateRef.current, settingsRef.current);
           if (updatedState.title || updatedState.summary) {
@@ -545,12 +448,9 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
             setArchivedMeetings(patchedArchive);
           }
         } catch { /* generateMeetingEndSummary logs internally — archive already safe */ }
+        finally { setIsLLMRunning(false); }
 
-        // Step 5: reset to fresh state — meeting is safely archived.
-        // This ensures the next recording gets a new startedAt (no ID collision)
-        // and prevents a phantom 'active' record from lingering in DB.
-        pendingTextRef.current = '';
-        if (staleTimerRef.current) { clearTimeout(staleTimerRef.current); staleTimerRef.current = null; }
+        // Step 4: reset to fresh state — meeting is safely archived.
         const fresh = createInitialMeetingState();
         saveMeetingState(fresh);
         stateRef.current = fresh;
@@ -558,14 +458,12 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
       })();
     });
 
-    // recording-cancelled: just flush — no end-of-meeting call
+    // recording-cancelled: no analysis, just reset
     const unsubCancelled = eventBus.on('native:recording-cancelled', () => {
       const wasMeeting = isMeetingRecordingRef.current;
       isMeetingRecordingRef.current = false;
       setIsMeetingMode(false);
       if (!wasMeeting) {
-        pendingTextRef.current = '';
-        if (staleTimerRef.current) { clearTimeout(staleTimerRef.current); staleTimerRef.current = null; }
         const fresh = createInitialMeetingState();
         stateRef.current = fresh;
         setMeetingState(fresh);
@@ -573,11 +471,12 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
       }
       if (isPausedRef.current) return;
       if (stateRef.current.segmentCount === 0) return;
-      void flushPending();
+      // Archive without analysis on cancel
+      void archiveCurrentMeeting(stateRef.current).then(setArchivedMeetings);
     });
 
     return () => { unsubStart(); unsubEnd(); unsubCancelled(); };
-  }, [triggerLLM]);
+  }, []);
 
   // -------------------------------------------------------------------------
   // Subscribe to transcription events for display feed (intermediate only)
@@ -604,33 +503,11 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
   }, [isPaused, handleTranscription]);
 
   // -------------------------------------------------------------------------
-  // Subscribe to System I processing events for LLM trigger
-  // When the unified pipeline processes a chunk, trigger the meeting LLM.
-  // This replaces the old text-accumulation-based trigger.
-  // -------------------------------------------------------------------------
-  useEffect(() => {
-    if (isPaused) return;
-
-    const unsubSystemI = eventBus.on('processing:system-i', () => {
-      // System I processed a chunk — trigger meeting LLM if we have pending text
-      triggerLLM();
-    });
-
-    return () => { unsubSystemI(); };
-  }, [isPaused, triggerLLM]);
-
-  // -------------------------------------------------------------------------
   // Native mode
   // -------------------------------------------------------------------------
   useEffect(() => {
     const unsub = eventBus.on('native:mode-changed', (payload) => {
       setNativeMode(payload.mode);
-      // Once the native side reports 'meeting' mode, flip the ref.
-      // handleTranscription always accumulates text + calls triggerLLM on each
-      // intermediate event. triggerLLM checks isMeetingRecordingRef — while false
-      // it's a no-op. The moment mode-changed flips it to true, the very next
-      // intermediate transcription event will trigger the LLM with ALL accumulated
-      // pending text (nothing is lost).
       if (payload.mode === 'meeting') {
         isMeetingRecordingRef.current = true;
         setIsMeetingMode(true);
@@ -652,10 +529,6 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
   useEffect(() => {
     feedBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [meetingState.displayFeed.length]);
-
-  useEffect(() => {
-    return () => { if (staleTimerRef.current) clearTimeout(staleTimerRef.current); };
-  }, []);
 
   // -------------------------------------------------------------------------
   // Actions
@@ -688,25 +561,11 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
     if (state.segmentCount > 0) {
       archiveCurrentMeeting(state).then(setArchivedMeetings).catch(console.error);
     }
-    pendingTextRef.current = '';
-    if (staleTimerRef.current) { clearTimeout(staleTimerRef.current); staleTimerRef.current = null; }
     const fresh = createInitialMeetingState();
     saveMeetingState(fresh);
     setMeetingState(fresh);
     stateRef.current = fresh;
   }, []);
-
-  const handleRefresh = useCallback(async () => {
-    if (isLLMRunningRef.current) return;
-    if (pendingTextRef.current.length > 0) { await triggerLLM(true); return; }
-    const state = stateRef.current;
-    if (state.displayFeed.length === 0) return;
-    const lastEntries = state.displayFeed.slice(-3);
-    pendingTextRef.current = lastEntries.map((e) => e.text).join(' ');
-    latestAudioTypeRef.current = lastEntries[lastEntries.length - 1].audioType;
-    latestSpeakerIndexRef.current = lastEntries[lastEntries.length - 1].speakerIndex;
-    await triggerLLM(true);
-  }, [triggerLLM]);
 
   const handleToggleActionItem = useCallback((id: string) => {
     const state = stateRef.current;
@@ -995,9 +854,6 @@ export function MeetingTranscriptionWidget({ nodeId }: { nodeId: string }) {
           <PauseButton />
           <button onClick={() => setView('settings')} className="p-1 hover:bg-base-200 rounded transition-colors" title="Settings">
             <Settings size={12} className="text-base-content/40" />
-          </button>
-          <button onClick={handleRefresh} disabled={isLLMRunning} className="p-1 hover:bg-base-200 rounded transition-colors disabled:opacity-30" title="Force update">
-            <RefreshCw size={12} className="text-base-content/40" />
           </button>
         </div>
       </div>

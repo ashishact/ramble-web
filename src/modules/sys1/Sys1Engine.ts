@@ -38,6 +38,7 @@ import { profileStorage } from '../../lib/profileStorage'
 import { createLogger } from '../../program/utils/logger'
 import { nid } from '../../program/utils/id'
 import { rambleExt } from '../chrome-extension'
+import { meetingStatus } from '../../program/kernel/meetingStatus'
 import type { Sys1Transport, UserIntent, UserEmotion, SysISearchRequest } from './transports'
 import { ChatGPTTransport, APIConversationTransport } from './transports'
 import { setDebugTrace, type Sys1SearchTrace } from './debugStore'
@@ -403,6 +404,13 @@ export class Sys1Engine {
 
   private async enqueueLatest(): Promise<void> {
     try {
+      // Skip during meeting mode — no incremental analysis. SYS-I will
+      // resume naturally once the meeting ends and new conversations arrive.
+      if (meetingStatus.getState().isActive) {
+        log.info('Meeting active — skipping enqueue')
+        return
+      }
+
       const recent = await conversationStore.getRecent(1)
       if (recent.length === 0) return
 

@@ -1,6 +1,5 @@
 export { MeetingTranscriptionWidget } from './Widget';
 export {
-  processMeetingUpdate,
   generateMeetingEndSummary,
   loadMeetingState,
   saveMeetingState,
@@ -13,8 +12,6 @@ export {
   loadMeetingSettings,
   saveMeetingSettings,
   NEW_MEETING_GAP_MS,
-  MIN_ACCUMULATED_CHARS,
-  STALE_TEXT_TIMEOUT_MS,
   SETTINGS_STORAGE_KEY,
   type MeetingState,
   type ArchivedMeeting,

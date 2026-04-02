@@ -1,24 +1,23 @@
 /**
  * Meeting Transcription Process
  *
- * PARADIGM: STREAMING (live meeting mode) ────────────────────────────────────
- * This module owns the real-time LLM loop for an active meeting. It is called
- * continuously while recording is in progress — NOT after it ends.
+ * PARADIGM: CAPTURE + ONE-SHOT ANALYSIS ──────────────────────────────────────
+ * During a meeting, this module only manages state (types, persistence, archive).
+ * NO LLM calls happen while the meeting is active — the user stays focused on
+ * the meeting without distraction from incremental analysis.
+ *
+ * When the meeting ends, generateMeetingEndSummary() fires ONCE to produce a
+ * comprehensive title + summary. If the Chrome extension is available it routes
+ * through ChatGPT, otherwise falls back to the LLM API.
  *
  * FOCUS CONTEXT: OUT-OF-APP primarily.
  * Data comes from the native app's system audio (remote participants via
  * Zoom/Meet/Teams) and mic audio (local user), streamed via WebSocket.
  * The user is typically in another app while this runs.
  *
- * Trigger cadence:
- *   - Main loop: every 30s minimum (LLM_THROTTLE_MS), or when MIN_ACCUMULATED_CHARS
- *     is reached (400 chars), or after STALE_TEXT_TIMEOUT_MS silence (45s).
- *   - End-of-meeting: generateMeetingEndSummary() fires once after recording ends
- *     (the designated slot for post-meeting batch features: title, decisions, etc.)
- *
- * This module does NOT call processInput() / the core processor. It has its
- * own independent LLM prompt and state machine. Completed meeting data is
- * stored in DuckDB via widgetRecordStore, not the conversations table.
+ * This module does NOT call processInput() / the core processor. Completed
+ * meeting data is stored in DuckDB via widgetRecordStore, not the conversations
+ * table.
  *
  * GAP — INTEGRATION WITH WORKING MEMORY:
  *   Live meeting segments are never fed into WorkingMemory (which only reads
@@ -27,39 +26,14 @@
  *   Future: after a meeting ends, push the full transcript through processInput()
  *   so entities, topics, and memories get extracted and persist cross-session.
  * ─────────────────────────────────────────────────────────────────────────────
- *
- * State machine for live meeting transcription + LLM summarization.
- *
- * Intelligence layers:
- *   overviewItems → additive log, one bullet per significant moment, never deleted mid-meeting
- *   topic         → current major theme, full rewrite when discussion shifts
- *   now           → latest exchange, always updated
- *   actionItems   → tracked list of commitments/tasks extracted from conversation
- *   participants  → names inferred from conversation
- *   talkTime      → accumulated mic vs system audio duration (tracked in Widget)
- *   sentiment     → neutral / positive / tense / negative
- *
- * Overview delta approach:
- *   LLM outputs overallDelta: string | null — appended only when genuinely new/significant.
- *   Never rewrites old items. Compaction deferred to end-of-meeting if needed.
- *
- * Token budget (approximate input):
- *   overview (12 items × 120 chars)   =  1 440
- *   topic 400 + now 200               =    600
- *   action items (10 × 120)           =  1 200
- *   history (8 × 400)                 =  3 200
- *   new content                       =    600
- *   overhead                          =    400
- *   ──────────────────────────────────────────
- *   total                     ~7 440 chars ≈ ~1 860 tokens input
  */
 
 import { z } from 'zod';
-import { nid } from '../../../program/utils/id';
 import { callLLM } from '../../../program/llmClient';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
 import { profileStorage } from '../../../lib/profileStorage';
 import { widgetRecordStore } from '../../../graph/stores/widgetRecordStore';
+import { rambleExt } from '../../../modules/chrome-extension';
 
 // ============================================================================
 // Constants
@@ -73,33 +47,11 @@ const MEETING_WIDGET_TYPE = 'meeting';
 const MEETING_SUBTYPE_ACTIVE = 'active';
 const MEETING_SUBTYPE_ARCHIVE = 'archive';
 
-/** Min chars accumulated since last LLM call before we bother calling again.
- * Set high (400) because real-time meeting results aren't critical — better to
- * accumulate a meaningful chunk before spending an LLM call. */
-export const MIN_ACCUMULATED_CHARS = 400;
 
-/** After this ms of silence, fire LLM even if accumulated text is short.
- * 45s gives the speaker time to pause without wasting an LLM call on fragments. */
-export const STALE_TEXT_TIMEOUT_MS = 45_000;
-
-/** Minimum ms between LLM calls (even when MIN_ACCUMULATED_CHARS is reached). */
-const LLM_THROTTLE_MS = 30_000;
-const MAX_HISTORY = 20;
 const MAX_ARCHIVE = 50;
-const LLM_HISTORY_WINDOW = 8;
-const MAX_OVERVIEW_ITEMS_IN_PROMPT = 12;
-const MAX_ACTION_ITEMS = 20;
 
 /** Gap in ms after which a new recording-started is treated as a new meeting */
 export const NEW_MEETING_GAP_MS = 3 * 60 * 1000;
-
-// LLM input caps
-const MAX_OVERVIEW_ITEM_CHARS = 120;
-const MAX_TOPIC_CHARS         = 400;
-const MAX_NOW_CHARS           = 200;
-const MAX_ACTION_ITEM_CHARS   = 120;
-const MAX_HISTORY_SEGMENT_CHARS = 400;
-const MAX_ACCUMULATED_TEXT_CHARS = 600;
 
 // ============================================================================
 // Types
@@ -226,11 +178,6 @@ export interface ArchivedMeeting {
   summary: string;
   /** User-assigned speaker names keyed by "mic:0", "sys:1" etc. — per meeting */
   speakerNames: Record<string, string>;
-}
-
-export interface MeetingUpdateResult {
-  state: MeetingState;
-  llmRan: boolean;
 }
 
 // ============================================================================
@@ -540,321 +487,11 @@ export function createInitialMeetingState(): MeetingState {
 }
 
 // ============================================================================
-// LLM Prompts
-// ============================================================================
-
-function buildSystemPrompt(): string {
-  return `You are a live meeting intelligence assistant.
-
-━━━ INPUT SOURCE ━━━
-Input is raw speech-to-text transcription — it may contain recognition errors or mispronunciations.
-Use surrounding context to infer intended meaning. Do not autocorrect unless highly confident.
-
-━━━ AUDIO CHANNELS ━━━
-• "mic"    = you (the local user) — see MIC USER in the user message
-• "system" = remote participants — one or more people, audio routed through Teams / Zoom / Meet / etc.
-             If a name is clearly audible (e.g. "Hi, I'm Sarah"), note them as a participant.
-
-ECHO / BLEED WARNING:
-Without headphones, system audio plays through speakers and is picked up by the mic — so the same
-speech may appear as both "system" and "mic" in close succession. If a "mic" segment is nearly
-identical in content to a recent "system" segment, treat it as echo/bleed — do NOT attribute it
-to the local user.
-
-━━━ VOICE STYLE ━━━
-Compact, never paraphrase into 3rd-person narrative.
-✗ WRONG: "The team discussed budget concerns"
-✓ RIGHT:  "Budget tight — can't fund both projects this quarter"
-Preserve first-person voice: keep "I think", "We need", "Let's" intact.
-
-━━━ OVERVIEW (additive bullet log) ━━━
-The overview is an immutable log of the whole meeting — bullets are NEVER rewritten or removed.
-• Output overallDelta ONLY when the new content contains something genuinely significant:
-  a new decision, commitment, goal, key fact, or clear topic shift.
-• If it is continuation, small-talk, repetition, or elaboration of an existing bullet — output null.
-• One short phrase, max 15 words. First-person voice.
-• You are APPENDING a new bullet, not rewriting anything.
-
-━━━ TOPIC ━━━
-Current major theme. Fully rewrite when discussion clearly shifts. Max 50 words.
-
-━━━ NOW ━━━
-Most recent exchange — what is being said right now. Always update. Max 30 words.
-
-━━━ ACTION ITEMS ━━━
-Extract explicit or strongly implied tasks/commitments from the NEW content only.
-Return only NEW items — do not re-list existing ones. Empty array if none.
-
-Only extract items that are clearly assignable, concrete, and would stand alone in formal meeting notes. Skip vague fragments and rhetorical statements.
-
-Before adding a new item, check the OPEN ACTION ITEMS list: if the new item substantially duplicates
-an existing open item (same task, even if phrased differently), skip it — do not add a duplicate.
-Each: short text, optional owner ("you" for mic-user, participant name, or omit), optional deadline.
-
-━━━ SENTIMENT ━━━
-Overall mood right now:
-  "neutral"  = ordinary discussion
-  "positive" = enthusiasm, agreement, good energy
-  "tense"    = disagreement, friction, raised stakes
-  "negative" = clear frustration or conflict
-
-━━━ PARTICIPANTS ━━━
-If a name is clearly introduced in the new content, return them. Empty array otherwise.
-
-━━━ RESPONSE FORMAT (strict JSON, no markdown) ━━━
-{
-  "overallDelta": "short phrase" | null,
-  "overallIcon": "mdi:... (only when overallDelta is non-null)",
-  "topic":  { "text": "...", "icon": "mdi:..." },
-  "now":    { "text": "...", "icon": "mdi:..." },
-  "actionItems": [{ "text": "...", "owner": "..." | null, "deadline": "..." | null }],
-  "sentiment": "neutral" | "positive" | "tense" | "negative",
-  "newParticipants": [{ "name": "...", "audioType": "mic" | "system" }]
-}`;
-}
-
-function truncate(text: string, max: number): string {
-  if (text.length <= max) return text;
-  return text.slice(0, max) + '…';
-}
-
-function buildUserPrompt(
-  state: MeetingState,
-  accumulatedText: string,
-  latestAudioType: 'mic' | 'system',
-  settings: MeetingSettings
-): string {
-  const { summaryTree: tree } = state;
-
-  const micUser = settings.userName || 'the local user';
-  const contextHeader = settings.meetingContext
-    ? `MIC USER: ${micUser}\nMEETING CONTEXT: ${settings.meetingContext}\n\n`
-    : `MIC USER: ${micUser}\n\n`;
-
-  const overviewBlock = state.overviewItems.length === 0
-    ? '(meeting just started — no overview items yet)'
-    : state.overviewItems
-        .slice(-MAX_OVERVIEW_ITEMS_IN_PROMPT)
-        .map((item, i) => `${i + 1}. ${truncate(item.text, MAX_OVERVIEW_ITEM_CHARS)}`)
-        .join('\n');
-
-  const topicText = tree.topic.text ? truncate(tree.topic.text, MAX_TOPIC_CHARS) : '(none yet)';
-  const nowText   = tree.now.text   ? truncate(tree.now.text,   MAX_NOW_CHARS)   : '(nothing yet)';
-
-  const openActions = state.actionItems.filter((a) => !a.done);
-  const actionItemsBlock = openActions.length === 0
-    ? '(none)'
-    : openActions
-        .slice(-10)
-        .map((a) => {
-          let line = `• ${truncate(a.text, MAX_ACTION_ITEM_CHARS)}`;
-          if (a.owner) line += ` [${a.owner}]`;
-          if (a.deadline) line += ` — ${a.deadline}`;
-          return line;
-        })
-        .join('\n');
-
-  const recentHistory = state.history
-    .slice(-LLM_HISTORY_WINDOW)
-    .map((s) => {
-      const speakerKey = s.speakerIndex != null ? `${s.audioType === 'mic' ? 'mic' : 'sys'}:${s.speakerIndex}` : null;
-      const label = speakerKey
-        ? (state.speakerNames[speakerKey] || `${s.audioType === 'mic' ? 'MIC' : 'SYS'} Speaker ${s.speakerIndex}`)
-        : (s.audioType === 'mic' ? 'MIC' : 'SYSTEM');
-      return `[${label}] ${truncate(s.text, MAX_HISTORY_SEGMENT_CHARS)}`;
-    })
-    .join('\n');
-
-  const participantsLine = state.participants.length > 0
-    ? `KNOWN PARTICIPANTS: ${state.participants.map((p) => `${p.name} (${p.audioType})`).join(', ')}\n\n`
-    : '';
-
-  // Appended last so the stable prefix above remains cacheable by the LLM API.
-  const sessionTime = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
-
-  return `${contextHeader}CURRENT OVERVIEW LOG:
-${overviewBlock}
-
-CURRENT TOPIC: ${topicText}
-CURRENT NOW:   ${nowText}
-
-OPEN ACTION ITEMS:
-${actionItemsBlock}
-
-${participantsLine}RECENT HISTORY:
-${recentHistory || '(none yet)'}
-
-NEW CONTENT [source: ${latestAudioType === 'mic' ? 'MIC' : 'SYSTEM'}]:
-${truncate(accumulatedText, MAX_ACCUMULATED_TEXT_CHARS)}
-
-<meta>current_time: ${sessionTime}</meta>`;
-}
-
-// ============================================================================
-// State machine update
-// ============================================================================
-
-/**
- * Run an LLM update cycle with the text accumulated since the last call.
- *
- * Widget owns: displayFeed, segmentCount, talkTime, accumulation logic.
- * This function owns: summaryTree, overviewItems, actionItems, participants,
- *                     sentiment, history, lastLLMCallAt, llmDurationMs, storage.
- */
-export async function processMeetingUpdate(
-  state: MeetingState,
-  accumulatedText: string,
-  latestAudioType: 'mic' | 'system',
-  settings: MeetingSettings,
-  forceImmediate = false,
-  latestSpeakerIndex?: number,
-): Promise<MeetingUpdateResult> {
-  const now = Date.now();
-  const timeSinceLast = now - state.lastLLMCallAt;
-
-  if (!forceImmediate && timeSinceLast < LLM_THROTTLE_MS) {
-    return { state, llmRan: false };
-  }
-
-  const startTime = performance.now();
-  try {
-    const response = await callLLM({
-      tier: 'medium',
-      prompt: buildUserPrompt(state, accumulatedText, latestAudioType, settings),
-      systemPrompt: buildSystemPrompt(),
-      options: { max_tokens: 900 },
-    });
-
-    const llmDurationMs = Math.round(performance.now() - startTime);
-    const { data } = parseLLMJSON(response.content);
-
-    let newOverviewItems = [...state.overviewItems];
-    const newTree: SummaryTree = {
-      overall: { ...state.summaryTree.overall },
-      topic:   { ...state.summaryTree.topic },
-      now:     { ...state.summaryTree.now },
-    };
-    let newActionItems = [...state.actionItems];
-    let newParticipants = [...state.participants];
-    let newSentiment: SentimentLevel = state.sentiment;
-
-    if (data && typeof data === 'object') {
-      const obj = data as Record<string, unknown>;
-
-      // ── Overview: append delta only ──
-      if (typeof obj.overallDelta === 'string' && obj.overallDelta.trim()) {
-        const delta = obj.overallDelta.trim();
-        newOverviewItems = [...newOverviewItems, { text: delta, ts: now }];
-        const icon =
-          typeof obj.overallIcon === 'string' && obj.overallIcon.includes(':')
-            ? (obj.overallIcon as string)
-            : newTree.overall.icon;
-        newTree.overall = { text: delta, icon, updatedAt: now };
-      }
-
-      // ── Topic + Now: full rewrite ──
-      for (const level of ['topic', 'now'] as const) {
-        const raw = obj[level];
-        if (raw && typeof raw === 'object') {
-          const l = raw as Record<string, unknown>;
-          if (typeof l.text === 'string' && l.text.trim()) {
-            newTree[level] = {
-              text: l.text.trim(),
-              icon: typeof l.icon === 'string' && l.icon.includes(':') ? l.icon : newTree[level].icon,
-              updatedAt: now,
-            };
-          }
-        }
-      }
-
-      // ── Action items: append new ones ──
-      const rawItems = obj.actionItems;
-      if (Array.isArray(rawItems)) {
-        for (const raw of rawItems) {
-          if (raw && typeof raw === 'object') {
-            const item = raw as Record<string, unknown>;
-            if (typeof item.text === 'string' && item.text.trim()) {
-              newActionItems = [
-                ...newActionItems,
-                {
-                  id: nid('ai'),
-                  text: item.text.trim(),
-                  owner: typeof item.owner === 'string' && item.owner.trim() ? item.owner.trim() : undefined,
-                  deadline: typeof item.deadline === 'string' && item.deadline.trim() ? item.deadline.trim() : undefined,
-                  ts: now,
-                  done: false,
-                },
-              ];
-            }
-          }
-        }
-        if (newActionItems.length > MAX_ACTION_ITEMS) {
-          newActionItems = newActionItems.slice(-MAX_ACTION_ITEMS);
-        }
-      }
-
-      // ── Sentiment ──
-      const s = obj.sentiment;
-      if (s === 'neutral' || s === 'positive' || s === 'tense' || s === 'negative') {
-        newSentiment = s;
-      }
-
-      // ── New participants: merge, no duplicates ──
-      const rawParticipants = obj.newParticipants;
-      if (Array.isArray(rawParticipants)) {
-        for (const raw of rawParticipants) {
-          if (raw && typeof raw === 'object') {
-            const p = raw as Record<string, unknown>;
-            if (typeof p.name === 'string' && p.name.trim()) {
-              const name = p.name.trim();
-              const audioType: 'mic' | 'system' = p.audioType === 'mic' ? 'mic' : 'system';
-              if (!newParticipants.some((e) => e.name.toLowerCase() === name.toLowerCase())) {
-                newParticipants = [...newParticipants, { name, audioType, firstSeenAt: now }];
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // ── History ──
-    const historyEntry: HistorySegment = {
-      text: truncate(accumulatedText, MAX_HISTORY_SEGMENT_CHARS),
-      audioType: latestAudioType,
-      ts: now,
-      speakerIndex: latestSpeakerIndex,
-    };
-    const updatedHistory = [...state.history, historyEntry];
-    if (updatedHistory.length > MAX_HISTORY) {
-      updatedHistory.splice(0, updatedHistory.length - MAX_HISTORY);
-    }
-
-    const newState: MeetingState = {
-      ...state,
-      history: updatedHistory,
-      summaryTree: newTree,
-      overviewItems: newOverviewItems,
-      actionItems: newActionItems,
-      participants: newParticipants,
-      sentiment: newSentiment,
-      lastLLMCallAt: now,
-      llmDurationMs,
-    };
-
-    saveMeetingState(newState);
-    return { state: newState, llmRan: true };
-  } catch (error) {
-    console.error('[MeetingTranscription] LLM call failed:', error);
-    return { state: { ...state, lastLLMCallAt: now }, llmRan: false };
-  }
-}
-
-// ============================================================================
 // End-of-meeting summary
 //
-// Single LLM call fired once when recording ends (after the final flush).
+// Single LLM call fired once when recording ends.
 // This is the designated slot for ALL future end-of-meeting features.
-// Currently generates: title.
+// Currently generates: title + comprehensive summary.
 // Future: decisions log, key numbers, follow-up email draft, etc.
 // ============================================================================
 
@@ -951,15 +588,28 @@ Be specific and detailed. Use actual names, dates, and facts from the transcript
 }`;
 
   // ── Call LLM ──────────────────────────────────────────────────────────
+  // Prefer ChatGPT via Chrome extension when available, otherwise fall back
+  // to our own LLM API.
   try {
-    const response = await callLLM({
-      tier: 'medium',
-      prompt: userPrompt,
-      systemPrompt,
-      options: { max_tokens: 1200 },
-    });
+    let rawContent: string;
 
-    const { data } = parseLLMJSON(response.content);
+    if (rambleExt.isAvailable) {
+      console.log('[MeetingTranscription] Extension available → sending to ChatGPT');
+      const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
+      const response = await rambleExt.aiRaw({ target: 'chatgpt', prompt: fullPrompt });
+      rawContent = response.answer;
+    } else {
+      console.log('[MeetingTranscription] Extension unavailable → using LLM API');
+      const response = await callLLM({
+        tier: 'medium',
+        prompt: userPrompt,
+        systemPrompt,
+        options: { max_tokens: 1200 },
+      });
+      rawContent = response.content;
+    }
+
+    const { data } = parseLLMJSON(rawContent);
     const title =
       data && typeof data === 'object' && typeof (data as Record<string, unknown>).title === 'string'
         ? ((data as Record<string, unknown>).title as string).trim()
