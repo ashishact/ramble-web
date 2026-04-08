@@ -291,6 +291,19 @@ export class Sys1Engine {
     this.updateState(this.transport.isAvailable() ? 'idle' : 'no-transport')
     log.info('New session:', this.chatSessionId)
 
+    // Insert a visible marker in the conversation feed
+    try {
+      const marker = await conversationStore.create({
+        sessionId: this.chatSessionId,
+        rawText: 'New session started',
+        source: 'sys1',
+        speaker: 'system',
+      })
+      await conversationStore.markProcessed(marker.id)
+    } catch (err) {
+      log.error('Failed to insert session marker:', err)
+    }
+
     if (opts?.withContext) {
       this.bootstrapped = false
       await this.bootstrapFromDB()

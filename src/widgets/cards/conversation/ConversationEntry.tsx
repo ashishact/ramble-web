@@ -32,6 +32,23 @@ export function ConversationEntry({
   extraction,
   isMeetingMode,
 }: ConversationEntryProps) {
+  // ── System marker (e.g. "New session started") ──────────────────
+  if (conversation.speaker === 'system') {
+    const timeStr = new Date(conversation.timestamp).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    return (
+      <div className="flex items-center gap-2 py-2 animate-fadeSlideIn">
+        <div className="flex-1 border-t border-base-300/40" />
+        <span className="text-[9px] text-base-content/30 whitespace-nowrap">
+          {conversation.rawText} &middot; {timeStr}
+        </span>
+        <div className="flex-1 border-t border-base-300/40" />
+      </div>
+    );
+  }
+
   const [isExpanded, setIsExpanded] = useState(false);
 
   const fullText = conversation.rawText;
