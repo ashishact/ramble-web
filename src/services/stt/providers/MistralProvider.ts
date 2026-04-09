@@ -1,4 +1,7 @@
 /**
+ * @deprecated Not used. Replaced by RambleSTTProvider.
+ * Kept for reference until fully removed.
+ *
  * Mistral STT Provider (Voxtral)
  *
  * Batch HTTP STT via Cloudflare worker proxy at /api/ramble/mistral-stt

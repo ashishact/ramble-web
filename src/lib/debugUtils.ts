@@ -145,6 +145,10 @@ function buildTextExport(data: ExportData): string {
 
 // Define the ramble debug interface
 interface RambleDebug {
+  // Feature flags
+  enableChatGPTTransport: () => void
+  disableChatGPTTransport: () => void
+
   // Onboarding
   resetOnboarding: () => Promise<void>
   getOnboardingStatus: () => Promise<unknown>
@@ -185,6 +189,20 @@ interface RambleDebug {
 
 // Create the ramble debug object
 const rambleDebug: RambleDebug = {
+  // ============================================================================
+  // Feature Flags
+  // ============================================================================
+
+  enableChatGPTTransport() {
+    localStorage.setItem('ramble:chatgpt-transport', 'true')
+    console.log('[ramble] ChatGPT transport enabled. Reload to apply.')
+  },
+
+  disableChatGPTTransport() {
+    localStorage.removeItem('ramble:chatgpt-transport')
+    console.log('[ramble] ChatGPT transport disabled. Reload to apply.')
+  },
+
   // ============================================================================
   // Onboarding
   // ============================================================================
@@ -395,6 +413,16 @@ function attachDocs(obj: Record<string, unknown>, docs: Record<string, string>) 
 }
 
 attachDocs(rambleDebug as unknown as Record<string, unknown>, {
+  enableChatGPTTransport:
+    `Sets localStorage flag 'ramble:chatgpt-transport' = 'true' so Sys1Engine picks ChatGPTTransport on next load.
+Reload the page after calling for the change to take effect.
+Params: none | Returns: void`,
+
+  disableChatGPTTransport:
+    `Removes localStorage flag 'ramble:chatgpt-transport' so Sys1Engine falls back to APIConversationTransport (Gemini).
+Reload the page after calling for the change to take effect.
+Params: none | Returns: void`,
+
   resetOnboarding:
     `Wipes onboarding progress so the welcome flow replays on next reload.
 Only touches the onboarding state in the data store — user profile, API keys, and DB data are untouched.

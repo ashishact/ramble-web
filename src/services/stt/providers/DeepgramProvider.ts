@@ -1,4 +1,7 @@
 /**
+ * @deprecated Not used. Replaced by RambleSTTProvider.
+ * Kept for reference until fully removed.
+ *
  * Deepgram STT Provider
  *
  * Supports both Nova (v1) and Flux (v2) models

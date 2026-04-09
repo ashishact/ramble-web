@@ -34,27 +34,9 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext } from 'react';
 import { useSTT } from '../services/stt/useSTT';
-import { settingsHelpers, type AppSettings } from '../stores/settingsStore';
+import { settingsHelpers } from '../stores/settingsStore';
 import { rambleNative } from '../services/stt/rambleNative';
 import { useKernel } from '../program/hooks';
-import { resolveSTTTier } from '../program';
-import type { STTProvider } from '../services/stt/types';
-
-/** Map STT provider to settings provider key for API key lookup */
-const STT_PROVIDER_TO_SETTINGS_KEY: Record<STTProvider, keyof AppSettings['providers']> = {
-  'groq-whisper': 'groq',
-  'gemini': 'gemini',
-  'deepgram-nova': 'deepgram',
-  'deepgram-flux': 'deepgram',
-  'mistral': 'mistral',
-};
-
-/** Get the API key for the resolved STT tier provider */
-function getSTTApiKey(tier: 'small' | 'medium' | 'large' | 'live'): string {
-  const resolved = resolveSTTTier(tier);
-  const settingsKey = STT_PROVIDER_TO_SETTINGS_KEY[resolved.provider];
-  return settingsHelpers.getApiKey(settingsKey) || '';
-}
 import { TranscriptReview, type RambleMetadata } from './TranscriptReview';
 import { lensController } from '../lib/lensController';
 import { eventBus } from '../lib/eventBus';
@@ -128,12 +110,12 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
   // Get kernel for submitting input
   const { submitInput, isInitialized } = useKernel();
 
-  // STT configuration - dynamically resolve API key based on tier's provider
+  // STT configuration — RambleSTTProvider handles auth via Bearer token internally,
+  // no API key needed here. threadId and conversationId are managed by the provider.
   const sttConfig = useMemo(
     () => ({
-      tier: 'small' as const,
-      apiKey: getSTTApiKey('small'),
-      chunkingStrategy: 'vad' as const,
+      provider: 'ramble' as const,
+      apiKey: '',
     }),
     []
   );
@@ -159,8 +141,7 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
   useEffect(() => {
     let mounted = true;
     const initSTT = async () => {
-      const sttApiKey = getSTTApiKey('small');
-      if (sttApiKey && mounted) {
+      if (mounted) {
         try {
           await connectSTT();
         } catch (err) {
@@ -289,17 +270,6 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
         setCurrentTranscript('');
       }
     } else {
-      const sttApiKey = getSTTApiKey('small');
-      console.log(
-        '[GlobalSTT] Starting recording, API key present:',
-        !!sttApiKey,
-        'STT connected:',
-        sttConnected
-      );
-      if (!sttApiKey) {
-        console.warn('[GlobalSTT] No API key configured for STT provider');
-        return;
-      }
       if (!sttConnected) {
         console.log('[GlobalSTT] Connecting STT...');
         await connectSTT();

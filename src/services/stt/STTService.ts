@@ -13,6 +13,8 @@ import type {
   STTServiceCallbacks,
   STTProvider,
 } from './types';
+import { RambleSTTProvider } from './providers/RambleSTTProvider';
+// Legacy providers — kept for reference, not used by the app. See @deprecated notice in each file.
 import { DeepgramProvider } from './providers/DeepgramProvider';
 import { GroqWhisperProvider } from './providers/GroqWhisperProvider';
 import { MistralProvider } from './providers/MistralProvider';
@@ -209,6 +211,9 @@ export class STTService {
     }
 
     switch (config.provider) {
+      case 'ramble':
+        return new RambleSTTProvider();
+      // ── Legacy providers (deprecated, not used by the app) ────────────
       case 'groq-whisper':
         return new GroqWhisperProvider(config);
       case 'deepgram-nova':

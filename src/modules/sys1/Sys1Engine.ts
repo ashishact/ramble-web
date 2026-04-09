@@ -45,6 +45,12 @@ import { setDebugTrace, type Sys1SearchTrace } from './debugStore'
 
 const log = createLogger('Sys1Engine')
 
+// ── Feature flag: ChatGPT transport via Chrome extension ─────────────
+// Disabled by default. Toggle from the browser console:
+//   window.ramble.enableChatGPTTransport()   → then reload
+//   window.ramble.disableChatGPTTransport()  → then reload
+const CHATGPT_TRANSPORT_ENABLED = localStorage.getItem('ramble:chatgpt-transport') === 'true'
+
 export type Sys1State = 'idle' | 'sending' | 'error' | 'no-transport'
 
 export interface Sys1Response {
@@ -123,11 +129,11 @@ export class Sys1Engine {
    * Called at construction and on session reset.
    */
   private createTransportForCurrentState(): Sys1Transport {
-    if (rambleExt.isAvailable) {
-      log.info('Extension available → ChatGPTTransport')
+    if (CHATGPT_TRANSPORT_ENABLED && rambleExt.isAvailable) {
+      log.info('Extension available + flag enabled → ChatGPTTransport')
       return new ChatGPTTransport(this.chatSessionId, this.chatUrl)
     }
-    log.info('Extension not available → APIConversationTransport')
+    log.info('ChatGPT transport disabled or extension unavailable → APIConversationTransport')
     return new APIConversationTransport()
   }
 
@@ -155,8 +161,10 @@ export class Sys1Engine {
       }
     })
 
-    // Track extension availability changes — never switch mid-session
+    // Track extension availability changes — never switch mid-session.
+    // Only relevant when the ChatGPT transport flag is enabled.
     this.unsubAvailability = rambleExt.onAvailabilityChange((available) => {
+      if (!CHATGPT_TRANSPORT_ENABLED) return
       const currentIsChatGPT = this.transport instanceof ChatGPTTransport
       const shouldSwitch = available !== currentIsChatGPT
       if (shouldSwitch) {

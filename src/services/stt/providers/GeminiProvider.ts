@@ -1,4 +1,7 @@
 /**
+ * @deprecated Not used. Replaced by RambleSTTProvider.
+ * Kept for reference until fully removed.
+ *
  * Gemini STT Provider
  *
  * Uses Google Gemini 2.5 Flash API for audio transcription via Cloudflare AI Gateway

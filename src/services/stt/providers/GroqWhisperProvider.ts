@@ -1,4 +1,7 @@
 /**
+ * @deprecated Not used. Replaced by RambleSTTProvider.
+ * Kept for reference until fully removed.
+ *
  * Groq Whisper STT Provider
  *
  * Ultra-fast Whisper API with intelligent chunking
