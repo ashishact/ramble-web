@@ -30,7 +30,9 @@ export type LogModule =
   // Ontology system
   | 'OntologyStore'
   | 'OntologyInstaller'
-  | 'OntologyNavigator';
+  | 'OntologyNavigator'
+  // STT
+  | 'RambleSTT';
 
 const LOG_CONFIG_KEY = 'program-log-config';
 
@@ -64,6 +66,7 @@ const MODULE_COLORS: Record<LogModule, string> = {
   OntologyStore: '#00897B',
   OntologyInstaller: '#00897B',
   OntologyNavigator: '#26A69A',
+  RambleSTT: '#03A9F4',
 };
 
 interface LogConfig {

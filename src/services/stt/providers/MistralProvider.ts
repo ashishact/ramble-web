@@ -15,6 +15,7 @@ import type {
   STTConfig,
   STTServiceCallbacks,
   STTProvider,
+  STTFinalResult,
 } from '../types';
 import { eventBus } from '../../../lib/eventBus';
 
@@ -195,7 +196,7 @@ export class MistralProvider implements ISTTProvider {
     }
   }
 
-  async waitForFinalTranscript(timeoutMs = 10000): Promise<string> {
+  async waitForFinalTranscript(timeoutMs = 10000): Promise<STTFinalResult> {
     console.log('[Mistral STT] waitForFinalTranscript called, state:', {
       waitingForFinalBlob: this.waitingForFinalBlob,
       isProcessing: this.isProcessing,
@@ -205,7 +206,7 @@ export class MistralProvider implements ISTTProvider {
 
     if (!this.waitingForFinalBlob && !this.isProcessing && this.pendingChunks.length === 0 && !this.vadSpeechActive) {
       console.log('[Mistral STT] Returning immediately with transcript:', this.fullTranscript.slice(0, 50));
-      return this.fullTranscript;
+      return { transcript: this.fullTranscript };
     }
 
     return new Promise((resolve) => {
@@ -213,13 +214,13 @@ export class MistralProvider implements ISTTProvider {
         const idx = this.transcriptResolvers.indexOf(resolverWithCleanup);
         if (idx > -1) this.transcriptResolvers.splice(idx, 1);
         console.log('[Mistral STT] waitForFinalTranscript timeout, returning:', this.fullTranscript.slice(0, 50));
-        resolve(this.fullTranscript);
+        resolve({ transcript: this.fullTranscript });
       }, timeoutMs);
 
       const resolverWithCleanup = (transcript: string) => {
         clearTimeout(timeoutId);
         console.log('[Mistral STT] waitForFinalTranscript resolved with:', transcript.slice(0, 50));
-        resolve(transcript);
+        resolve({ transcript });
       };
 
       this.transcriptResolvers.push(resolverWithCleanup);

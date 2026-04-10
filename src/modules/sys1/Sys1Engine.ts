@@ -440,6 +440,7 @@ export class Sys1Engine {
       if (latest.id === this.lastProcessedId) return
       if (this.pending.some(p => p.conversationId === latest.id)) return
       if (latest.speaker !== 'user') return
+      if (latest.source === 'typed') return  // handled by useSys1 → worker API path
       if (latest.raw_text.trim().length < 3) return
 
       this.lastProcessedId = latest.id

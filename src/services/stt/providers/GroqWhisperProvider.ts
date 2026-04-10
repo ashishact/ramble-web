@@ -21,6 +21,7 @@ import type {
   STTConfig,
   STTServiceCallbacks,
   STTProvider,
+  STTFinalResult,
 } from '../types';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
@@ -205,7 +206,7 @@ export class GroqWhisperProvider implements ISTTProvider {
    * Wait for final transcript after stopping recording
    * Returns immediately if transcript is already ready, otherwise waits
    */
-  async waitForFinalTranscript(timeoutMs = 10000): Promise<string> {
+  async waitForFinalTranscript(timeoutMs = 10000): Promise<STTFinalResult> {
     console.log('[GroqWhisper] waitForFinalTranscript called, state:', {
       waitingForFinalBlob: this.waitingForFinalBlob,
       isProcessing: this.isProcessing,
@@ -215,23 +216,21 @@ export class GroqWhisperProvider implements ISTTProvider {
     // If nothing is processing AND not waiting for blob, return immediately
     if (!this.waitingForFinalBlob && !this.isProcessing && this.pendingChunks.length === 0) {
       console.log('[GroqWhisper] Returning immediately with transcript:', this.fullTranscript.slice(0, 50));
-      return this.fullTranscript;
+      return { transcript: this.fullTranscript };
     }
 
     return new Promise((resolve) => {
       const timeoutId = setTimeout(() => {
-        // Remove from resolvers and return what we have
         const idx = this.transcriptResolvers.indexOf(resolverWithCleanup);
         if (idx > -1) this.transcriptResolvers.splice(idx, 1);
         console.log('[GroqWhisper] waitForFinalTranscript timeout, returning:', this.fullTranscript.slice(0, 50));
-        resolve(this.fullTranscript);
+        resolve({ transcript: this.fullTranscript });
       }, timeoutMs);
 
-      // Resolver that clears timeout
       const resolverWithCleanup = (transcript: string) => {
         clearTimeout(timeoutId);
         console.log('[GroqWhisper] waitForFinalTranscript resolved with:', transcript.slice(0, 50));
-        resolve(transcript);
+        resolve({ transcript });
       };
 
       this.transcriptResolvers.push(resolverWithCleanup);

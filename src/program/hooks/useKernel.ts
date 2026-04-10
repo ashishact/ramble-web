@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getKernel, type KernelState, type InputResult } from '../kernel';
+import { getKernel, type KernelState, type InputResult, type QuickResultInput } from '../kernel';
 
 export function useKernel() {
   const kernel = getKernel();
@@ -50,6 +50,20 @@ export function useKernel() {
     [kernel]
   );
 
+  const saveUserTurn = useCallback(
+    async (transcript: string, sessionId: string, source: 'typed' | 'speech' = 'typed', recordingId?: string): Promise<string> => {
+      return kernel.saveUserTurn(transcript, sessionId, source, recordingId);
+    },
+    [kernel]
+  );
+
+  const ingestQuickResult = useCallback(
+    async (input: QuickResultInput, existingUserConvId?: string): Promise<void> => {
+      return kernel.ingestQuickResult(input.transcript, input.quickResponse, input.sessionId, input.recordingId, existingUserConvId);
+    },
+    [kernel]
+  );
+
   return {
     // State
     isInitialized,
@@ -58,5 +72,7 @@ export function useKernel() {
 
     // Actions
     submitInput,
+    saveUserTurn,
+    ingestQuickResult,
   };
 }

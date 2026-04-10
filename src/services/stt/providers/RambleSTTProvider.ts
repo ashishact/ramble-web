@@ -14,9 +14,8 @@
  *  - API calls are serialised so chunkIndex stays in order even if uploads overlap
  *
  * IDs per recording session:
- *  - conversationId  — generated here with nid.recording() on each startRecording()
- *  - threadId        — chatSessionId from Sys1 (read from profileStorage)
- *  - recordingId     — minted by the server on the first chunk, reused for all subsequent chunks
+ *  - sessionId  — chatSessionId from Sys1 (read from profileStorage), persisted across recordings
+ *  - messageId  — minted by the server on the first chunk, reused for all subsequent chunks
  *
  * The last chunk passes isFinal:true — the server assembles the full transcript inline,
  * no separate /end call is needed.
@@ -26,7 +25,8 @@ import { nid } from '../../../program/utils/id'
 import { profileStorage } from '../../../lib/profileStorage'
 import { getWorkerHeaders } from '../../cfGateway'
 import { createLogger } from '../../../program/utils/logger'
-import type { ISTTProvider, STTConfig, STTServiceCallbacks, STTProvider } from '../types'
+import { eventBus } from '../../../lib/eventBus'
+import type { ISTTProvider, STTServiceCallbacks, STTProvider, STTFinalResult, STTQuickResponse } from '../types'
 
 const log = createLogger('RambleSTT')
 
@@ -63,19 +63,38 @@ export class RambleSTTProvider implements ISTTProvider {
   private stopRequested = false
 
   // Per-session API state (reset on every startRecording)
-  private conversationId: string | null = null
-  private threadId: string | null = null
-  private recordingId: string | null = null
+  private sessionId: string | null = null
+  private messageId: string | null = null
   private chunkIndex = 0
+
+  // WebM init segment — first blob from MediaRecorder contains the EBML header.
+  // Subsequent chunks are continuation frames only; prepending this makes them valid WebM.
+  private initSegment: Blob | null = null
+  // True if the init segment blob was also pushed into currentChunkBlobs (user was speaking at t=0)
+  private initSegmentInChunk = false
 
   // Transcript accumulation
   private accumulatedTranscript = ''
+
+  // Quick response from server (set on isFinal, may be undefined if server didn't return one)
+  private quickResponse: STTQuickResponse | undefined = undefined
+
+  // True once at least one chunk has been uploaded to the server
+  private anySentToServer = false
+
+  // Tracks server-sent chunks for UI feedback
+  private chunksSent = 0
+  private totalSentAudioMs = 0
+
+  // VAD-gated speech duration — totalSpeechMs never resets; currentChunkSpeechMs resets on each flush
+  private totalSpeechMs = 0
+  private currentChunkSpeechMs = 0
 
   // Serialise API calls — guarantees chunkIndex ordering even under slow network
   private sendChain: Promise<void> = Promise.resolve()
 
   // waitForFinalTranscript support
-  private finalResolvers: Array<(transcript: string) => void> = []
+  private finalResolvers: Array<(result: STTFinalResult) => void> = []
   private isFinalDone = false
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -100,11 +119,18 @@ export class RambleSTTProvider implements ISTTProvider {
     }
 
     // Fresh state for this recording session
-    this.conversationId = nid.recording()
-    this.threadId = profileStorage.getItem(SYS1_SESSION_KEY) ?? nid.session()
-    this.recordingId = null
+    this.sessionId = profileStorage.getItem(SYS1_SESSION_KEY) ?? nid.session()
+    this.messageId = nid.recording()  // generated client-side, sent on every chunk
     this.chunkIndex = 0
     this.accumulatedTranscript = ''
+    this.initSegment = null
+    this.initSegmentInChunk = false
+    this.anySentToServer = false
+    this.chunksSent = 0
+    this.totalSentAudioMs = 0
+    this.totalSpeechMs = 0
+    this.currentChunkSpeechMs = 0
+    this.quickResponse = undefined
     this.currentChunkBlobs = []
     this.hasSpeechInChunk = false
     this.isSilentNow = true
@@ -113,7 +139,7 @@ export class RambleSTTProvider implements ISTTProvider {
     this.finalResolvers = []
     this.sendChain = Promise.resolve()
 
-    log.info('Starting', { conversationId: this.conversationId, threadId: this.threadId })
+    log.info('Starting', { sessionId: this.sessionId })
 
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -123,7 +149,32 @@ export class RambleSTTProvider implements ISTTProvider {
       this.mediaRecorder = new MediaRecorder(this.stream, { mimeType: 'audio/webm' })
 
       this.mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) this.currentChunkBlobs.push(e.data)
+        if (e.data.size > 0) {
+          const isSpeaking = !this.vadActive || !this.isSilentNow
+
+          // First blob: always save as init segment (EBML header + first audio cluster).
+          // If VAD is already active at this point (user spoke immediately), also include
+          // it in currentChunkBlobs so those first 200ms aren't lost.
+          if (!this.initSegment) {
+            this.initSegment = e.data
+            if (isSpeaking) {
+              this.currentChunkBlobs.push(e.data)
+              this.initSegmentInChunk = true
+              this.totalSpeechMs += RECORDER_TIMESLICE_MS
+              this.currentChunkSpeechMs += RECORDER_TIMESLICE_MS
+              eventBus.emit('stt:vad-duration', { totalSpeechMs: this.totalSpeechMs })
+            }
+            return
+          }
+
+          // Subsequent blobs: only accumulate during speech
+          if (isSpeaking) {
+            this.currentChunkBlobs.push(e.data)
+            this.totalSpeechMs += RECORDER_TIMESLICE_MS
+            this.currentChunkSpeechMs += RECORDER_TIMESLICE_MS
+            eventBus.emit('stt:vad-duration', { totalSpeechMs: this.totalSpeechMs })
+          }
+        }
       }
 
       this.mediaRecorder.onstop = () => {
@@ -151,6 +202,14 @@ export class RambleSTTProvider implements ISTTProvider {
   stopRecording(): void {
     if (!this.recording) return
 
+    if (this.currentChunkSpeechMs < 1000 && !this.anySentToServer) {
+      // First and only chunk, but less than 1s of actual speech — discard
+      log.info('Speech audio too short (<1s) and nothing sent — discarding', { speechMs: this.currentChunkSpeechMs })
+      this.cleanup()
+      this.notifyFinal()
+      return
+    }
+
     log.info('Stop requested')
     this.stopRequested = true
     this.recording = false
@@ -170,19 +229,19 @@ export class RambleSTTProvider implements ISTTProvider {
     this.callbacks.onStatusChange?.({ connected: this.connected, recording: false, provider: 'ramble' })
   }
 
-  async waitForFinalTranscript(timeoutMs = 15_000): Promise<string> {
-    if (this.isFinalDone) return this.accumulatedTranscript
+  async waitForFinalTranscript(timeoutMs = 15_000): Promise<STTFinalResult> {
+    if (this.isFinalDone) return { transcript: this.accumulatedTranscript, quickResponse: this.quickResponse }
 
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.finalResolvers = this.finalResolvers.filter(r => r !== onDone)
         log.warn('waitForFinalTranscript timed out, returning accumulated transcript')
-        resolve(this.accumulatedTranscript)
+        resolve({ transcript: this.accumulatedTranscript, quickResponse: this.quickResponse })
       }, timeoutMs)
 
-      const onDone = (transcript: string) => {
+      const onDone = (result: STTFinalResult) => {
         clearTimeout(timer)
-        resolve(transcript)
+        resolve(result)
       }
       this.finalResolvers.push(onDone)
     })
@@ -234,19 +293,16 @@ export class RambleSTTProvider implements ISTTProvider {
     // tell silence from speech so we always allow the flush.
     if (this.vadActive && !this.hasSpeechInChunk) return
 
-    const elapsed = Date.now() - this.chunkStartTime
-    const hitHardCap = elapsed >= CHUNK_MAX_MS
-    const silenceWindow = elapsed >= CHUNK_MIN_MS && this.isSilentNow
-
-    // Log state every 2s so it's easy to verify timing in the console
-    if (Math.round(elapsed / 1000) % 2 === 0) {
-      log.info('checkFlush state', { elapsedS: (elapsed / 1000).toFixed(1), hasSpeech: this.hasSpeechInChunk, silent: this.isSilentNow })
-    }
+    // Thresholds are based on actual speech audio duration, not wall clock.
+    // 1s speech + 5s silence + 3s speech + 4s silence = 4s speech — no flush yet.
+    const speechElapsed = this.currentChunkSpeechMs
+    const hitHardCap = speechElapsed >= CHUNK_MAX_MS
+    const silenceWindow = speechElapsed >= CHUNK_MIN_MS && this.isSilentNow
 
     if (hitHardCap || silenceWindow) {
       log.info('Flushing mid-recording chunk', {
-        elapsedS: (elapsed / 1000).toFixed(1),
-        reason: hitHardCap ? 'hard-cap-15s' : 'silence-after-10s',
+        speechS: (speechElapsed / 1000).toFixed(1),
+        reason: hitHardCap ? 'hard-cap-15s-speech' : 'silence-after-10s-speech',
       })
       this.flushChunk(false)
     }
@@ -261,16 +317,18 @@ export class RambleSTTProvider implements ISTTProvider {
     this.chunkStartTime = Date.now()
     this.hasSpeechInChunk = false
     this.isSilentNow = true
+    this.currentChunkSpeechMs = 0
 
     // Determine whether this window has audio worth sending.
     // Without VAD we can't detect silence, so we always send.
-    const hasUsableAudio = blobs.length > 0 && (!this.vadActive || hadSpeech)
+    // For the final flush, bypass the VAD gate — send whatever is buffered so the last words aren't lost.
+    const hasUsableAudio = blobs.length > 0 && (!this.vadActive || hadSpeech || isFinal)
 
     if (!hasUsableAudio) {
       if (!isFinal) return  // mid-recording silence window — just drop it
 
-      // Final flush with no new speech: three cases
-      if (!this.recordingId) {
+      // Final flush with no usable audio
+      if (!this.anySentToServer) {
         // Nothing was ever sent — nothing to finalize on the server
         log.info('Stop with no audio sent at all — resolving immediately')
         this.notifyFinal()
@@ -284,7 +342,14 @@ export class RambleSTTProvider implements ISTTProvider {
       return
     }
 
-    const blob = new Blob(blobs, { type: 'audio/webm' })
+    // Prepend init segment unless it was already pushed into blobs at recording start
+    // (when the user spoke immediately and initSegmentInChunk is true for the first chunk).
+    const needsPrepend = this.initSegment && !this.initSegmentInChunk
+    const blobParts = needsPrepend ? [this.initSegment!, ...blobs] : blobs
+    this.initSegmentInChunk = false  // only relevant for the very first chunk
+    const blob = new Blob(blobParts, { type: 'audio/webm' })
+
+    this.anySentToServer = true
 
     // Chain so parallel flushes never race on chunkIndex
     this.sendChain = this.sendChain
@@ -293,16 +358,17 @@ export class RambleSTTProvider implements ISTTProvider {
   }
 
   private async sendFinalizeOnly(): Promise<void> {
-    log.info('Finalizing recording without new audio', { recordingId: this.recordingId })
+    log.info('Finalizing audio without new audio', { messageId: this.messageId })
 
     const form = new FormData()
-    form.append('recordingId', this.recordingId!)
+    form.append('messageId', this.messageId!)
+    form.append('sessionId', this.sessionId!)
     form.append('isFinal', 'true')
-    // No audio field — server routes to handleFinalizeOnly
+    // No audio field — server routes to finalizeAudioMessage
 
     try {
       const res = await fetch(
-        `${WORKER_URL}/api/v1/conversations/${this.conversationId}/audio-chunk`,
+        `${WORKER_URL}/api/v1/sys1/audio-chunk`,
         { method: 'POST', headers: getWorkerHeaders(), body: form }
       )
 
@@ -311,9 +377,10 @@ export class RambleSTTProvider implements ISTTProvider {
         throw new Error((errBody as any).error || `HTTP ${res.status}`)
       }
 
-      const data = await res.json() as { ok: boolean; recordingId: string; fullTranscript?: string }
+      const data = await res.json() as { ok: boolean; messageId: string; fullTranscript?: string; quickResponse?: STTQuickResponse }
       const finalText = data.fullTranscript?.trim() || this.accumulatedTranscript
       this.accumulatedTranscript = finalText
+      if (data.quickResponse) this.quickResponse = data.quickResponse
 
       if (finalText) {
         this.callbacks.onTranscript?.({ text: finalText, isFinal: true, timestamp: Date.now() })
@@ -335,17 +402,17 @@ export class RambleSTTProvider implements ISTTProvider {
   private async sendChunk(blob: Blob, durationMs: number, isFinal: boolean): Promise<void> {
     const form = new FormData()
     form.append('audio', blob, 'audio.webm')
-    form.append('threadId', this.threadId!)
+    form.append('sessionId', this.sessionId!)
     form.append('chunkIndex', String(this.chunkIndex))
     form.append('durationMs', String(durationMs))
-    if (this.recordingId) form.append('recordingId', this.recordingId)
+    form.append('messageId', this.messageId!)  // always set — generated client-side on startRecording
     if (isFinal) form.append('isFinal', 'true')
 
     log.info('Sending chunk', { chunkIndex: this.chunkIndex, durationS: (durationMs / 1000).toFixed(1), isFinal, bytes: blob.size })
 
     try {
       const res = await fetch(
-        `${WORKER_URL}/api/v1/conversations/${this.conversationId}/audio-chunk`,
+        `${WORKER_URL}/api/v1/sys1/audio-chunk`,
         { method: 'POST', headers: getWorkerHeaders(), body: form }
       )
 
@@ -355,19 +422,18 @@ export class RambleSTTProvider implements ISTTProvider {
       }
 
       const data = await res.json() as {
-        recordingId: string
+        messageId: string
         transcript: string
         fullTranscript?: string
         latencyMs?: number
-      }
-
-      // Server mints recordingId on the first chunk — store it for all subsequent ones
-      if (!this.recordingId) {
-        this.recordingId = data.recordingId
-        log.info('Got recordingId:', this.recordingId)
+        final?: boolean
+        quickResponse?: STTQuickResponse
       }
 
       this.chunkIndex++
+      this.chunksSent++
+      this.totalSentAudioMs += durationMs
+      eventBus.emit('stt:chunk-sent', { chunksSent: this.chunksSent, totalSentAudioMs: this.totalSentAudioMs })
 
       // Emit interim transcript as chunks come in
       if (data.transcript?.trim()) {
@@ -380,9 +446,9 @@ export class RambleSTTProvider implements ISTTProvider {
       }
 
       if (isFinal) {
-        // Prefer the server-assembled fullTranscript (more accurate than naive concat)
         const finalText = data.fullTranscript?.trim() || this.accumulatedTranscript
         this.accumulatedTranscript = finalText
+        if (data.quickResponse) this.quickResponse = data.quickResponse
         this.callbacks.onTranscript?.({ text: finalText, isFinal: true, timestamp: Date.now() })
         this.notifyFinal()
       }
@@ -399,8 +465,9 @@ export class RambleSTTProvider implements ISTTProvider {
 
   private notifyFinal(): void {
     this.isFinalDone = true
+    const result: STTFinalResult = { transcript: this.accumulatedTranscript, quickResponse: this.quickResponse }
     const resolvers = this.finalResolvers.splice(0)
-    for (const r of resolvers) r(this.accumulatedTranscript)
+    for (const r of resolvers) r(result)
   }
 
   // ── Cleanup ───────────────────────────────────────────────────────────

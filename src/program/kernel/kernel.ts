@@ -35,6 +35,13 @@ export interface InputResult {
   error?: string;
 }
 
+export interface QuickResultInput {
+  transcript: string
+  quickResponse: { topic: string; intent: string; response: string }
+  sessionId: string
+  recordingId?: string
+}
+
 // ============================================================================
 // Kernel Singleton
 // ============================================================================
@@ -321,6 +328,109 @@ class Kernel {
     });
 
     return { conversationId: conversation.id };
+  }
+
+  // ==========================================================================
+  // Quick Result Ingestion (server pre-computed AI response)
+  // ==========================================================================
+
+  /**
+   * Saves a user transcript and its pre-computed AI response in one shot,
+   * bypassing the LLM transport. Used when the worker returns a `quickResponse`
+   * alongside the final isFinal=true transcription.
+   *
+   * Writes two rows:
+   *   - speaker:'user'  — the transcript
+   *   - speaker:'sys1'  — the AI response (marked processed immediately)
+   */
+  /**
+   * Saves the user turn immediately (before the API call).
+   * Returns the new conversation id so it can be passed to ingestQuickResult
+   * to avoid re-writing the user turn once the AI response arrives.
+   */
+  async saveUserTurn(
+    transcript: string,
+    sessionId: string,
+    source: 'typed' | 'speech' = 'typed',
+    recordingId?: string
+  ): Promise<string> {
+    if (!this.initialized) throw new Error('Kernel not initialized');
+    if (!transcript.trim()) throw new Error('Empty transcript');
+
+    const userConv = await conversationStore.create({
+      sessionId,
+      rawText: transcript,
+      source,
+      speaker: 'user',
+      recordingId,
+    });
+
+    const textHash = simpleHash(transcript);
+    this.recentRawTexts.set(textHash, userConv.id);
+    setTimeout(() => this.recentRawTexts.delete(textHash), this.DEDUP_TTL_MS);
+
+    return userConv.id;
+  }
+
+  async ingestQuickResult(
+    transcript: string,
+    quickResponse: { topic: string; intent: string; response: string },
+    sessionId: string,
+    recordingId?: string,
+    existingUserConvId?: string
+  ): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Kernel not initialized');
+    }
+    if (!transcript.trim()) return;
+
+    if (!existingUserConvId) {
+      // Dedup gate — only needed when user turn wasn't pre-written
+      const textHash = simpleHash(transcript);
+      const existingConvId = this.recentRawTexts.get(textHash);
+      if (existingConvId) {
+        logger.info('ingestQuickResult: duplicate transcript — skipping', { existingConvId });
+        return;
+      }
+
+      logger.info('ingestQuickResult: saving user + sys1 turns', {
+        chars: transcript.length,
+        intent: quickResponse.intent,
+        topic: quickResponse.topic,
+      });
+
+      // User turn
+      const userConv = await conversationStore.create({
+        sessionId,
+        rawText: transcript,
+        source: 'speech',
+        speaker: 'user',
+        intent: quickResponse.intent,
+        topic: quickResponse.topic,
+        recordingId,
+      });
+
+      this.recentRawTexts.set(textHash, userConv.id);
+      setTimeout(() => this.recentRawTexts.delete(textHash), this.DEDUP_TTL_MS);
+    } else {
+      logger.info('ingestQuickResult: user turn already saved, writing sys1 only', {
+        existingUserConvId,
+        intent: quickResponse.intent,
+      });
+    }
+
+    // AI response turn
+    const aiConv = await conversationStore.create({
+      sessionId,
+      rawText: quickResponse.response,
+      source: 'sys1',
+      speaker: 'sys1',
+      intent: quickResponse.intent,
+      topic: quickResponse.topic,
+    });
+    await conversationStore.markProcessed(aiConv.id);
+
+    logger.info('ingestQuickResult: saved', { existingUserConvId, aiConvId: aiConv.id });
   }
 
   // ==========================================================================

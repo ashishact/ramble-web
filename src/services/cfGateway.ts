@@ -11,7 +11,7 @@ const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
 
 /**
  * Build headers for all worker requests.
- * Always includes X-Device-ID; adds Authorization if authenticated.
+ * Always includes X-Device-ID and X-User-ID (when set); adds Authorization if authenticated.
  */
 export function getWorkerHeaders(extra?: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = {
@@ -19,6 +19,9 @@ export function getWorkerHeaders(extra?: Record<string, string>): Record<string,
     ...extra,
   };
   const state = authStore.getState();
+  if (state.userId) {
+    headers['X-User-ID'] = state.userId;
+  }
   if (state.isAuthenticated && state.tokens) {
     headers['Authorization'] = `Bearer ${state.tokens.accessToken}`;
   }

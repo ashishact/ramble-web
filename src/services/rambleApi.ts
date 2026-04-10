@@ -108,7 +108,11 @@ async function ensureFreshToken(): Promise<void> {
 
 // ── Auth fetch wrapper ───────────────────────────────────────────────
 
-async function authFetch(url: string, init: RequestInit): Promise<Response> {
+/**
+ * Fetch with automatic token refresh.
+ * Use this instead of raw fetch() for all worker API calls that need auth.
+ */
+export async function authFetch(url: string, init: RequestInit): Promise<Response> {
   // Proactively refresh before it expires
   await ensureFreshToken();
 

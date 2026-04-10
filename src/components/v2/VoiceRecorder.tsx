@@ -18,6 +18,7 @@ import { useRamblePaste } from '../../hooks/useRamblePaste';
 
 /** Map STT provider to settings provider key for API key lookup */
 const STT_PROVIDER_TO_SETTINGS_KEY: Record<STTProvider, keyof AppSettings['providers']> = {
+  'ramble': 'groq',
   'groq-whisper': 'groq',
   'gemini': 'gemini',
   'deepgram-nova': 'deepgram',
@@ -112,7 +113,7 @@ export function VoiceRecorder({
       try {
         console.log('[VoiceRecorder] Stopping recording, waiting for transcript...');
         // Wait for final transcript
-        const finalTranscript = await stopRecordingAndWait(10000);
+        const { transcript: finalTranscript } = await stopRecordingAndWait(10000);
         console.log('[VoiceRecorder] Got final transcript:', finalTranscript);
 
         if (finalTranscript.trim()) {

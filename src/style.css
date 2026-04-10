@@ -23,6 +23,16 @@
   animation: fadeIn 300ms ease-out forwards;
 }
 
+/* Recording waveform bars */
+@keyframes wavebar {
+  0%, 100% { transform: scaleY(0.25); opacity: 0.5; }
+  50%       { transform: scaleY(1);    opacity: 1;   }
+}
+.animate-wavebar {
+  animation: wavebar 600ms ease-in-out infinite;
+  transform-origin: center;
+}
+
 /* Spotlight picker row slide-in */
 @keyframes spotlightSlideIn {
   from { opacity: 0; transform: translateX(-8px); }

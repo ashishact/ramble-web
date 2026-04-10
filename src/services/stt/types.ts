@@ -30,6 +30,19 @@ export interface STTTranscript {
   timestamp?: number;
 }
 
+/** Quick AI response returned by the worker alongside isFinal transcription */
+export interface STTQuickResponse {
+  topic: string
+  intent: string
+  response: string
+}
+
+/** Full result after stopRecording — transcript plus optional pre-computed AI response */
+export interface STTFinalResult {
+  transcript: string
+  quickResponse?: STTQuickResponse
+}
+
 export interface STTError {
   code: string;
   message: string;
@@ -71,6 +84,6 @@ export interface ISTTProvider {
   isRecording(): boolean;
   getProvider(): STTProvider;
 
-  // Wait for final transcript after stopRecording
-  waitForFinalTranscript?(timeoutMs?: number): Promise<string>;
+  // Wait for final result after stopRecording (transcript + optional quickResponse)
+  waitForFinalTranscript?(timeoutMs?: number): Promise<STTFinalResult>;
 }

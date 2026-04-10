@@ -12,6 +12,7 @@ import type {
   STTConfig,
   STTServiceCallbacks,
   STTProvider,
+  STTFinalResult,
 } from './types';
 import { RambleSTTProvider } from './providers/RambleSTTProvider';
 // Legacy providers — kept for reference, not used by the app. See @deprecated notice in each file.
@@ -150,10 +151,9 @@ export class STTService {
   }
 
   /**
-   * Stop recording and wait for final transcript
-   * Returns the final accumulated transcript after all pending audio is processed
+   * Stop recording and wait for the final result (transcript + optional quickResponse).
    */
-  async stopRecordingAndWait(timeoutMs = 10000): Promise<string> {
+  async stopRecordingAndWait(timeoutMs = 10000): Promise<STTFinalResult> {
     if (!this.provider) {
       throw new Error('No provider connected');
     }
@@ -167,7 +167,7 @@ export class STTService {
 
     // Fallback: just wait a bit for any pending transcriptions
     await new Promise(resolve => setTimeout(resolve, 1000));
-    return '';
+    return { transcript: '' };
   }
 
   /**

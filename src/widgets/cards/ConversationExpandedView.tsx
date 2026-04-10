@@ -127,15 +127,18 @@ export function ConversationExpandedView({
   // Auto-scroll to bottom when a new entry appears at the bottom of the list.
   // Tracks the last conversation ID instead of count — count-based detection
   // breaks after recording lifecycle (intermediates inflate count, then get hidden).
+  // On first load (prevLastIdRef is null): jump instantly, no animation.
+  // On new messages during session: smooth scroll.
   useEffect(() => {
     const lastEntry = chronological[chronological.length - 1];
     const lastId = lastEntry?.id ?? null;
 
     if (lastId && lastId !== prevLastIdRef.current && scrollRef.current) {
+      const isFirstLoad = prevLastIdRef.current === null;
       requestAnimationFrame(() => {
         scrollRef.current?.scrollTo({
           top: scrollRef.current.scrollHeight,
-          behavior: 'smooth',
+          behavior: isFirstLoad ? 'instant' : 'smooth',
         });
       });
     }
@@ -232,6 +235,7 @@ export function ConversationExpandedView({
                   showRawText={showRawText}
                   extraction={extraction}
                   isMeetingMode={isMeetingMode}
+                  isLast={index === chronological.length - 1}
                 />
 
                 {/* Extraction card (below source conversation) — skip for SYS-I entries */}

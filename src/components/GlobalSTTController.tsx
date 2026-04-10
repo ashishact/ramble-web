@@ -40,6 +40,10 @@ import { useKernel } from '../program/hooks';
 import { TranscriptReview, type RambleMetadata } from './TranscriptReview';
 import { lensController } from '../lib/lensController';
 import { eventBus } from '../lib/eventBus';
+import { profileStorage } from '../lib/profileStorage';
+import { useSys1, SYS1_SESSION_KEY as _SYS1_KEY } from '../services/useSys1';
+
+const SYS1_SESSION_KEY = 'sys1-chat-session-id';
 
 /**
  * Parse Ramble metadata from HTML clipboard content (compact format)
@@ -107,8 +111,8 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
   } | null>(null);
   const reviewCallbackRef = useRef<((text: string, source: 'speech' | 'paste' | 'keyboard') => void) | null>(null);
 
-  // Get kernel for submitting input
-  const { submitInput, isInitialized } = useKernel();
+  const { ingestQuickResult, isInitialized } = useKernel();
+  const { sendMessage } = useSys1();
 
   // STT configuration — RambleSTTProvider handles auth via Bearer token internally,
   // no API key needed here. threadId and conversationId are managed by the provider.
@@ -167,29 +171,25 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
     ) => {
       if (!text.trim()) return;
 
-      // First, try to route to the captured lens ID (from when review opened)
-      // This handles the case where user moved mouse away to click Submit
+      // Route to lens widget if one is active
       if (lensController.routeInputToLens(targetLensId, text.trim(), source)) {
         console.log('[GlobalSTT] Input routed to captured lens:', targetLensId);
         return;
       }
-
-      // Fallback: check if a lens is currently active (direct submit without review)
       if (lensController.routeInput(text.trim(), source)) {
-        console.log('[GlobalSTT] Input routed to active lens widget, skipping kernel');
+        console.log('[GlobalSTT] Input routed to active lens widget');
         return;
       }
 
-      // Normal flow: submit to kernel
       if (!isInitialized) return;
 
       try {
-        await submitInput(text.trim());
+        await sendMessage(text.trim());
       } catch (err) {
-        console.error('[GlobalSTT] Processing failed:', err);
+        console.error('[GlobalSTT] Text message failed:', err);
       }
     },
-    [submitInput, isInitialized]
+    [isInitialized, sendMessage]
   );
 
   // Show transcript review
@@ -250,20 +250,34 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
     if (isRecording) {
       setIsProcessing(true);
       eventBus.emit('stt:recording-stopped', {});
+      eventBus.emit('stt:processing', {});
       try {
         console.log('[GlobalSTT] Stopping recording, waiting for transcript...');
         eventBus.emit('stt:transcribing', {});
-        const finalTranscript = await stopRecordingAndWait(10000);
-        console.log('[GlobalSTT] Got final transcript:', finalTranscript);
-        eventBus.emit('stt:final', { text: finalTranscript });
+        const result = await stopRecordingAndWait(10000);
+        console.log('[GlobalSTT] Got final result:', result);
+        eventBus.emit('stt:final', { text: result.transcript });
 
-        if (finalTranscript.trim()) {
-          showReview(finalTranscript.trim(), handleSubmitTranscript, 'speech');
+        if (result.quickResponse?.response?.trim() && result.transcript.trim()) {
+          // Server already computed the AI response — save both turns directly, skip review
+          console.log('[GlobalSTT] quickResponse present — ingesting directly');
+          const sessionId = profileStorage.getItem(SYS1_SESSION_KEY) ?? 'default';
+          eventBus.emit('tts:speak', { text: result.quickResponse.response.trim(), mode: 'replace' });
+          await ingestQuickResult({
+            transcript: result.transcript.trim(),
+            quickResponse: result.quickResponse,
+            sessionId,
+          });
+        } else if (result.transcript.trim()) {
+          // No quickResponse — show review and go through normal kernel path
+          showReview(result.transcript.trim(), handleSubmitTranscript, 'speech');
         } else {
           console.warn('[GlobalSTT] Empty transcript received');
         }
+        eventBus.emit('stt:processing-done', { success: true });
       } catch (err) {
         console.error('[GlobalSTT] Failed to process:', err);
+        eventBus.emit('stt:processing-done', { success: false });
       } finally {
         setIsProcessing(false);
         clearTranscript();
@@ -290,6 +304,8 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
     clearTranscript,
     showReview,
     handleSubmitTranscript,
+    ingestQuickResult,
+    isInitialized,
   ]);
 
   // Track keydown time for quick-tap detection (forward slash shortcut)

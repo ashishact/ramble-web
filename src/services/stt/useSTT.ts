@@ -14,6 +14,7 @@ import type {
   STTTranscript,
   STTError,
   STTConnectionStatus,
+  STTFinalResult,
 } from './types';
 
 // Get singleton instance outside the component
@@ -37,7 +38,7 @@ export interface UseSTTReturn {
   disconnect: () => void;
   startRecording: () => Promise<void>;
   stopRecording: () => void;
-  stopRecordingAndWait: (timeoutMs?: number) => Promise<string>;
+  stopRecordingAndWait: (timeoutMs?: number) => Promise<STTFinalResult>;
   sendAudio: (audioData: ArrayBuffer | Blob) => void;
   clearTranscript: () => void;
 }
@@ -116,22 +117,21 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
     setIsRecording(false);
   }, []);
 
-  const stopRecordingAndWait = useCallback(async (timeoutMs = 10000): Promise<string> => {
+  const stopRecordingAndWait = useCallback(async (timeoutMs = 10000): Promise<STTFinalResult> => {
     setIsRecording(false);
     try {
-      const finalTranscript = await sttService.stopRecordingAndWait(timeoutMs);
-      // Update transcript state with final value
-      if (finalTranscript) {
-        setTranscript(finalTranscript);
+      const result = await sttService.stopRecordingAndWait(timeoutMs);
+      if (result.transcript) {
+        setTranscript(result.transcript);
       }
-      return finalTranscript || transcript;
+      return result;
     } catch (err) {
       setError({
         code: 'STOP_RECORDING_FAILED',
         message: err instanceof Error ? err.message : 'Failed to stop recording',
         provider: options.config.provider || 'groq-whisper',
       });
-      return transcript;
+      return { transcript };
     }
   }, [options.config.provider, transcript]);
 

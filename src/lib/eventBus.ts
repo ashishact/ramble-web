@@ -109,6 +109,14 @@ export interface EventPayloads {
 	'stt:intermediate': { text: string };
 	'stt:final': { text: string };
 	'stt:vad-activity': { speechDuration: number; speaking: boolean };
+	/** Emitted after each successful chunk upload — chunksSent accumulates for the whole session */
+	'stt:chunk-sent': { chunksSent: number; totalSentAudioMs: number };
+	/** Emitted per blob — totalSpeechMs only counts time when VAD detects speech */
+	'stt:vad-duration': { totalSpeechMs: number };
+	/** Emitted when the transcription API call starts (after stop) */
+	'stt:processing': Record<string, never>;
+	/** Emitted when the transcription API call finishes */
+	'stt:processing-done': { success: boolean };
 
 	// Native recording lifecycle events (from Ramble native app via rambleNative.ts)
 	'native:recording-started': { ts: number; recordingId?: string };

@@ -11,7 +11,6 @@
  */
 
 import { useState, useSyncExternalStore } from 'react';
-import { Icon } from '@iconify/react';
 import type { ConversationRecord } from '../../../graph/data';
 import type { ProcessingResult } from '../../../program/types/recording';
 import { AnnotatedText } from './InlineAnnotations';
@@ -22,6 +21,7 @@ interface ConversationEntryProps {
   showRawText: boolean;
   extraction?: ProcessingResult;
   isMeetingMode: boolean;
+  isLast?: boolean;
 }
 
 const TRUNCATE_LENGTH = 280;
@@ -31,6 +31,7 @@ export function ConversationEntry({
   showRawText: _showRawText,
   extraction,
   isMeetingMode,
+  isLast = false,
 }: ConversationEntryProps) {
   // ── System marker (e.g. "New session started") ──────────────────
   if (conversation.speaker === 'system') {
@@ -53,7 +54,7 @@ export function ConversationEntry({
 
   const fullText = conversation.rawText;
 
-  const isLongText = fullText.length > TRUNCATE_LENGTH;
+  const isLongText = !isLast && fullText.length > TRUNCATE_LENGTH;
   const displayText = isLongText && !isExpanded
     ? fullText.slice(0, TRUNCATE_LENGTH)
     : fullText;
@@ -76,70 +77,56 @@ export function ConversationEntry({
     minute: '2-digit',
   });
 
-  // ── SYS-I entry — distinct violet styling ──────────────────────
+  // ── SYS-I entry — plain text, no label ──────────────────────────
   if (isSys1) {
     return (
       <div className="animate-fadeSlideIn">
-        <div className="border-l-2 border-violet-400/60 pl-3 py-1">
-          {/* Label row */}
-          <div className="flex items-center gap-1.5 mb-1">
-            <Icon icon="mdi:auto-fix" className="w-3.5 h-3.5 text-violet-500/70" />
-            <span className="text-[11px] font-medium text-violet-500/70">SYS-I</span>
-          </div>
-          {/* Response text — no truncation, no entity highlighting */}
-          <div className="text-[15px] leading-relaxed text-base-content/80">
-            {fullText}
-          </div>
-          {/* Timestamp + debug toggle */}
-          <div className="flex justify-end items-center gap-1 mt-1 text-[10px] text-base-content/25">
-            {debugTrace && (
-              <button
-                onClick={() => setDebugOpen(o => !o)}
-                className="text-violet-400/60 hover:text-violet-400 font-mono mr-1"
-              >
-                [{debugOpen ? 'hide' : 'debug'}]
-              </button>
-            )}
-            <span className="w-1.5 h-1.5 rounded-full bg-violet-400/30" />
-            <span>sys-i</span>
-            <span>{timeStr}</span>
-          </div>
-
-          {/* Debug panel — collapsible */}
-          {debugTrace && debugOpen && (
-            <div className="mt-2 p-2 bg-base-200 rounded-lg text-[11px] font-mono text-base-content/50 space-y-1.5">
-              <div><span className="text-base-content/30">transport</span> {debugTrace.transport}</div>
-              <div><span className="text-base-content/30">duration</span> {debugTrace.totalDurationMs}ms</div>
-              <div><span className="text-base-content/30">intent</span> {debugTrace.parsedIntent}:{debugTrace.parsedEmotion}</div>
-              <div><span className="text-base-content/30">topic</span> {debugTrace.parsedTopic}</div>
-              <div><span className="text-base-content/30">input</span> {debugTrace.userInput.slice(0, 200)}{debugTrace.userInput.length > 200 ? '...' : ''}</div>
-              {debugTrace.searches.length > 0 && (
-                <div className="space-y-1">
-                  <span className="text-base-content/30">searches</span>
-                  {debugTrace.searches.map((s, i) => (
-                    <div key={i} className="pl-2 border-l border-violet-400/20">
-                      <div>{s.type}: "{s.query}" ({s.resultsLength} chars)</div>
-                      {s.resultPreview && <div className="text-base-content/30 truncate">{s.resultPreview.slice(0, 200)}</div>}
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div>
-                <span className="text-base-content/30">raw output</span>
-                <pre className="mt-0.5 p-1.5 bg-base-300/50 rounded max-h-40 overflow-auto whitespace-pre-wrap break-all text-[10px]">
-                  {debugTrace.rawOutput}
-                </pre>
-              </div>
-            </div>
-          )}
+        <div className="text-[15px] leading-relaxed text-base-content/90">
+          {fullText}
         </div>
+        <div className="flex justify-end items-center gap-1 mt-1 text-[10px] text-base-content/20">
+          {debugTrace && (
+            <button
+              onClick={() => setDebugOpen(o => !o)}
+              className="text-violet-400/40 hover:text-violet-400 font-mono mr-1"
+            >
+              [{debugOpen ? 'hide' : 'debug'}]
+            </button>
+          )}
+          <span>{timeStr}</span>
+        </div>
+        {debugTrace && debugOpen && (
+          <div className="mt-2 p-2 bg-base-200 rounded-lg text-[11px] font-mono text-base-content/50 space-y-1.5">
+            <div><span className="text-base-content/30">transport</span> {debugTrace.transport}</div>
+            <div><span className="text-base-content/30">duration</span> {debugTrace.totalDurationMs}ms</div>
+            <div><span className="text-base-content/30">intent</span> {debugTrace.parsedIntent}:{debugTrace.parsedEmotion}</div>
+            <div><span className="text-base-content/30">topic</span> {debugTrace.parsedTopic}</div>
+            <div><span className="text-base-content/30">input</span> {debugTrace.userInput.slice(0, 200)}{debugTrace.userInput.length > 200 ? '...' : ''}</div>
+            {debugTrace.searches.length > 0 && (
+              <div className="space-y-1">
+                <span className="text-base-content/30">searches</span>
+                {debugTrace.searches.map((s, i) => (
+                  <div key={i} className="pl-2 border-l border-violet-400/20">
+                    <div>{s.type}: "{s.query}" ({s.resultsLength} chars)</div>
+                    {s.resultPreview && <div className="text-base-content/30 truncate">{s.resultPreview.slice(0, 200)}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div>
+              <span className="text-base-content/30">raw output</span>
+              <pre className="mt-0.5 p-1.5 bg-base-300/50 rounded max-h-40 overflow-auto whitespace-pre-wrap break-all text-[10px]">
+                {debugTrace.rawOutput}
+              </pre>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
-  // ── User / meeting speaker entry ─────────────────────────────────────
+  // ── User / meeting speaker entry — purple left bar ───────────────
 
-  // In meeting mode, determine speaker from the speaker field
   const speakerTag = (() => {
     if (!isMeetingMode) return null;
     if (conversation.speaker === 'user') return 'You';
@@ -149,58 +136,46 @@ export function ConversationEntry({
 
   return (
     <div className="animate-fadeSlideIn">
-      {/* Speaker tag for meeting mode */}
-      {speakerTag && (
-        <div className="flex items-center gap-1.5 mb-1">
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              speakerTag === 'You' ? 'bg-primary' : 'bg-secondary'
-            }`}
-          />
-          <span
-            className={`text-[11px] font-medium ${
-              speakerTag === 'You' ? 'text-primary/70' : 'text-secondary/70'
-            }`}
+      <div className="border-l-2 border-violet-400/80 pl-3 flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          {/* Speaker tag for meeting mode */}
+          {speakerTag && (
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${speakerTag === 'You' ? 'bg-primary' : 'bg-secondary'}`} />
+              <span className={`text-[11px] font-medium ${speakerTag === 'You' ? 'text-primary/70' : 'text-secondary/70'}`}>
+                {speakerTag}
+              </span>
+            </div>
+          )}
+
+          {/* Conversation text */}
+          <div
+            className={`text-[15px] leading-relaxed text-base-content/90 ${isLongText && !isExpanded ? 'cursor-pointer' : ''}`}
+            onClick={isLongText && !isExpanded ? () => setIsExpanded(true) : undefined}
           >
-            {speakerTag}
-          </span>
+            {entityNames.length > 0 ? (
+              <AnnotatedText text={displayText} entityNames={entityNames} />
+            ) : (
+              displayText
+            )}
+            {isLongText && !isExpanded && <span className="text-primary/60 ml-0.5">...</span>}
+            {isLongText && isExpanded && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setIsExpanded(false); }}
+                className="text-primary/50 hover:text-primary/70 text-xs ml-1.5"
+              >
+                show less
+              </button>
+            )}
+          </div>
         </div>
-      )}
 
-      {/* Conversation text */}
-      <div
-        className={`text-[15px] leading-relaxed text-base-content/90 ${
-          isLongText && !isExpanded ? 'cursor-pointer' : ''
-        }`}
-        onClick={isLongText && !isExpanded ? () => setIsExpanded(true) : undefined}
-      >
-        {entityNames.length > 0 ? (
-          <AnnotatedText text={displayText} entityNames={entityNames} />
-        ) : (
-          displayText
-        )}
-        {isLongText && !isExpanded && (
-          <span className="text-primary/60 ml-0.5">...</span>
-        )}
-        {isLongText && isExpanded && (
-          <button
-            onClick={(e) => { e.stopPropagation(); setIsExpanded(false); }}
-            className="text-primary/50 hover:text-primary/70 text-xs ml-1.5"
-          >
-            show less
-          </button>
-        )}
-      </div>
-
-      {/* Source indicator — very subtle */}
-      <div className="flex justify-end items-center gap-1 mt-1 text-[10px] text-base-content/25">
-        <span
-          className={`w-1.5 h-1.5 rounded-full ${
-            isSpeech ? 'bg-primary/30' : 'bg-base-content/20'
-          }`}
-        />
-        <span>{isMeetingMode ? 'meeting' : isSpeech ? 'speech' : 'typed'}</span>
-        <span>{timeStr}</span>
+        {/* Source + time — right column */}
+        <div className="shrink-0 w-16 flex items-center justify-end gap-1 pt-0.5 text-[10px] text-base-content/25">
+          <span>{timeStr}</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${isSpeech ? 'bg-violet-400/40' : 'bg-base-content/20'}`} />
+          <span>{isMeetingMode ? 'M' : isSpeech ? 'S' : 'T'}</span>
+        </div>
       </div>
     </div>
   );
