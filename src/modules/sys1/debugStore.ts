@@ -22,7 +22,7 @@ export interface Sys1DebugTrace {
   rawOutput: string
   parsedIntent: string
   parsedEmotion: string
-  parsedTopic: string
+  parsedTopic: string | undefined
   userInput: string
   searches: Sys1SearchTrace[]
   totalDurationMs: number
