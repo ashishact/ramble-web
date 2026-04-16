@@ -32,7 +32,7 @@ export interface STTTranscript {
 
 /** Quick AI response returned by the worker alongside isFinal transcription */
 export interface STTQuickResponse {
-  topic: string
+  topic: string | undefined
   intent: string
   response: string
 }

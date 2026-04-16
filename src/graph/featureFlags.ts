@@ -48,6 +48,15 @@ export function isWatermelonDisabled(): boolean {
   return getFlag('watermelonDisabled', false)
 }
 
+/**
+ * SYS-II consolidation via ChatGPT extension.
+ * Disabled by default — enable from console: kgFlags.sys2Consolidation = true
+ * TODO: remove once we migrate SYS-II to a direct API path
+ */
+export function isSys2ConsolidationEnabled(): boolean {
+  return getFlag('sys2Consolidation', false)
+}
+
 // ============================================================================
 // Console API for toggling flags
 // ============================================================================
@@ -64,6 +73,9 @@ export const featureFlags = {
 
   get watermelonDisabled() { return isWatermelonDisabled() },
   set watermelonDisabled(v: boolean) { setFlag('watermelonDisabled', v) },
+
+  get sys2Consolidation() { return isSys2ConsolidationEnabled() },
+  set sys2Consolidation(v: boolean) { setFlag('sys2Consolidation', v) },
 
   setWidget(widgetId: string, enabled: boolean) {
     setFlag(`widget:${widgetId}`, enabled)

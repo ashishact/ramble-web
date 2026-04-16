@@ -37,7 +37,7 @@ export interface InputResult {
 
 export interface QuickResultInput {
   transcript: string
-  quickResponse: { topic: string; intent: string; response: string }
+  quickResponse: { topic: string | undefined; intent: string; response: string }
   sessionId: string
   recordingId?: string
 }
@@ -374,7 +374,7 @@ class Kernel {
 
   async ingestQuickResult(
     transcript: string,
-    quickResponse: { topic: string; intent: string; response: string },
+    quickResponse: { topic: string | undefined; intent: string; response: string },
     sessionId: string,
     recordingId?: string,
     existingUserConvId?: string

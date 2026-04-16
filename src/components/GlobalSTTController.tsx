@@ -268,6 +268,17 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
             quickResponse: result.quickResponse,
             sessionId,
           });
+          // Emit sys1:response so coverage map and other subscribers receive the topic.
+          // ingestQuickResult only writes to DB — it doesn't fire this event.
+          const intentParts = result.quickResponse.intent.split(':');
+          eventBus.emit('sys1:response', {
+            response: result.quickResponse.response.trim(),
+            question: null,
+            intent: (intentParts[0]?.toLowerCase() ?? 'assert') as 'assert' | 'query' | 'correct' | 'explore' | 'command' | 'social',
+            emotion: (intentParts[1]?.toLowerCase() ?? 'neutral') as 'neutral' | 'excited' | 'frustrated' | 'curious' | 'anxious' | 'confident' | 'hesitant' | 'reflective',
+            topic: result.quickResponse.topic,
+            timestamp: Date.now(),
+          });
         } else if (result.transcript.trim()) {
           // No quickResponse — show review and go through normal kernel path
           showReview(result.transcript.trim(), handleSubmitTranscript, 'speech');
@@ -308,15 +319,19 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
     isInitialized,
   ]);
 
-  // Track keydown time for quick-tap detection (forward slash shortcut)
+  // Track keydown time for quick-tap detection (forward slash / period shortcuts)
   const slashKeyDownTimeRef = useRef<number | null>(null);
+  const periodKeyDownTimeRef = useRef<number | null>(null);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Forward slash - record keydown time for quick-tap detection
       if (event.key === '/') {
         slashKeyDownTimeRef.current = Date.now();
+      }
+      // Period key — force browser STT even when Ramble native is available
+      if (event.key === '.') {
+        periodKeyDownTimeRef.current = Date.now();
       }
     };
 
@@ -331,6 +346,31 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
 
         event.preventDefault();
         console.log('[GlobalSTT] Right modifier key - toggling cloud STT recording');
+        handleToggleRecording();
+        return;
+      }
+
+      // Period key — force browser-based STT recording (bypasses Ramble native)
+      if (event.key === '.') {
+        const activeElement = document.activeElement;
+        if (
+          activeElement instanceof HTMLInputElement ||
+          activeElement instanceof HTMLTextAreaElement ||
+          (activeElement as HTMLElement)?.isContentEditable
+        ) {
+          periodKeyDownTimeRef.current = null;
+          return;
+        }
+
+        const keyDownTime = periodKeyDownTimeRef.current;
+        periodKeyDownTimeRef.current = null;
+        if (keyDownTime === null) return;
+
+        const pressDuration = Date.now() - keyDownTime;
+        if (pressDuration > 300) return;
+
+        event.preventDefault();
+        console.log('[GlobalSTT] Period tap - forcing browser STT recording');
         handleToggleRecording();
         return;
       }

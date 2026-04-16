@@ -245,7 +245,7 @@ export interface EventPayloads {
 		intent: 'assert' | 'query' | 'correct' | 'explore' | 'command' | 'social';
 		/** Emotional tone classified by LLM alongside intent */
 		emotion: 'neutral' | 'excited' | 'frustrated' | 'curious' | 'anxious' | 'confident' | 'hesitant' | 'reflective';
-		topic: string;
+		topic: string | undefined;
 		timestamp: number;
 	};
 	'sys1:stream': { text: string; conversationId: string };

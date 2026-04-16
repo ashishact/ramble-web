@@ -61,7 +61,7 @@ export interface Sys1Response {
   intent: UserIntent
   /** Emotional tone of the user's turn (classified by LLM alongside intent) */
   emotion: UserEmotion
-  topic: string
+  topic: string | undefined
   timestamp: number
 }
 
@@ -694,7 +694,7 @@ function migrateHistoryEntry(raw: unknown): Sys1Response {
     question: text,
     intent: 'assert',
     emotion: 'neutral',
-    topic: 'general',
+    topic: undefined,
     timestamp: (entry.timestamp as number) ?? Date.now(),
   }
 }

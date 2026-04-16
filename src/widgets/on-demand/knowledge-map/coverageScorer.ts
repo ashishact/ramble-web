@@ -44,13 +44,13 @@ export function parseDomainTopic(name: string | undefined | null): { domain: str
   if (!name || typeof name !== 'string') {
     return { domain: 'General', shortName: 'Unknown' }
   }
-  const slashIdx = name.indexOf(' / ')
-  if (slashIdx === -1) {
+  const match = name.match(/^(.+?)\s*\/\s*(.+)$/)
+  if (!match) {
     return { domain: 'General', shortName: name.trim() }
   }
   return {
-    domain: name.substring(0, slashIdx).trim(),
-    shortName: name.substring(slashIdx + 3).trim(),
+    domain: match[1].trim(),
+    shortName: match[2].trim(),
   }
 }
 

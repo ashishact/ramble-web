@@ -60,7 +60,7 @@ export interface SendResult {
    * Defaults to 'neutral' if the LLM doesn't provide one.
    */
   emotion: UserEmotion
-  topic: string
+  topic: string | undefined
   /** What to say to the user. Null only when requesting a search (response not ready yet). */
   response: string | null
   /** Isolated question text for ASSERT/EXPLORE — same as response. Null for all other intents. */
@@ -176,7 +176,7 @@ function parseSysIResponse(raw: string): Omit<SendResult, 'chatUrl'> {
   if (Object.keys(sections).length === 0) {
     log.warn('SYS-I: no sections found, treating as plain response')
     const text = raw.trim()
-    return { intent: 'assert', emotion: 'neutral', topic: 'general', response: text, question: text, search: null }
+    return { intent: 'assert', emotion: 'neutral', topic: undefined, response: text, question: text, search: null }
   }
 
   // Intent + Emotion — parsed from "INTENT:EMOTION" format (e.g., "ASSERT:curious")
@@ -186,7 +186,7 @@ function parseSysIResponse(raw: string): Omit<SendResult, 'chatUrl'> {
   const { intent, emotion } = parseIntentEmotion(intentLine)
 
   // Topic
-  const topic = sections['topic']?.split('\n')[0].trim() || 'general'
+  const topic = sections['topic']?.split('\n')[0].trim() || undefined
 
   // Response
   const response = sections['response'] ?? null
@@ -258,7 +258,7 @@ function parseJsonSysIResponse(raw: string): Omit<SendResult, 'chatUrl'> {
     // Fallback: treat as plain response
     log.warn('SYS-I JSON: parse failed, treating as plain response')
     const text = raw.trim()
-    return { intent: 'assert', emotion: 'neutral', topic: 'general', response: text, question: text, search: null }
+    return { intent: 'assert', emotion: 'neutral', topic: undefined, response: text, question: text, search: null }
   }
 
   // Parse intent:emotion
@@ -266,7 +266,7 @@ function parseJsonSysIResponse(raw: string): Omit<SendResult, 'chatUrl'> {
   const { intent, emotion } = parseIntentEmotion(intentLine)
 
   // Topic
-  const topic = typeof json.topic === 'string' ? json.topic.trim() : 'general'
+  const topic = typeof json.topic === 'string' && json.topic.trim() ? json.topic.trim() : undefined
 
   // Response
   const response = typeof json.response === 'string' ? json.response : null

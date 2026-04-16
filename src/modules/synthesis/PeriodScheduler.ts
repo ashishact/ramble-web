@@ -17,6 +17,7 @@ import { createLogger } from '../../program/utils/logger'
 import { eventBus } from '../../lib/eventBus'
 import { ExtractionEngine, loadPeriodState } from './ExtractionEngine'
 import { endedPeriods, periodKey } from './periodUtils'
+import { isSys2ConsolidationEnabled } from '../../graph/featureFlags'
 import type { PeriodSlot } from './types'
 
 const log = createLogger('PeriodScheduler')
@@ -30,6 +31,10 @@ export class PeriodScheduler {
   private processing = false
 
   start(): void {
+    if (!isSys2ConsolidationEnabled()) {
+      log.info('SYS-II consolidation disabled (feature flag off) — skipping')
+      return
+    }
     if (this.timer) return
     log.info('Starting')
 
