@@ -11,6 +11,8 @@
  */
 
 import { useState, useSyncExternalStore } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { ConversationRecord } from '../../../graph/data';
 import type { ProcessingResult } from '../../../program/types/recording';
 import { AnnotatedText } from './InlineAnnotations';
@@ -81,8 +83,8 @@ export function ConversationEntry({
   if (isSys1) {
     return (
       <div className="animate-fadeSlideIn">
-        <div className="text-[15px] leading-relaxed text-base-content/90">
-          {fullText}
+        <div className="text-[15px] leading-relaxed text-base-content/90 prose prose-sm max-w-none prose-p:my-0.5 prose-li:my-0 prose-ol:my-1 prose-ul:my-1">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{fullText}</ReactMarkdown>
         </div>
         <div className="flex justify-end items-center gap-1 mt-1 text-[10px] text-base-content/20">
           {debugTrace && (
