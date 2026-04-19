@@ -96,7 +96,8 @@ export function sanitizeText(text: string): string {
     // Normalize dashes to create pauses
     .replace(/—/g, ', ') // Em-dash → comma (creates pause)
     .replace(/–/g, ', ') // En-dash → comma
-    .replace(/\s*-\s*/g, ', ') // Spaced hyphen → comma
+    // Hyphen: spaced ( word - word ) → pause comma; bare (well-being) → space so Kokoro reads two words naturally
+    .replace(/\s*-\s*/g, match => /\s/.test(match) ? ', ' : ' ')
     // Add pause after question marks (Kokoro sometimes rushes past them)
     .replace(/\?\s*/g, '? ... ')
     // Preserve paragraph breaks but normalize them
@@ -115,7 +116,7 @@ export function sanitizeChunk(text: string): string {
     .replace(/\*/g, '')
     .replace(/—/g, ', ')
     .replace(/–/g, ', ')
-    .replace(/\s*-\s*/g, ', ')
+    .replace(/\s*-\s*/g, match => /\s/.test(match) ? ', ' : ' ')
     .replace(/\?\s*/g, '? ... ')
     .replace(/\s+/g, ' ')
     .trim();
