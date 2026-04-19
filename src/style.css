@@ -3,6 +3,7 @@
 @plugin "daisyui" {
   themes: all;
 }
+@plugin "@tailwindcss/typography";
 
 /* Conversation expanded view animations */
 @keyframes fadeSlideIn {

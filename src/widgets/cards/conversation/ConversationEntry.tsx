@@ -83,7 +83,7 @@ export function ConversationEntry({
   if (isSys1) {
     return (
       <div className="animate-fadeSlideIn">
-        <div className="text-[15px] leading-relaxed text-base-content/90 [&_ol]:list-decimal [&_ol]:ml-5 [&_ol]:my-1 [&_ul]:list-disc [&_ul]:ml-5 [&_ul]:my-1 [&_li]:my-0.5 [&_p]:my-0.5 [&_strong]:font-semibold">
+        <div className="prose prose-sm max-w-none text-base-content/90 prose-p:leading-relaxed prose-p:my-0.5 prose-li:my-0 prose-ol:my-1 prose-ul:my-1">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{fullText}</ReactMarkdown>
         </div>
         <div className="flex justify-end items-center gap-1 mt-1 text-[10px] text-base-content/20">
