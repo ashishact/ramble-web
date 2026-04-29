@@ -3,7 +3,7 @@ import type { LeafNode, WidgetType } from './types';
 import { BentoLeafMenu } from './BentoLeafMenu';
 import {
   GripHorizontal, AlertTriangle, X, Check, Upload,
-  Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio, GitBranch, Clock, FlaskConical, Activity, DollarSign, Compass, Layers
+  Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio, GitBranch, Clock, FlaskConical, Activity, Compass, Layers
 } from 'lucide-react';
 import { uploadFiles, isSupportedFileType } from '../../services/fileUpload';
 import { hoveredWidgetStore } from '../../stores/hoveredWidgetStore';
@@ -54,8 +54,7 @@ const WIDGET_OPTIONS: { type: WidgetType; label: string; icon: React.ReactNode; 
     // Tools
     { type: 'settings', label: 'Settings', icon: <Settings size={16} />, color: 'slate', category: 'Tools' },
     { type: 'pipeline-monitor', label: 'Pipeline Monitor', icon: <Activity size={16} />, color: 'zinc', category: 'Tools' },
-    { type: 'llm-dashboard', label: 'LLM Dashboard', icon: <DollarSign size={16} />, color: 'neutral', category: 'Tools' },
-    { type: 'embedding-test', label: 'Embedding Test', icon: <FlaskConical size={16} />, color: 'violet', category: 'Tools' },
+{ type: 'embedding-test', label: 'Embedding Test', icon: <FlaskConical size={16} />, color: 'violet', category: 'Tools' },
     { type: 'synthesis', label: 'Synthesis', icon: <Brain size={16} />, color: 'cyan', category: 'Tools' },
 ];
 

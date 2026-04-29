@@ -28,7 +28,6 @@ import {
   PlaceholderWidget,
   LearnedCorrectionsWidget,
   PipelineMonitorWidget,
-  LLMCostDashboardWidget,
   EmbeddingTestWidget,
   SynthesisWidget,
   CanonicalViewWidget,
@@ -274,8 +273,6 @@ export const BentoApp: React.FC = () => {
       // Observability widgets (v10)
       case 'pipeline-monitor':
         return <PipelineMonitorWidget {...props} />;
-      case 'llm-dashboard':
-        return <LLMCostDashboardWidget {...props} />;
       case 'embedding-test':
         return <EmbeddingTestWidget {...props} />;
       case 'synthesis':

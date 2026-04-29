@@ -6,14 +6,14 @@
 
 import type { STTTier } from '../../program/types/llmTiers';
 
-export type STTProvider = 'ramble' | 'groq-whisper' | 'deepgram-nova' | 'deepgram-flux' | 'gemini' | 'mistral';
+export type STTProvider = 'ramble';
 
 export interface STTConfig {
   /** Use tier abstraction (small/medium/large/live) - preferred */
   tier?: STTTier;
   /** Legacy: direct provider selection - will be resolved from tier if tier is set */
   provider?: STTProvider;
-  apiKey: string;
+  apiKey?: string;
   // Optional configuration
   language?: string;
   model?: string;

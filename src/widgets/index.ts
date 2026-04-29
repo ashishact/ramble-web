@@ -15,7 +15,6 @@ export { SettingsWidget } from './cards/SettingsWidget';
 export { LearnedCorrectionsWidget } from './cards/LearnedCorrectionsWidget';
 // TTSWidget, KnowledgeTreeWidget, TimelineWidget are lazy-loaded in BentoApp
 export { PipelineMonitorWidget } from './cards/PipelineMonitorWidget';
-export { LLMCostDashboardWidget } from './cards/LLMCostDashboardWidget';
 export { EmbeddingTestWidget } from './cards/EmbeddingTestWidget';
 export { GoogleSearchWidget } from './on-demand/google-search';
 export { SynthesisWidget } from './cards/SynthesisWidget';

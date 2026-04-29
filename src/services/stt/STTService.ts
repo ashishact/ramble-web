@@ -15,12 +15,6 @@ import type {
   STTFinalResult,
 } from './types';
 import { RambleSTTProvider } from './providers/RambleSTTProvider';
-// Legacy providers — kept for reference, not used by the app. See @deprecated notice in each file.
-import { DeepgramProvider } from './providers/DeepgramProvider';
-import { GroqWhisperProvider } from './providers/GroqWhisperProvider';
-import { MistralProvider } from './providers/MistralProvider';
-import { GeminiProvider } from './providers/GeminiProvider';
-import { resolveSTTTier } from '../../program';
 
 export class STTService {
   private static instance: STTService | null = null;
@@ -45,17 +39,7 @@ export class STTService {
    * Resolve config tier to actual provider
    */
   private resolveConfig(config: STTConfig): STTConfig {
-    // If tier is specified, resolve it to provider
-    if (config.tier) {
-      const resolved = resolveSTTTier(config.tier);
-      return {
-        ...config,
-        provider: resolved.provider,
-        model: resolved.model || config.model,
-      };
-    }
-    // Otherwise use provider directly (legacy mode)
-    return config;
+    return { ...config, provider: 'ramble' };
   }
 
   /**
@@ -213,16 +197,6 @@ export class STTService {
     switch (config.provider) {
       case 'ramble':
         return new RambleSTTProvider();
-      // ── Legacy providers (deprecated, not used by the app) ────────────
-      case 'groq-whisper':
-        return new GroqWhisperProvider(config);
-      case 'deepgram-nova':
-      case 'deepgram-flux':
-        return new DeepgramProvider(config);
-      case 'mistral':
-        return new MistralProvider(config);
-      case 'gemini':
-        return new GeminiProvider(config);
       default:
         throw new Error(`Unknown provider: ${config.provider}`);
     }

@@ -45,7 +45,6 @@ export type WidgetType =
   | 'timeline'            // Chronological timeline event view
   // Observability widgets (v10)
   | 'pipeline-monitor'    // Real-time pipeline telemetry event stream
-  | 'llm-dashboard'       // LLM token usage and cost tracking
   | 'google-search'       // Google Search via Chrome extension
   | 'embedding-test'      // Embedding model speed comparison test
   | 'synthesis'           // SYS-II period extraction monitor + manual trigger

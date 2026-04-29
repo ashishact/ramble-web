@@ -1,7 +1,5 @@
 /**
  * Pipeline Telemetry — Shared Types
- *
- * Used by pipelineTelemetry.ts (event accumulator) and llmTracker.ts (cost tracker).
  */
 
 // ============================================================================
@@ -27,7 +25,7 @@ export type TelemetryCategory =
   | 'timeline'         // timeline extraction
   | 'entity-resolution' // entity blocking + scoring
   | 'embedding'         // vector embedding of graph nodes
-  | 'llm'              // raw LLM call (tracked separately in llmTracker)
+  | 'llm'              // raw LLM call
 
 export interface TelemetryEvent {
   id: string
@@ -50,37 +48,6 @@ export interface PipelineRun {
   status: 'running' | 'success' | 'error'
 }
 
-// ============================================================================
-// LLM Cost Tracking
-// ============================================================================
-
-export interface LLMCallRecord {
-  id: string
-  ts: number
-  category: string        // who called: 'extraction', 'normalize', 'tree-editor', 'timeline', etc.
-  tier: string            // 'small' | 'medium' | 'large'
-  model: string           // resolved model name
-  provider: string        // resolved provider
-  inputTokens: number
-  outputTokens: number
-  durationMs: number
-  status: 'success' | 'error'
-  promptLength: number    // character count of prompt
-  responseLength: number  // character count of response
-}
-
-/**
- * Aggregated cost entry for display.
- */
-export interface CostEntry {
-  key: string             // grouping key (category name, model name, or date)
-  callCount: number
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-  estimatedCost: number   // USD
-}
-
 /**
  * Snapshot of the full telemetry state, used by useSyncExternalStore.
  */
@@ -90,10 +57,3 @@ export interface TelemetrySnapshot {
   activeRun: PipelineRun | null
 }
 
-export interface LLMUsageSnapshot {
-  records: LLMCallRecord[]
-  totalCalls: number
-  totalInputTokens: number
-  totalOutputTokens: number
-  totalEstimatedCost: number
-}

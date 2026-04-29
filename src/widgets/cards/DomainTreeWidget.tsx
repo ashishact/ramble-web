@@ -16,10 +16,6 @@ import type { DomainNode } from './DomainTreeSunburst';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
 function nodeDepth(id: string) { return id.split('.').length - 1 }
 function nodeParentId(id: string): string | null {
   const parts = id.split('.')

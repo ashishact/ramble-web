@@ -71,7 +71,7 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
       setError({
         code: 'CONNECTION_FAILED',
         message: err instanceof Error ? err.message : 'Failed to connect',
-        provider: options.config.provider || 'groq-whisper',
+        provider: options.config.provider || 'ramble',
       });
     }
   }, [options.config]);
@@ -107,7 +107,7 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
       setError({
         code: 'RECORDING_FAILED',
         message: err instanceof Error ? err.message : 'Failed to start recording',
-        provider: options.config.provider || 'groq-whisper',
+        provider: options.config.provider || 'ramble',
       });
     }
   }, [options.config]);
@@ -129,7 +129,7 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
       setError({
         code: 'STOP_RECORDING_FAILED',
         message: err instanceof Error ? err.message : 'Failed to stop recording',
-        provider: options.config.provider || 'groq-whisper',
+        provider: options.config.provider || 'ramble',
       });
       return { transcript };
     }
@@ -142,7 +142,7 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
       setError({
         code: 'SEND_AUDIO_FAILED',
         message: err instanceof Error ? err.message : 'Failed to send audio',
-        provider: options.config.provider || 'groq-whisper',
+        provider: options.config.provider || 'ramble',
       });
     }
   }, [options.config.provider]);

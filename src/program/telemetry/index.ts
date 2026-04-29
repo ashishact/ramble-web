@@ -1,5 +1,4 @@
 export { telemetry } from './pipelineTelemetry'
-export { llmTracker } from './llmTracker'
 export type {
   TelemetryEvent,
   TelemetryCategory,
@@ -7,7 +6,4 @@ export type {
   TelemetryStatus,
   TelemetrySnapshot,
   PipelineRun,
-  LLMCallRecord,
-  CostEntry,
-  LLMUsageSnapshot,
 } from './types'

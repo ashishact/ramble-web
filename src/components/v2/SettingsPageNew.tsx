@@ -15,15 +15,11 @@ import { useState, useCallback, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import { settingsHelpers, type AppSettings } from '../../stores/settingsStore';
 import { ThemeSelector } from './ThemeSelector';
-import { LLMTierPanel } from './settings/LLMTierPanel';
-import { STTTierPanel } from './settings/STTTierPanel';
 import { getActiveProfile } from '../../db';
 import { getDatabaseName } from '../../lib/profile';
 
 type SettingsCategory =
   | 'api-keys'
-  | 'llm-tiers'
-  | 'stt-tiers'
   | 'voice'
   | 'database'
   | 'appearance'
@@ -42,18 +38,6 @@ const CATEGORIES: Category[] = [
     name: 'API Keys',
     icon: 'mdi:key-variant',
     description: 'Configure provider API keys',
-  },
-  {
-    id: 'llm-tiers',
-    name: 'LLM Tiers',
-    icon: 'mdi:brain',
-    description: 'Map LLM intelligence tiers to providers',
-  },
-  {
-    id: 'stt-tiers',
-    name: 'STT Tiers',
-    icon: 'mdi:microphone',
-    description: 'Map speech-to-text tiers to providers',
   },
   {
     id: 'voice',
@@ -296,10 +280,6 @@ export function SettingsPageNew({ onBack }: { onBack: () => void }) {
               })}
             </div>
           )}
-
-          {selectedCategory === 'llm-tiers' && <LLMTierPanel />}
-
-          {selectedCategory === 'stt-tiers' && <STTTierPanel />}
 
           {selectedCategory === 'voice' && (
             <div className="max-w-4xl space-y-6">

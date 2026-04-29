@@ -11,7 +11,6 @@ import type { LLMTier, LLMProvider as ConcreteProvider } from './types/llmTiers'
 import { resolveLLMTier } from './llmResolver';
 import { createLogger } from './utils/logger';
 import { telemetry } from './telemetry';
-import { llmTracker } from './telemetry';
 
 const logger = createLogger('Pipeline');
 
@@ -122,19 +121,6 @@ export async function callLLM(request: LLMRequest): Promise<LLMResponse> {
         inputTokens: estimatedPromptTokens,
         outputTokens: estimatedCompletionTokens,
       }, { status: 'success' });
-      llmTracker.recordLLMCall({
-        ts: Date.now(),
-        category: llmCategory,
-        tier: request.tier,
-        model: resolved.model,
-        provider: resolved.provider,
-        inputTokens: estimatedPromptTokens,
-        outputTokens: estimatedCompletionTokens,
-        durationMs: processingTimeMs,
-        status: 'success',
-        promptLength: request.prompt.length + (request.systemPrompt?.length ?? 0),
-        responseLength: content.length,
-      });
     } catch { /* telemetry should never break LLM calls */ }
 
     return {
@@ -167,19 +153,6 @@ export async function callLLM(request: LLMRequest): Promise<LLMResponse> {
         systemPromptPreview: request.systemPrompt,
         durationMs: Date.now() - startTime,
       }, { status: 'error', isLLM: true });
-      llmTracker.recordLLMCall({
-        ts: Date.now(),
-        category: llmCategory,
-        tier: request.tier,
-        model: resolved.model,
-        provider: resolved.provider,
-        inputTokens: 0,
-        outputTokens: 0,
-        durationMs: Date.now() - startTime,
-        status: 'error',
-        promptLength: request.prompt.length + (request.systemPrompt?.length ?? 0),
-        responseLength: 0,
-      });
     } catch { /* telemetry should never break LLM calls */ }
 
     throw error;
