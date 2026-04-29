@@ -19,3 +19,5 @@ export { LLMCostDashboardWidget } from './cards/LLMCostDashboardWidget';
 export { EmbeddingTestWidget } from './cards/EmbeddingTestWidget';
 export { GoogleSearchWidget } from './on-demand/google-search';
 export { SynthesisWidget } from './cards/SynthesisWidget';
+export { CanonicalViewWidget } from './cards/CanonicalViewWidget';
+export { DomainTreeWidget } from './cards/DomainTreeWidget';

@@ -49,7 +49,9 @@ export type WidgetType =
   | 'google-search'       // Google Search via Chrome extension
   | 'embedding-test'      // Embedding model speed comparison test
   | 'synthesis'           // SYS-II period extraction monitor + manual trigger
-  | 'knowledge-map';      // Sunburst topic coverage visualization
+  | 'knowledge-map'       // Sunburst topic coverage visualization
+  | 'canonical-view'     // System 3 canonical view — what matters most
+  | 'domain-tree';       // Sunburst of personal domain tree
 
 export interface LeafNode extends BaseNode {
   type: 'leaf';

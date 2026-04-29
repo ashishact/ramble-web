@@ -31,6 +31,8 @@ import {
   LLMCostDashboardWidget,
   EmbeddingTestWidget,
   SynthesisWidget,
+  CanonicalViewWidget,
+  DomainTreeWidget,
 } from '../widgets';
 import { QuestionWidget, SuggestionWidget, SpeakBetterWidget, MeetingTranscriptionWidget, GoogleSearchWidget } from '../widgets/on-demand';
 import { MetaQueryLensWidget } from '../widgets/lens';
@@ -278,6 +280,10 @@ export const BentoApp: React.FC = () => {
         return <EmbeddingTestWidget {...props} />;
       case 'synthesis':
         return <SynthesisWidget {...props} />;
+      case 'canonical-view':
+        return <CanonicalViewWidget {...props} />;
+      case 'domain-tree':
+        return <DomainTreeWidget {...props} />;
       case 'google-search':
         return <GoogleSearchWidget nodeId={node.id} />;
       case 'knowledge-map':
