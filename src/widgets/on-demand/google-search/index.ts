@@ -1,1 +1,0 @@
-export { GoogleSearchWidget } from './Widget';

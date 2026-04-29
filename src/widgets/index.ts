@@ -5,18 +5,10 @@ export { PlaceholderWidget } from './cards/PlaceholderWidget';
 export { VoiceRecorderWidget } from './cards/VoiceRecorderWidget';
 export { ConversationWidget } from './cards/ConversationWidget';
 export { GoalsWidget } from './cards/GoalsWidget';
-export { MemoriesWidget } from './cards/MemoriesWidget';
 export { EntitiesWidget } from './cards/EntitiesWidget';
-export { TopicsWidget } from './cards/TopicsWidget';
-export { StatsWidget } from './cards/StatsWidget';
 export { TextInputWidget } from './cards/TextInputWidget';
-export { WorkingMemoryWidget } from './cards/WorkingMemoryWidget';
 export { SettingsWidget } from './cards/SettingsWidget';
-export { LearnedCorrectionsWidget } from './cards/LearnedCorrectionsWidget';
-// TTSWidget, KnowledgeTreeWidget, TimelineWidget are lazy-loaded in BentoApp
-export { PipelineMonitorWidget } from './cards/PipelineMonitorWidget';
+// TTSWidget, KnowledgeTreeWidget are lazy-loaded in BentoApp
 export { EmbeddingTestWidget } from './cards/EmbeddingTestWidget';
-export { GoogleSearchWidget } from './on-demand/google-search';
-export { SynthesisWidget } from './cards/SynthesisWidget';
 export { CanonicalViewWidget } from './cards/CanonicalViewWidget';
 export { DomainTreeWidget } from './cards/DomainTreeWidget';

@@ -162,7 +162,6 @@ interface RambleDebug {
 
   // Settings
   getSettings: () => unknown
-  clearApiKeys: () => void
 
   // Database
   resetDatabase: () => Promise<void>
@@ -255,15 +254,6 @@ const rambleDebug: RambleDebug = {
     const settings = settingsHelpers.getSettings()
     console.log('[ramble] Settings:', settings)
     return settings
-  },
-
-  clearApiKeys() {
-    settingsHelpers.setApiKey('gemini', '')
-    settingsHelpers.setApiKey('anthropic', '')
-    settingsHelpers.setApiKey('openai', '')
-    settingsHelpers.setApiKey('groq', '')
-    settingsHelpers.setApiKey('deepgram', '')
-    console.log('[ramble] All API keys cleared')
   },
 
   // ============================================================================
@@ -453,11 +443,6 @@ Params: none | Returns: Promise<void>`,
     `Returns the full settings object from localStorage (synchronous).
 Includes all API keys (gemini, anthropic, openai, groq, deepgram), LLM tier config, and UI preferences.
 Params: none | Returns: Settings object`,
-
-  clearApiKeys:
-    `Sets all five API key slots (gemini, anthropic, openai, groq, deepgram) to empty strings.
-Settings are global — not scoped to a profile. Other settings are untouched.
-Params: none | Returns: void`,
 
   resetDatabase:
     `DESTRUCTIVE — deletes every IndexedDB database (all profiles, all data) then reloads the page after 500ms.

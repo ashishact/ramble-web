@@ -17,12 +17,10 @@
 
 import { goalBar } from './bars/GoalBar';
 import { memoryBar } from './bars/MemoryBar';
-import { questionBar } from './bars/QuestionBar';
 import type { SpotlightBarDefinition } from './types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const SPOTLIGHT_BARS: SpotlightBarDefinition<any>[] = [
 	goalBar,
 	memoryBar,
-	questionBar,
 ];

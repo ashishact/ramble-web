@@ -11,7 +11,8 @@
  */
 
 import { z } from 'zod';
-import { callLLM } from '../../../program/llmClient';
+import { generateText } from 'ai';
+import { models } from '../../../services/aiProviders';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
 import { profileStorage } from '../../../lib/profileStorage';
 import { widgetRecordStore } from '../../../graph/stores/widgetRecordStore';
@@ -264,20 +265,17 @@ Respond with JSON only.`;
 
 	const startTime = performance.now();
 
-	const response = await callLLM({
-		tier: 'large', // Use best model for quality suggestions
+	const { text: rawText } = await generateText({
+		model: models.large,
+		system: buildSystemPrompt(tone),
 		prompt: userPrompt,
-		systemPrompt: buildSystemPrompt(tone),
-		options: {
-			temperature: 0.7,
-			max_tokens: 1500,
-		},
+		temperature: 0.7,
 	});
 
 	const durationMs = Math.round(performance.now() - startTime);
-	const { data, error } = parseLLMJSON(response.content);
+	const { data, error } = parseLLMJSON(rawText);
 
-	const outputChars = response.content.length;
+	const outputChars = rawText.length;
 
 	if (error || !data) {
 		console.error('Failed to parse speak-better response:', error);

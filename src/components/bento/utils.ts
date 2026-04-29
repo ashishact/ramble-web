@@ -28,7 +28,7 @@ export const createInitialTree = (): BentoTree => {
   const voiceRecorderId = generateId();
   const conversationId = generateId();
   const goalsId = generateId();
-  const memoriesId = generateId();
+  const entitiesId = generateId();
 
   return {
     rootId,
@@ -58,7 +58,7 @@ export const createInitialTree = (): BentoTree => {
         direction: 'horizontal',
         ratio: 0.5,
         first: goalsId,
-        second: memoriesId,
+        second: entitiesId,
       } as SplitNode,
       [voiceRecorderId]: {
         id: voiceRecorderId,
@@ -84,13 +84,13 @@ export const createInitialTree = (): BentoTree => {
         color: 'bg-white',
         widgetType: 'goals',
       } as LeafNode,
-      [memoriesId]: {
-        id: memoriesId,
+      [entitiesId]: {
+        id: entitiesId,
         type: 'leaf',
         parent: bottomRowId,
-        content: 'Memories',
+        content: 'Entities',
         color: 'bg-white',
-        widgetType: 'memories',
+        widgetType: 'entities',
       } as LeafNode,
     },
   };

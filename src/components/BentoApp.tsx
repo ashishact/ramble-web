@@ -18,23 +18,15 @@ import {
   VoiceRecorderWidget,
   ConversationWidget,
   GoalsWidget,
-  MemoriesWidget,
   EntitiesWidget,
-  TopicsWidget,
-  StatsWidget,
   TextInputWidget,
-  WorkingMemoryWidget,
   SettingsWidget,
   PlaceholderWidget,
-  LearnedCorrectionsWidget,
-  PipelineMonitorWidget,
   EmbeddingTestWidget,
-  SynthesisWidget,
   CanonicalViewWidget,
   DomainTreeWidget,
 } from '../widgets';
-import { QuestionWidget, SuggestionWidget, SpeakBetterWidget, MeetingTranscriptionWidget, GoogleSearchWidget } from '../widgets/on-demand';
-import { MetaQueryLensWidget } from '../widgets/lens';
+import { SpeakBetterWidget, MeetingTranscriptionWidget } from '../widgets/on-demand';
 import { RotateCcw, PencilRuler, Loader2, Settings, Pause } from 'lucide-react';
 import { systemPause } from '../lib/systemPause';
 import { ProfileMenu } from './auth/ProfileMenu';
@@ -49,9 +41,8 @@ import { RambleNativeStatus } from './RambleNativeStatus';
 import { ExtensionStatus } from './ExtensionStatus';
 import { CloudSTTStatus } from './CloudSTTStatus';
 import { HelpStrip } from './HelpStrip';
-import { SpotlightBar } from '../modules/spotlight';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
-import { OnboardingFlow, useOnboarding } from '../modules/onboarding';
+import { SpotlightBar } from '../modules/spotlight';
 
 // Lazy-loaded TTS Widget
 const TTSWidget = lazy(() =>
@@ -63,21 +54,12 @@ const KnowledgeTreeWidget = lazy(() =>
   import('../widgets/cards/KnowledgeTreeWidget').then(m => ({ default: m.KnowledgeTreeWidget }))
 );
 
-// Lazy-loaded Timeline Widget
-const TimelineWidget = lazy(() =>
-  import('../widgets/cards/TimelineWidget').then(m => ({ default: m.TimelineWidget }))
-);
-
 // Lazy-loaded Knowledge Map Widget (echarts code-split)
 const KnowledgeMapWidget = lazy(() =>
   import('../widgets/on-demand/knowledge-map').then(m => ({ default: m.KnowledgeMapWidget }))
 );
 
 export const BentoApp: React.FC = () => {
-  // Onboarding check
-  const { isComplete: isOnboardingComplete, isLoading: isOnboardingLoading } = useOnboarding();
-  const [showOnboarding, setShowOnboarding] = useState(true);
-
   // Navigation
   const navigate = useNavigate();
   const { profileName } = useParams();
@@ -107,13 +89,6 @@ export const BentoApp: React.FC = () => {
     setTree(workspaceStore.getActiveTree());
   }, [wsState.activeId]);
 
-  // Update showOnboarding when onboarding status changes
-  useEffect(() => {
-    if (!isOnboardingLoading) {
-      setShowOnboarding(!isOnboardingComplete);
-    }
-  }, [isOnboardingComplete, isOnboardingLoading]);
-
   // Persist tree changes to the active workspace
   useEffect(() => {
     workspaceStore.saveTree(tree);
@@ -128,9 +103,6 @@ export const BentoApp: React.FC = () => {
         // Start SYS-I engine after graph is ready (needs conversationStore)
         const { getSys1Engine } = await import('../modules/sys1');
         getSys1Engine();
-        // Start SYS-II period scheduler (catches up missed periods on startup)
-        const { startPeriodScheduler } = await import('../modules/synthesis');
-        startPeriodScheduler();
         // Initialize ontology system (install defaults, start tracker, emit first suggestion)
         const { initOntology } = await import('../modules/ontology');
         initOntology().catch(err => console.warn('[Ontology] Init failed:', err));
@@ -214,26 +186,12 @@ export const BentoApp: React.FC = () => {
         return <ConversationWidget {...props} />;
       case 'entities':
         return <EntitiesWidget {...props} />;
-      case 'topics':
-        return <TopicsWidget {...props} />;
-      case 'memories':
-        return <MemoriesWidget {...props} />;
       case 'goals':
         return <GoalsWidget {...props} />;
-      case 'stats':
-        return <StatsWidget {...props} />;
       case 'settings':
         return <SettingsWidget {...props} />;
-      case 'working-memory':
-        return <WorkingMemoryWidget {...props} />;
-      case 'questions':
-        return <QuestionWidget nodeId={node.id} />;
-      case 'suggestions':
-        return <SuggestionWidget nodeId={node.id} />;
       case 'speak-better':
         return <SpeakBetterWidget nodeId={node.id} />;
-      case 'learned-corrections':
-        return <LearnedCorrectionsWidget />;
       case 'tts':
         return (
           <Suspense fallback={
@@ -259,30 +217,13 @@ export const BentoApp: React.FC = () => {
             <KnowledgeTreeWidget {...props} />
           </Suspense>
         );
-      case 'timeline':
-        return (
-          <Suspense fallback={
-            <div className="w-full h-full flex items-center justify-center gap-2">
-              <Loader2 size={14} className="animate-spin opacity-60" />
-              <span className="text-xs opacity-60">Loading Timeline...</span>
-            </div>
-          }>
-            <TimelineWidget {...props} />
-          </Suspense>
-        );
-      // Observability widgets (v10)
-      case 'pipeline-monitor':
-        return <PipelineMonitorWidget {...props} />;
+      // Observability widgets
       case 'embedding-test':
         return <EmbeddingTestWidget {...props} />;
-      case 'synthesis':
-        return <SynthesisWidget {...props} />;
       case 'canonical-view':
         return <CanonicalViewWidget {...props} />;
       case 'domain-tree':
         return <DomainTreeWidget {...props} />;
-      case 'google-search':
-        return <GoogleSearchWidget nodeId={node.id} />;
       case 'knowledge-map':
         return (
           <Suspense fallback={
@@ -294,31 +235,10 @@ export const BentoApp: React.FC = () => {
             <KnowledgeMapWidget nodeId={node.id} />
           </Suspense>
         );
-      // Lens Widgets - intercept input on hover, bypass core pipeline
-      case 'meta-query':
-        return <MetaQueryLensWidget />;
       default:
         return <PlaceholderWidget nodeId={node.id} widgetType={node.widgetType} />;
     }
   }, []);
-
-  // Show onboarding if not complete
-  if (showOnboarding && !isOnboardingLoading) {
-    return (
-      <OnboardingFlow
-        onComplete={() => setShowOnboarding(false)}
-      />
-    );
-  }
-
-  // Show loading while checking onboarding status
-  if (isOnboardingLoading) {
-    return (
-      <div className="w-screen h-screen flex items-center justify-center bg-slate-100">
-        <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
-      </div>
-    );
-  }
 
   return (
     <GlobalSTTController>

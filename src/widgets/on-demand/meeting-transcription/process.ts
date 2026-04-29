@@ -29,7 +29,8 @@
  */
 
 import { z } from 'zod';
-import { callLLM } from '../../../program/llmClient';
+import { generateText } from 'ai';
+import { models } from '../../../services/aiProviders';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
 import { profileStorage } from '../../../lib/profileStorage';
 import { widgetRecordStore } from '../../../graph/stores/widgetRecordStore';
@@ -600,13 +601,12 @@ Be specific and detailed. Use actual names, dates, and facts from the transcript
       rawContent = response.answer;
     } else {
       console.log('[MeetingTranscription] Extension unavailable → using LLM API');
-      const response = await callLLM({
-        tier: 'medium',
+      const { text: llmText } = await generateText({
+        model: models.medium,
+        system: systemPrompt,
         prompt: userPrompt,
-        systemPrompt,
-        options: { max_tokens: 1200 },
       });
-      rawContent = response.content;
+      rawContent = llmText;
     }
 
     const { data } = parseLLMJSON(rawContent);

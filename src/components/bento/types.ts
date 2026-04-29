@@ -25,32 +25,16 @@ export type WidgetType =
   | 'text-input'          // Text input field
   | 'conversation'        // Conversation history
   | 'entities'            // Entity list/browser
-  | 'topics'              // Active topics
-  | 'memories'            // Active memories
   | 'goals'               // Goals with progress
-  | 'stats'               // Quick stats
   | 'settings'            // Settings panel
-  | 'working-memory'      // Full context view
-  | 'questions'           // AI-powered gap analysis questions (volatile, not saved)
-  | 'suggestions'         // AI-powered actionable suggestions (volatile, not saved)
-  | 'speak-better'        // AI-powered speech improvement suggestions (volatile, not saved)
-  | 'learned-corrections' // Manage learned STT corrections
+  | 'speak-better'        // AI-powered speech improvement suggestions
   | 'tts'                 // Text-to-Speech widget
-  // Lens Widgets: Intercept input on hover, bypass core pipeline, ephemeral results
-  // See src/lib/lensController.ts for architecture details
-  | 'meeting-transcription' // Live meeting transcript + LLM summary (volatile, not saved)
-  | 'meta-query'          // Lens: Ask questions about your conversation without saving
-  // Knowledge tree widgets (v9)
+  | 'meeting-transcription' // Live meeting transcript + LLM summary
   | 'knowledge-tree'      // Interactive per-entity knowledge tree viewer
-  | 'timeline'            // Chronological timeline event view
-  // Observability widgets (v10)
-  | 'pipeline-monitor'    // Real-time pipeline telemetry event stream
-  | 'google-search'       // Google Search via Chrome extension
   | 'embedding-test'      // Embedding model speed comparison test
-  | 'synthesis'           // SYS-II period extraction monitor + manual trigger
   | 'knowledge-map'       // Sunburst topic coverage visualization
-  | 'canonical-view'     // System 3 canonical view — what matters most
-  | 'domain-tree';       // Sunburst of personal domain tree
+  | 'canonical-view'      // System 3 canonical view — what matters most
+  | 'domain-tree';        // Sunburst of personal domain tree
 
 export interface LeafNode extends BaseNode {
   type: 'leaf';

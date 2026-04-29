@@ -3,7 +3,7 @@ import type { LeafNode, WidgetType } from './types';
 import { BentoLeafMenu } from './BentoLeafMenu';
 import {
   GripHorizontal, AlertTriangle, X, Check, Upload,
-  Mic, MessageSquare, Users, Hash, Brain, Target, BarChart3, Settings, Eye, PenTool, HelpCircle, Lightbulb, Pencil, Volume2, Search, Sparkles, Radio, GitBranch, Clock, FlaskConical, Activity, Compass, Layers
+  Mic, MessageSquare, Users, Target, Settings, Volume2, Sparkles, Radio, GitBranch, FlaskConical, Compass, Layers, PenTool
 } from 'lucide-react';
 import { uploadFiles, isSupportedFileType } from '../../services/fileUpload';
 import { hoveredWidgetStore } from '../../stores/hoveredWidgetStore';
@@ -31,31 +31,19 @@ const WIDGET_OPTIONS: { type: WidgetType; label: string; icon: React.ReactNode; 
     // Display
     { type: 'conversation', label: 'Conversation', icon: <MessageSquare size={16} />, color: 'blue', category: 'Display' },
     { type: 'entities', label: 'Entities', icon: <Users size={16} />, color: 'violet', category: 'Display' },
-    { type: 'topics', label: 'Topics', icon: <Hash size={16} />, color: 'indigo', category: 'Display' },
-    { type: 'memories', label: 'Memories', icon: <Brain size={16} />, color: 'pink', category: 'Display' },
     { type: 'goals', label: 'Goals', icon: <Target size={16} />, color: 'amber', category: 'Display' },
-    { type: 'stats', label: 'Stats', icon: <BarChart3 size={16} />, color: 'cyan', category: 'Display' },
-    { type: 'working-memory', label: 'Context', icon: <Eye size={16} />, color: 'teal', category: 'Display' },
-    { type: 'learned-corrections', label: 'Corrections', icon: <Pencil size={16} />, color: 'orange', category: 'Display' },
     { type: 'tts', label: 'TTS', icon: <Volume2 size={16} />, color: 'emerald', category: 'Display' },
     // AI
-    { type: 'questions', label: 'Questions', icon: <HelpCircle size={16} />, color: 'purple', category: 'AI' },
-    { type: 'suggestions', label: 'Suggestions', icon: <Lightbulb size={16} />, color: 'yellow', category: 'AI' },
     { type: 'speak-better', label: 'Speak Better', icon: <Sparkles size={16} />, color: 'fuchsia', category: 'AI' },
     { type: 'meeting-transcription', label: 'Meeting', icon: <Radio size={16} />, color: 'rose', category: 'AI' },
-    { type: 'meta-query', label: 'Meta Query', icon: <Search size={16} />, color: 'sky', category: 'AI' },
-    { type: 'google-search', label: 'Google Search', icon: <Search size={16} />, color: 'green', category: 'AI' },
     // Knowledge
     { type: 'knowledge-tree', label: 'Knowledge Tree', icon: <GitBranch size={16} />, color: 'lime', category: 'Knowledge' },
-    { type: 'timeline', label: 'Timeline', icon: <Clock size={16} />, color: 'cyan', category: 'Knowledge' },
     { type: 'knowledge-map', label: 'Knowledge Map', icon: <Compass size={16} />, color: 'emerald', category: 'Knowledge' },
     { type: 'canonical-view', label: 'Canonical View', icon: <Layers size={16} />, color: 'violet', category: 'Knowledge' },
     { type: 'domain-tree', label: 'Domain Tree', icon: <GitBranch size={16} />, color: 'teal', category: 'Knowledge' },
     // Tools
     { type: 'settings', label: 'Settings', icon: <Settings size={16} />, color: 'slate', category: 'Tools' },
-    { type: 'pipeline-monitor', label: 'Pipeline Monitor', icon: <Activity size={16} />, color: 'zinc', category: 'Tools' },
-{ type: 'embedding-test', label: 'Embedding Test', icon: <FlaskConical size={16} />, color: 'violet', category: 'Tools' },
-    { type: 'synthesis', label: 'Synthesis', icon: <Brain size={16} />, color: 'cyan', category: 'Tools' },
+    { type: 'embedding-test', label: 'Embedding Test', icon: <FlaskConical size={16} />, color: 'violet', category: 'Tools' },
 ];
 
 const WIDGET_COLOR_MAP: Record<string, { text: string; bg: string }> = {

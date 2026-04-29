@@ -82,10 +82,9 @@ export function useKnowledgeMapData(isPaused: boolean): UseKnowledgeMapDataResul
     async function reconstructFromDB() {
       const t0 = performance.now()
       const { conversationStore } = await import('../../../graph/stores/conversationStore')
-      const { periodMs, dateStr, currentSlot } = await import('../../../modules/synthesis/periodUtils')
 
-      // Get the start of the current 6-hour period
-      const { startMs } = periodMs(dateStr(), currentSlot())
+      // Get topics from the last 24 hours
+      const startMs = Date.now() - 24 * 60 * 60 * 1000
       const topics = await conversationStore.getUniqueTopicsSince(startMs)
 
       if (topics.length === 0 || cancelled) {

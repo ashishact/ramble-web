@@ -38,7 +38,6 @@ import { settingsHelpers } from '../stores/settingsStore';
 import { rambleNative } from '../services/stt/rambleNative';
 import { useKernel } from '../program/hooks';
 import { TranscriptReview, type RambleMetadata } from './TranscriptReview';
-import { lensController } from '../lib/lensController';
 import { eventBus } from '../lib/eventBus';
 import { profileStorage } from '../lib/profileStorage';
 import { useSys1, SYS1_SESSION_KEY as _SYS1_KEY } from '../services/useSys1';
@@ -104,11 +103,6 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
   const [reviewText, setReviewText] = useState<string | null>(null);
   const [reviewMetadata, setReviewMetadata] = useState<RambleMetadata | null>(null);
   const [reviewSource, setReviewSource] = useState<'speech' | 'paste' | 'keyboard'>('speech');
-  const [reviewTargetLens, setReviewTargetLens] = useState<{
-    id: string;
-    type: string;
-    name: string;
-  } | null>(null);
   const reviewCallbackRef = useRef<((text: string, source: 'speech' | 'paste' | 'keyboard') => void) | null>(null);
 
   const { ingestQuickResult, isInitialized } = useKernel();
@@ -162,27 +156,10 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
   }, []);
 
   // Handle transcript submission (after review)
-  // LENS ROUTING: Route to captured lens ID, or check current active lens
   const handleSubmitTranscript = useCallback(
-    async (
-      text: string,
-      source: 'speech' | 'paste' | 'keyboard' = 'speech',
-      targetLensId: string | null = null
-    ) => {
+    async (text: string, _source: 'speech' | 'paste' | 'keyboard' = 'speech') => {
       if (!text.trim()) return;
-
-      // Route to lens widget if one is active
-      if (lensController.routeInputToLens(targetLensId, text.trim(), source)) {
-        console.log('[GlobalSTT] Input routed to captured lens:', targetLensId);
-        return;
-      }
-      if (lensController.routeInput(text.trim(), source)) {
-        console.log('[GlobalSTT] Input routed to active lens widget');
-        return;
-      }
-
       if (!isInitialized) return;
-
       try {
         await sendMessage(text.trim());
       } catch (err) {
@@ -209,7 +186,6 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
     setReviewText(text);
     setReviewMetadata(metadata || null);
     setReviewSource(source);
-    setReviewTargetLens(lensController.getActiveLens());
     reviewCallbackRef.current = onSubmit;
   }, []);
 
@@ -218,14 +194,13 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
   const handleReviewSubmit = useCallback(
     (text: string) => {
       // Call handleSubmitTranscript with the captured lens ID
-      handleSubmitTranscript(text, reviewSource, reviewTargetLens?.id ?? null);
+      handleSubmitTranscript(text, reviewSource);
       setReviewText(null);
       setReviewMetadata(null);
       setReviewSource('speech');
-      setReviewTargetLens(null);
       reviewCallbackRef.current = null;
     },
-    [reviewSource, reviewTargetLens, handleSubmitTranscript]
+    [reviewSource, handleSubmitTranscript]
   );
 
   // Handle review cancel
@@ -233,7 +208,6 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
     setReviewText(null);
     setReviewMetadata(null);
     setReviewSource('speech');
-    setReviewTargetLens(null);
     reviewCallbackRef.current = null;
   }, []);
 
@@ -475,7 +449,6 @@ export function GlobalSTTController({ children }: GlobalSTTControllerProps) {
           onSubmit={handleReviewSubmit}
           onCancel={handleReviewCancel}
           rambleMetadata={reviewMetadata}
-          targetLensName={reviewTargetLens?.name}
         />
       )}
     </GlobalSTTContext.Provider>
