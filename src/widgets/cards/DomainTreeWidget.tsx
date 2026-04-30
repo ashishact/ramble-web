@@ -10,9 +10,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { WidgetProps } from '../types';
 import { storeGet } from '../../services/rambleApi';
+import { profileStorage } from '../../lib/profileStorage';
 import { GitBranch, RefreshCw, Loader2, ChevronLeft } from 'lucide-react';
 import { parseDomainTreeJsonl } from './DomainTreeSunburst';
 import type { DomainNode } from './DomainTreeSunburst';
+
+const CACHE_KEY = 'cache:domain-tree';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -225,27 +228,54 @@ const DOC_ATTR = '{"icon":"mdi:sitemap","title":"Domain Tree","desc":"Your areas
 export const DomainTreeWidget: React.FC<WidgetProps> = () => {
   const [nodes, setNodes] = useState<DomainNode[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [unauthenticated, setUnauthenticated] = useState(false)
   const [drillTarget, setDrillTarget] = useState<string | null>(null)
   const [hoveredItem, setHoveredItem] = useState<RingItem | null>(null)
+  const hasDataRef = useRef(false)
+
+  // Load from cache on mount — show data immediately without waiting for network
+  useEffect(() => {
+    const cached = profileStorage.getItem(CACHE_KEY)
+    if (cached) {
+      try {
+        const parsed = parseDomainTreeJsonl(cached)
+        if (parsed.length > 0) {
+          setNodes(parsed)
+          hasDataRef.current = true
+          setLoading(false)
+        }
+      } catch {}
+    }
+  }, [])
 
   const load = useCallback(async () => {
-    setLoading(true)
+    if (hasDataRef.current) setRefreshing(true)
+    else setLoading(true)
     setError(null)
     setUnauthenticated(false)
     try {
       const res = await storeGet('ramble', 'views/domain-tree')
-      if (res.status === 401 || res.status === 403) { setUnauthenticated(true); return }
-      if (!res.ok) {
-        if (res.status === 404) { setNodes([]); return }
-        setError(`Failed to load: ${res.status}`); return
+      if (res.status === 401 || res.status === 403) {
+        if (!hasDataRef.current) setUnauthenticated(true)
+        return
       }
-      setNodes(parseDomainTreeJsonl(await res.text()))
+      if (!res.ok) {
+        if (res.status === 404) { if (!hasDataRef.current) setNodes([]); return }
+        if (!hasDataRef.current) setError(`Failed to load: ${res.status}`)
+        return
+      }
+      const text = await res.text()
+      const parsed = parseDomainTreeJsonl(text)
+      setNodes(parsed)
+      hasDataRef.current = true
+      profileStorage.setItem(CACHE_KEY, text)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unknown error')
+      if (!hasDataRef.current) setError(e instanceof Error ? e.message : 'Unknown error')
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }, [])
 
@@ -327,7 +357,7 @@ export const DomainTreeWidget: React.FC<WidgetProps> = () => {
         </span>
         <span className="text-[9px] text-slate-300 tabular-nums">{items.length}</span>
         <button onClick={load} className="p-0.5 rounded hover:bg-slate-100 transition-colors" title="Refresh">
-          <RefreshCw size={11} className="text-slate-400" />
+          <RefreshCw size={11} className={`text-slate-400 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
       </div>
 

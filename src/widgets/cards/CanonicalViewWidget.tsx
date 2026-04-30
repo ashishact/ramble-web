@@ -8,9 +8,13 @@
  * Fetches from: GET /api/v1/store/ramble/views/canonical
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { WidgetProps } from '../types';
 import { storeGet } from '../../services/rambleApi';
+import { profileStorage } from '../../lib/profileStorage';
+
+const CACHE_ALL_KEY = 'cache:canonical-all';
+const CACHE_TODAY_KEY = 'cache:canonical-today';
 import {
   Layers,
   RefreshCw,
@@ -306,15 +310,48 @@ export const CanonicalViewWidget: React.FC<WidgetProps> = () => {
   const [allData, setAllData] = useState<CanonicalView | null>(null);
   const [todayExists, setTodayExists] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unauthenticated, setUnauthenticated] = useState(false);
+  const hasDataRef = useRef(false);
+
+  // Load from cache on mount — show stale data immediately before network responds
+  useEffect(() => {
+    let found = false;
+
+    const cachedAll = profileStorage.getItem(CACHE_ALL_KEY);
+    if (cachedAll) {
+      try {
+        setAllData(JSON.parse(cachedAll) as CanonicalView);
+        found = true;
+      } catch {}
+    }
+
+    const cachedToday = profileStorage.getItem(CACHE_TODAY_KEY);
+    if (cachedToday) {
+      try {
+        const wrapper = JSON.parse(cachedToday) as { date: string; data: CanonicalView };
+        if (wrapper.date === todayKey()) {
+          setTodayData(wrapper.data);
+          setTodayExists(true);
+          setMode('today');
+          found = true;
+        }
+      } catch {}
+    }
+
+    if (found) {
+      hasDataRef.current = true;
+      setLoading(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (hasDataRef.current) setRefreshing(true);
+    else setLoading(true);
     setError(null);
     setUnauthenticated(false);
     try {
-      // Fetch today's delta and global view in parallel
       const today = todayKey();
       const [todayRes, allRes] = await Promise.all([
         storeGet('ramble', `views/canonical/${today}`),
@@ -323,11 +360,11 @@ export const CanonicalViewWidget: React.FC<WidgetProps> = () => {
 
       if (todayRes.status === 401 || allRes.status === 401 ||
           todayRes.status === 403 || allRes.status === 403) {
-        setUnauthenticated(true);
+        if (!hasDataRef.current) setUnauthenticated(true);
         return;
       }
       if (!allRes.ok && allRes.status !== 404) {
-        setError(`Failed to load: ${allRes.status}`);
+        if (!hasDataRef.current) setError(`Failed to load: ${allRes.status}`);
         return;
       }
 
@@ -335,18 +372,26 @@ export const CanonicalViewWidget: React.FC<WidgetProps> = () => {
       setTodayExists(hasTodayData);
 
       if (hasTodayData) {
-        setTodayData(normalise(await todayRes.json()));
+        const data = normalise(await todayRes.json());
+        setTodayData(data);
+        profileStorage.setItem(CACHE_TODAY_KEY, JSON.stringify({ date: today, data }));
       }
       if (allRes.ok) {
-        setAllData(normalise(await allRes.json()));
+        const data = normalise(await allRes.json());
+        setAllData(data);
+        profileStorage.setItem(CACHE_ALL_KEY, JSON.stringify(data));
       }
 
-      // Default to today if it exists, otherwise all
-      setMode(hasTodayData ? 'today' : 'all');
+      // Only auto-select mode on first load (no cached data was driving it)
+      if (!hasDataRef.current) {
+        setMode(hasTodayData ? 'today' : 'all');
+      }
+      hasDataRef.current = true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unknown error');
+      if (!hasDataRef.current) setError(e instanceof Error ? e.message : 'Unknown error');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -472,7 +517,7 @@ export const CanonicalViewWidget: React.FC<WidgetProps> = () => {
           className="p-0.5 rounded hover:bg-slate-100 transition-colors"
           title="Refresh"
         >
-          <RefreshCw size={11} className="text-slate-400" />
+          <RefreshCw size={11} className={`text-slate-400 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
       </div>
 
