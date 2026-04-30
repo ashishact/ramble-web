@@ -34,7 +34,6 @@ import { models } from '../../../services/aiProviders';
 import { parseLLMJSON } from '../../../program/utils/jsonUtils';
 import { profileStorage } from '../../../lib/profileStorage';
 import { widgetRecordStore } from '../../../graph/stores/widgetRecordStore';
-import { rambleExt } from '../../../modules/chrome-extension';
 
 // ============================================================================
 // Constants
@@ -589,25 +588,13 @@ Be specific and detailed. Use actual names, dates, and facts from the transcript
 }`;
 
   // ── Call LLM ──────────────────────────────────────────────────────────
-  // Prefer ChatGPT via Chrome extension when available, otherwise fall back
-  // to our own LLM API.
   try {
-    let rawContent: string;
-
-    if (rambleExt.isAvailable) {
-      console.log('[MeetingTranscription] Extension available → sending to ChatGPT');
-      const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
-      const response = await rambleExt.aiRaw({ target: 'chatgpt', prompt: fullPrompt });
-      rawContent = response.answer;
-    } else {
-      console.log('[MeetingTranscription] Extension unavailable → using LLM API');
-      const { text: llmText } = await generateText({
-        model: models.medium,
-        system: systemPrompt,
-        prompt: userPrompt,
-      });
-      rawContent = llmText;
-    }
+    const { text: llmText } = await generateText({
+      model: models.medium,
+      system: systemPrompt,
+      prompt: userPrompt,
+    });
+    const rawContent = llmText;
 
     const { data } = parseLLMJSON(rawContent);
     const title =
