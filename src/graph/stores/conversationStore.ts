@@ -35,6 +35,7 @@ export const conversationStore = {
     topic?: string
     recordingId?: string | null
     batchId?: string
+    attachments?: Array<{ r2Key: string; filename: string; contentType: string; size: number }>
   }): Promise<GraphConversation> {
     const graph = await getGraph()
     const now = Date.now()
@@ -52,12 +53,13 @@ export const conversationStore = {
       emotion: input.emotion ?? null,
       recording_id: input.recordingId ?? null,
       batch_id: input.batchId ?? null,
+      attachments: JSON.stringify(input.attachments ?? []),
       created_at: now,
     }
 
     await graph.exec(
-      `INSERT INTO conversations (id, session_id, timestamp, raw_text, source, speaker, processed, intent, topic, emotion, recording_id, batch_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      `INSERT INTO conversations (id, session_id, timestamp, raw_text, source, speaker, processed, intent, topic, emotion, recording_id, batch_id, attachments, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         conv.id,
         conv.session_id,
@@ -71,6 +73,7 @@ export const conversationStore = {
         conv.emotion,
         conv.recording_id,
         conv.batch_id,
+        conv.attachments,
         conv.created_at,
       ]
     )

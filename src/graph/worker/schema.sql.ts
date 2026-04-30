@@ -431,6 +431,9 @@ CREATE INDEX IF NOT EXISTS idx_cov_pkg ON ontology_coverage(package_id);
 --   confident, hesitant, reflective
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS emotion VARCHAR;
 
+-- Add attachments column — JSON array of R2 file attachment metadata.
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS attachments VARCHAR DEFAULT '[]';
+
 -- Migrate existing node embeddings to the new embeddings table.
 -- This copies all non-null embeddings from nodes.embedding to the
 -- dedicated embeddings table. The INSERT OR IGNORE ensures this is

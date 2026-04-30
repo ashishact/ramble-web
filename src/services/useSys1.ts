@@ -11,6 +11,7 @@ import { authFetch } from './rambleApi';
 import { profileStorage } from '../lib/profileStorage';
 import { eventBus } from '../lib/eventBus';
 import type { STTQuickResponse } from './stt/types';
+import type { UploadedAttachment } from './rambleApi';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
 
@@ -19,19 +20,19 @@ export const SYS1_SESSION_KEY = 'sys1-chat-session-id';
 export function useSys1() {
   const { saveUserTurn, ingestQuickResult } = useKernel();
 
-  const sendMessage = useCallback(async (text: string): Promise<void> => {
+  const sendMessage = useCallback(async (text: string, attachments?: UploadedAttachment[]): Promise<void> => {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed && (!attachments || attachments.length === 0)) return;
 
     const sessionId = profileStorage.getItem(SYS1_SESSION_KEY) ?? 'default';
 
     // Write user turn immediately — message is never lost even if the API fails
-    const userConvId = await saveUserTurn(trimmed, sessionId, 'typed');
+    const userConvId = await saveUserTurn(trimmed || '[attachment]', sessionId, 'typed', undefined, attachments);
 
     const res = await authFetch(`${WORKER_URL}/api/v1/sys1/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: trimmed, sessionId }),
+      body: JSON.stringify({ text: trimmed, sessionId, attachments: attachments ?? [] }),
     });
 
     if (!res.ok) throw new Error(`SYS-I message failed: HTTP ${res.status}`);

@@ -151,25 +151,39 @@ export function ConversationEntry({
           )}
 
           {/* Conversation text */}
-          <div
-            className={`text-[15px] leading-relaxed text-base-content/90 ${isLongText && !isExpanded ? 'cursor-pointer' : ''}`}
-            onClick={isLongText && !isExpanded ? () => setIsExpanded(true) : undefined}
-          >
-            {entityNames.length > 0 ? (
-              <AnnotatedText text={displayText} entityNames={entityNames} />
-            ) : (
-              displayText
-            )}
-            {isLongText && !isExpanded && <span className="text-primary/60 ml-0.5">...</span>}
-            {isLongText && isExpanded && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setIsExpanded(false); }}
-                className="text-primary/50 hover:text-primary/70 text-xs ml-1.5"
-              >
-                show less
-              </button>
-            )}
-          </div>
+          {conversation.rawText && conversation.rawText !== '[attachment]' && (
+            <div
+              className={`text-[15px] leading-relaxed text-base-content/90 ${isLongText && !isExpanded ? 'cursor-pointer' : ''}`}
+              onClick={isLongText && !isExpanded ? () => setIsExpanded(true) : undefined}
+            >
+              {entityNames.length > 0 ? (
+                <AnnotatedText text={displayText} entityNames={entityNames} />
+              ) : (
+                displayText
+              )}
+              {isLongText && !isExpanded && <span className="text-primary/60 ml-0.5">...</span>}
+              {isLongText && isExpanded && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setIsExpanded(false); }}
+                  className="text-primary/50 hover:text-primary/70 text-xs ml-1.5"
+                >
+                  show less
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Attachments */}
+          {conversation.attachments && conversation.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {conversation.attachments.map(a => (
+                <div key={a.r2Key} className="flex items-center gap-1.5 px-2 py-1 bg-violet-400/10 rounded-lg text-[11px] text-violet-400/80">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  <span className="truncate max-w-[140px]">{a.filename}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Source + time — right column */}

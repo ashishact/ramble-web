@@ -56,6 +56,8 @@ function buildConversationQuery(options?: ConversationDataOptions): string {
 }
 
 function parseConversationRow(row: Record<string, unknown>): ConversationRecord {
+  let attachments: ConversationRecord['attachments'] = []
+  try { attachments = JSON.parse((row.attachments as string) || '[]') } catch { /* ignore */ }
   return {
     id: row.id as string,
     sessionId: row.session_id as string,
@@ -67,6 +69,7 @@ function parseConversationRow(row: Record<string, unknown>): ConversationRecord 
     intent: (row.intent as string) ?? null,
     recordingId: (row.recording_id as string) ?? null,
     batchId: (row.batch_id as string) ?? null,
+    attachments,
     createdAt: row.created_at as number,
   }
 }

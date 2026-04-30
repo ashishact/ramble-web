@@ -352,17 +352,19 @@ class Kernel {
     transcript: string,
     sessionId: string,
     source: 'typed' | 'speech' = 'typed',
-    recordingId?: string
+    recordingId?: string,
+    attachments?: Array<{ r2Key: string; filename: string; contentType: string; size: number }>
   ): Promise<string> {
     if (!this.initialized) throw new Error('Kernel not initialized');
-    if (!transcript.trim()) throw new Error('Empty transcript');
+    if (!transcript.trim() && (!attachments || attachments.length === 0)) throw new Error('Empty turn');
 
     const userConv = await conversationStore.create({
       sessionId,
-      rawText: transcript,
+      rawText: transcript || '[attachment]',
       source,
       speaker: 'user',
       recordingId,
+      attachments,
     });
 
     const textHash = simpleHash(transcript);

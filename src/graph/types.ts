@@ -112,6 +112,7 @@ export interface GraphConversation {
   emotion: string | null
   recording_id: string | null
   batch_id: string | null
+  attachments: string // JSON: UploadedAttachment[]
   created_at: number
 }
 

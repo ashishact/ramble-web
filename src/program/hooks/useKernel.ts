@@ -51,8 +51,14 @@ export function useKernel() {
   );
 
   const saveUserTurn = useCallback(
-    async (transcript: string, sessionId: string, source: 'typed' | 'speech' = 'typed', recordingId?: string): Promise<string> => {
-      return kernel.saveUserTurn(transcript, sessionId, source, recordingId);
+    async (
+      transcript: string,
+      sessionId: string,
+      source: 'typed' | 'speech' = 'typed',
+      recordingId?: string,
+      attachments?: Array<{ r2Key: string; filename: string; contentType: string; size: number }>
+    ): Promise<string> => {
+      return kernel.saveUserTurn(transcript, sessionId, source, recordingId, attachments);
     },
     [kernel]
   );

@@ -172,6 +172,65 @@ export async function storeDelete(namespace: string, key: string): Promise<void>
   }
 }
 
+// ── R2 file attachments ──────────────────────────────────────────────
+
+export interface SignedUploadResult {
+  uploadUrl: string;
+  r2Key: string;
+  namespace: string;
+  filename: string;
+  expiresAt: string;
+}
+
+export interface UploadedAttachment {
+  r2Key: string;
+  filename: string;
+  contentType: string;
+  size: number;
+}
+
+/**
+ * Step 1: get a short-lived signed upload URL from the worker.
+ */
+export async function requestSignedUpload(
+  filename: string,
+  contentType: string,
+  namespace = 'attachments',
+): Promise<SignedUploadResult> {
+  const res = await authFetch(`${WORKER_URL}/api/v1/store/signed-upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename, contentType, namespace }),
+  });
+  if (!res.ok) throw new Error(`Signed upload request failed: ${res.status}`);
+  return res.json() as Promise<SignedUploadResult>;
+}
+
+/**
+ * Step 2: upload the file directly to R2 using the signed URL.
+ */
+export async function uploadFileToR2(
+  file: File,
+  uploadUrl: string,
+): Promise<void> {
+  const res = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: file,
+  });
+  if (!res.ok) throw new Error(`R2 upload failed: ${res.status}`);
+}
+
+/**
+ * Full upload: get signed URL then upload — returns the attachment metadata.
+ */
+export async function uploadAttachment(file: File): Promise<UploadedAttachment> {
+  const contentType = file.type || 'application/octet-stream';
+  const { uploadUrl, r2Key } = await requestSignedUpload(file.name, contentType);
+  await uploadFileToR2(file, uploadUrl);
+  return { r2Key, filename: file.name, contentType, size: file.size };
+}
+
 export async function storeList(namespace?: string): Promise<any[]> {
   const url = namespace
     ? `${WORKER_URL}/api/v1/store?namespace=${encodeURIComponent(namespace)}`

@@ -25,6 +25,14 @@
 }
 
 /* Recording waveform bars */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+.animate-cursor-blink {
+  animation: cursor-blink 1s steps(1) infinite;
+}
+
 @keyframes wavebar {
   0%, 100% { transform: scaleY(0.25); opacity: 0.5; }
   50%       { transform: scaleY(1);    opacity: 1;   }

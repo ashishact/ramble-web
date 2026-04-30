@@ -33,6 +33,13 @@ export interface BaseNodeRecord {
   updatedAt: number
 }
 
+export interface ConversationAttachment {
+  r2Key: string
+  filename: string
+  contentType: string
+  size: number
+}
+
 /** Base shape for conversation records */
 export interface ConversationRecord {
   id: string
@@ -45,6 +52,7 @@ export interface ConversationRecord {
   intent: string | null
   recordingId: string | null
   batchId: string | null
+  attachments: ConversationAttachment[]
   createdAt: number
 }
 

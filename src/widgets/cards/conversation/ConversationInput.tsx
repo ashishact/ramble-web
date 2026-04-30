@@ -13,6 +13,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSys1 } from '../../../services/useSys1';
 import { eventBus } from '../../../lib/eventBus';
+import { uploadAttachment, type UploadedAttachment } from '../../../services/rambleApi';
 
 // ── Audio tones ───────────────────────────────────────────────────────────────
 
@@ -179,21 +180,38 @@ function RecordingRow({ chunksSent, speechMs, wallClockMs }: RecordingRowProps) 
 
 type InputState = 'idle' | 'recording' | 'processing' | 'success' | 'error';
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function ConversationInput() {
   const [text, setText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inputState, setInputState] = useState<InputState>('idle');
+  const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   // Recording metrics
-  const [chunksSent, setChunksSent] = useState(0);   // server chunks sent
-  const [speechMs, setSpeechMs] = useState(0);       // VAD-gated speech duration
+  const [chunksSent, setChunksSent] = useState(0);
+  const [speechMs, setSpeechMs] = useState(0);
   const [wallClockMs, setWallClockMs] = useState(0);
   const recordingStartRef = useRef<number>(0);
   const wallClockTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { sendMessage } = useSys1();
+
+  // Auto-resize textarea as content grows
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [text]);
 
   useEffect(() => {
     const onStart = () => {
@@ -250,18 +268,20 @@ export function ConversationInput() {
 
   const handleSubmit = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || isSubmitting) return;
+    if ((!trimmed && attachments.length === 0) || isSubmitting || uploading) return;
     setIsSubmitting(true);
+    const pending = attachments;
     setText('');
+    setAttachments([]);
     try {
-      await sendMessage(trimmed);
+      await sendMessage(trimmed, pending.length > 0 ? pending : undefined);
     } catch (err) {
       console.error('Failed to submit input:', err);
     } finally {
       setIsSubmitting(false);
       textareaRef.current?.focus();
     }
-  }, [text, isSubmitting, sendMessage]);
+  }, [text, attachments, isSubmitting, uploading, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -269,6 +289,25 @@ export function ConversationInput() {
       handleSubmit();
     }
   };
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    e.target.value = '';
+    setUploading(true);
+    try {
+      const uploaded = await Promise.all(files.map(uploadAttachment));
+      setAttachments(prev => [...prev, ...uploaded]);
+    } catch (err) {
+      console.error('Upload failed:', err);
+    } finally {
+      setUploading(false);
+    }
+  }, []);
+
+  const removeAttachment = useCallback((r2Key: string) => {
+    setAttachments(prev => prev.filter(a => a.r2Key !== r2Key));
+  }, []);
 
   const renderStatus = () => {
     if (inputState === 'recording') {
@@ -309,24 +348,78 @@ export function ConversationInput() {
     }
 
     return (
-      <textarea
-        ref={textareaRef}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Type something..."
-        rows={1}
-        disabled={isSubmitting}
-        className="w-full bg-transparent text-base text-base-content/90 placeholder:text-base-content/25
-                   resize-none outline-none leading-relaxed disabled:opacity-50"
-        style={{ minHeight: '1.5em', maxHeight: '6em', caretColor: 'oklch(var(--p))' }}
-      />
+      <div className="flex items-end gap-2 w-full">
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type something..."
+          rows={1}
+          disabled={isSubmitting}
+          className="flex-1 bg-transparent text-base text-base-content/90 placeholder:text-base-content/25
+                     resize-none outline-none leading-relaxed disabled:opacity-50"
+          style={{ minHeight: '1.5em', maxHeight: '200px', caretColor: 'oklch(var(--p))' }}
+        />
+
+        {/* File picker button — right side */}
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isSubmitting || uploading}
+          className="shrink-0 mb-[3px] p-1 rounded-md text-base-content/30 hover:text-base-content/60 hover:bg-base-200/60 transition disabled:opacity-30"
+          title="Attach file"
+        >
+          {uploading
+            ? <span className="loading loading-spinner loading-xs" />
+            : <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          }
+        </button>
+      </div>
     );
   };
 
   return (
-    <div className="border-t border-base-200/60 px-8 py-2.5 bg-base-100 shrink-0 min-h-[44px] flex items-center">
-      {renderStatus()}
+    <div className="border-t border-base-200/60 bg-base-100 shrink-0 flex gap-3">
+      {/* Blinking purple bar — mirrors the user message indicator */}
+      <div
+        className="w-[2px] rounded-full bg-violet-400/80 animate-cursor-blink self-center ml-3 shrink-0"
+        style={{ height: '1.6em' }}
+      />
+
+      {/* Content */}
+      <div className="flex-1 py-2.5 pr-4">
+        {/* Attachment chips */}
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {attachments.map(a => (
+              <div key={a.r2Key} className="flex items-center gap-1.5 px-2.5 py-1 bg-base-200 rounded-lg text-xs text-base-content/70 max-w-[200px]">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span className="truncate">{a.filename}</span>
+                <span className="text-base-content/30 shrink-0">{formatBytes(a.size)}</span>
+                <button
+                  onClick={() => removeAttachment(a.r2Key)}
+                  className="shrink-0 ml-0.5 opacity-40 hover:opacity-80 transition"
+                >✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Input row */}
+        <div className="flex items-center min-h-[36px]">
+          {renderStatus()}
+        </div>
+      </div>
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleFileChange}
+      />
     </div>
   );
 }
