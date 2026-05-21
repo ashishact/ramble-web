@@ -18,6 +18,38 @@ import { CREATE_TABLES } from './schema.sql'
 // 30+ MiB files that exceed Cloudflare Pages' 25 MiB limit.
 import { getJsDelivrBundles } from '@duckdb/duckdb-wasm'
 
+// ── Cache API helpers ────────────────────────────────────────────────────────
+// Cache WASM and worker scripts after first download so reloads are instant.
+// Cache API is available in dedicated workers (Chrome 60+, Firefox, Safari 16+).
+const WASM_CACHE = 'duckdb-wasm-v1'
+
+async function cachedFetchAsText(url: string): Promise<string> {
+  try {
+    const cache = await caches.open(WASM_CACHE)
+    const hit = await cache.match(url)
+    if (hit) return hit.text()
+    const res = await fetch(url)
+    if (res.ok) await cache.put(url, res.clone())
+    return res.text()
+  } catch {
+    // caches unavailable (insecure context, etc.) — fall back to plain fetch
+    return fetch(url).then(r => r.text())
+  }
+}
+
+async function cachedFetchAsArrayBuffer(url: string): Promise<ArrayBuffer> {
+  try {
+    const cache = await caches.open(WASM_CACHE)
+    const hit = await cache.match(url)
+    if (hit) return hit.arrayBuffer()
+    const res = await fetch(url)
+    if (res.ok) await cache.put(url, res.clone())
+    return res.arrayBuffer()
+  } catch {
+    return fetch(url).then(r => r.arrayBuffer())
+  }
+}
+
 let db: duckdb.AsyncDuckDB | null = null
 let conn: duckdb.AsyncDuckDBConnection | null = null
 let currentProfileName: string | null = null
@@ -44,15 +76,26 @@ async function initDuckDB(profileName: string): Promise<void> {
   const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES)
   const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING)
 
-  // CDN URLs are cross-origin — `new Worker(url)` blocks cross-origin scripts.
-  // Fetch the script text and wrap it in a same-origin blob URL.
-  const workerScript = await fetch(bundle.mainWorker!)
-  const workerBlob = new Blob([await workerScript.text()], { type: 'application/javascript' })
-  const workerUrl = URL.createObjectURL(workerBlob)
+  // Fetch worker script + WASM module in parallel, using Cache API so second
+  // load is served from local storage instead of re-downloading from CDN.
+  const t0 = performance.now()
+  const [workerText, wasmBytes, pthreadText] = await Promise.all([
+    cachedFetchAsText(bundle.mainWorker!),
+    cachedFetchAsArrayBuffer(bundle.mainModule),
+    bundle.pthreadWorker ? cachedFetchAsText(bundle.pthreadWorker) : Promise.resolve(null),
+  ])
+  console.log(`[DuckDB Worker] Assets ready in ${Math.round(performance.now() - t0)}ms`)
+
+  // Wrap as same-origin blob URLs (CDN scripts are cross-origin)
+  const workerUrl = URL.createObjectURL(new Blob([workerText], { type: 'application/javascript' }))
+  const wasmUrl   = URL.createObjectURL(new Blob([wasmBytes],  { type: 'application/wasm' }))
+  const pthreadUrl = pthreadText
+    ? URL.createObjectURL(new Blob([pthreadText], { type: 'application/javascript' }))
+    : undefined
 
   const innerWorker = new Worker(workerUrl)
   const instance = new duckdb.AsyncDuckDB(logger, innerWorker)
-  await instance.instantiate(bundle.mainModule, bundle.pthreadWorker)
+  await instance.instantiate(wasmUrl, pthreadUrl)
   console.log('[DuckDB Worker] WASM instantiated')
 
   // Native OPFS — DuckDB handles file creation, sync access handles, and persistence
